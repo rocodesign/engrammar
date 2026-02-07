@@ -278,14 +278,16 @@ def engrammar_update(
 
 
 @mcp.tool()
-def engrammar_list(category: str | None = None, include_deprecated: bool = False) -> str:
-    """List all lessons in the knowledge base.
+def engrammar_list(category: str | None = None, include_deprecated: bool = False, limit: int = 0, offset: int = 0) -> str:
+    """List lessons in the knowledge base.
 
-    Use this to see everything Engrammar knows, optionally filtered by category.
+    Use this to see everything Engrammar knows, optionally filtered and paginated.
 
     Args:
         category: Optional category prefix filter (e.g. "development", "tools/figma")
         include_deprecated: Whether to include deprecated lessons (default False)
+        limit: Max number of lessons to return (0 = all)
+        offset: Number of lessons to skip (for pagination)
     """
     from engrammar.db import get_connection
 
@@ -301,10 +303,18 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
     if category:
         lessons = [l for l in lessons if l.get("category", "").startswith(category)]
 
+    total = len(lessons)
+
+    if offset > 0:
+        lessons = lessons[offset:]
+    if limit > 0:
+        lessons = lessons[:limit]
+
     if not lessons:
         return "No lessons found." + (f" (filter: {category})" if category else "")
 
-    lines = [f"Total: {len(lessons)} lessons\n"]
+    showing = f"Showing {len(lessons)} of {total}" if (limit > 0 or offset > 0) else f"Total: {total}"
+    lines = [f"{showing} lessons\n"]
     current_cat = None
     for l in lessons:
         cat = l.get("category", "general")
