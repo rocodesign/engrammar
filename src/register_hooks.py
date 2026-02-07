@@ -17,6 +17,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
     """Register hooks in ~/.claude/settings.json."""
     settings_path = os.path.expanduser("~/.claude/settings.json")
 
+    session_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_start.py")}'
     prompt_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_prompt.py")}'
     tool_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_tool_use.py")}'
 
@@ -33,6 +34,12 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
                 if h.get("command", "") == command:
                     return True
         return False
+
+    if not hook_exists("SessionStart", session_hook_cmd):
+        hooks.setdefault("SessionStart", []).append({
+            "hooks": [{"type": "command", "command": session_hook_cmd}]
+        })
+        print("Registered SessionStart hook")
 
     if not hook_exists("UserPromptSubmit", prompt_hook_cmd):
         hooks.setdefault("UserPromptSubmit", []).append({

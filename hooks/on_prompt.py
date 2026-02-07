@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook — injects pinned lessons + searches relevant ones."""
+"""UserPromptSubmit hook — searches lessons relevant to the user's prompt."""
 
 import json
 import sys
@@ -19,52 +19,27 @@ def main():
 
         data = json.loads(raw)
         prompt = data.get("prompt", "")
+        if not prompt or len(prompt) < 5:
+            return
 
         from engrammar.config import load_config
         config = load_config()
         if not config["hooks"]["prompt_enabled"]:
             return
 
-        show_categories = config["display"]["show_categories"]
-        lines = []
+        from engrammar.search import search
+        max_results = config["display"]["max_lessons_per_prompt"]
+        results = search(prompt, top_k=max_results)
 
-        # 1. Always include pinned lessons that match current environment
-        from engrammar.db import get_pinned_lessons
-        from engrammar.environment import check_prerequisites, detect_environment
-
-        env = detect_environment()
-        pinned = get_pinned_lessons()
-        pinned_ids = set()
-        pinned_lines = []
-        for p in pinned:
-            if check_prerequisites(p.get("prerequisites"), env):
-                pinned_ids.add(p["id"])
-                prefix = f"[{p['category']}] " if show_categories and p.get("category") else ""
-                pinned_lines.append(f"- {prefix}{p['text']}")
-
-        if pinned_lines:
-            lines.append("Active lessons for this project:")
-            lines.extend(pinned_lines)
-
-        # 2. Search for relevant lessons (skip if prompt too short)
-        if prompt and len(prompt) >= 5:
-            from engrammar.search import search
-            max_results = config["display"]["max_lessons_per_prompt"]
-            results = search(prompt, top_k=max_results)
-
-            # Exclude pinned lessons from search results (already shown)
-            results = [r for r in results if r["id"] not in pinned_ids]
-
-            if results:
-                if lines:
-                    lines.append("")
-                lines.append("Relevant lessons from past sessions:")
-                for r in results:
-                    prefix = f"[{r['category']}] " if show_categories and r.get("category") else ""
-                    lines.append(f"- {prefix}{r['text']}")
-
-        if not lines:
+        if not results:
             return
+
+        # Format lessons for context injection
+        show_categories = config["display"]["show_categories"]
+        lines = ["Relevant lessons from past sessions:"]
+        for r in results:
+            prefix = f"[{r['category']}] " if show_categories and r.get("category") else ""
+            lines.append(f"- {prefix}{r['text']}")
 
         context = "\n".join(lines)
 
