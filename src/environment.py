@@ -46,17 +46,19 @@ def _detect_repo():
 
 
 def _detect_mcp_servers():
-    """Get list of configured MCP server names from Claude settings."""
-    try:
-        settings_path = os.path.expanduser("~/.claude/settings.json")
-        if os.path.exists(settings_path):
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-            servers = settings.get("mcpServers", {})
-            return list(servers.keys())
-    except Exception:
-        pass
-    return []
+    """Get list of configured MCP server names from Claude config."""
+    servers = set()
+    # MCP servers live in ~/.claude.json (user-level) and .mcp.json (project-level)
+    for path in ["~/.claude.json", ".mcp.json"]:
+        try:
+            full = os.path.expanduser(path)
+            if os.path.exists(full):
+                with open(full, "r") as f:
+                    data = json.load(f)
+                servers.update(data.get("mcpServers", {}).keys())
+        except Exception:
+            pass
+    return list(servers)
 
 
 def check_prerequisites(prerequisites, env=None):
@@ -98,6 +100,16 @@ def check_prerequisites(prerequisites, env=None):
         if isinstance(req_repos, str):
             req_repos = [req_repos]
         if env["repo"] and env["repo"] not in req_repos:
+            return False
+
+    # Check paths (directory prefix match, e.g. "~/work/acme")
+    req_paths = prerequisites.get("paths")
+    if req_paths:
+        if isinstance(req_paths, str):
+            req_paths = [req_paths]
+        cwd = env.get("cwd", "")
+        expanded = [os.path.expanduser(p) for p in req_paths]
+        if not any(cwd.startswith(p) for p in expanded):
             return False
 
     # Check MCP servers
