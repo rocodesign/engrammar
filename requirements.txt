@@ -1,0 +1,4 @@
+fastembed>=0.3.0
+numpy>=1.21.0
+rank_bm25>=0.2.2
+mcp>=1.0.0

@@ -1,0 +1,322 @@
+"""Engrammar MCP server — gives Claude direct access to lesson management."""
+
+import json
+import os
+import sys
+
+# Ensure engrammar package is importable
+ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
+sys.path.insert(0, ENGRAMMAR_HOME)
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP(
+    "engrammar",
+    instructions=(
+        "Engrammar is your semantic knowledge system. Use it to search past lessons, "
+        "add new learnings, mark lessons as not applicable, and check system status. "
+        "When you notice a lesson from hook context doesn't apply to the current "
+        "environment, use engrammar_feedback to record why."
+    ),
+)
+
+
+@mcp.tool()
+def engrammar_search(query: str, category: str | None = None, top_k: int = 5) -> str:
+    """Search lessons by semantic similarity + keyword matching.
+
+    Use this to find relevant lessons for the current task.
+
+    Args:
+        query: Natural language search query
+        category: Optional category prefix filter (e.g. "development/frontend")
+        top_k: Number of results to return (default 5)
+    """
+    from engrammar.search import search
+
+    results = search(query, category_filter=category, top_k=top_k)
+
+    if not results:
+        return "No matching lessons found."
+
+    lines = [f"Found {len(results)} lessons:\n"]
+    for i, r in enumerate(results, 1):
+        lines.append(f"{i}. [{r.get('category', 'general')}] (id:{r['id']}, score:{r.get('score', 0):.4f})")
+        lines.append(f"   {r['text']}")
+        prereqs = r.get("prerequisites")
+        if prereqs:
+            lines.append(f"   prerequisites: {prereqs}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def engrammar_add(
+    text: str,
+    category: str = "general",
+    prerequisites: str | None = None,
+    source: str = "manual",
+) -> str:
+    """Add a new lesson to the knowledge base.
+
+    Use this when you learn something that should be remembered across sessions.
+
+    Args:
+        text: The lesson text — what was learned
+        category: Hierarchical category (e.g. "development/frontend/styling")
+        prerequisites: Optional JSON string of requirements (e.g. '{"repos":["app-repo"],"os":["darwin"]}')
+        source: How this lesson was discovered ("manual", "auto-extracted", "feedback")
+    """
+    from engrammar.db import add_lesson, get_all_active_lessons
+    from engrammar.embeddings import build_index
+
+    # Validate prerequisites JSON if provided
+    if prerequisites:
+        try:
+            json.loads(prerequisites)
+        except json.JSONDecodeError:
+            return f"Error: prerequisites must be valid JSON. Got: {prerequisites}"
+
+    lesson_id = add_lesson(text=text, category=category, source=source)
+
+    # Update prerequisites if provided
+    if prerequisites:
+        from engrammar.db import get_connection
+        conn = get_connection()
+        conn.execute("UPDATE lessons SET prerequisites = ? WHERE id = ?", (prerequisites, lesson_id))
+        conn.commit()
+        conn.close()
+
+    # Rebuild index
+    lessons = get_all_active_lessons()
+    build_index(lessons)
+
+    return f"Added lesson #{lesson_id} in category '{category}'. Index rebuilt with {len(lessons)} lessons."
+
+
+@mcp.tool()
+def engrammar_deprecate(lesson_id: int, reason: str = "") -> str:
+    """Deprecate a lesson that is no longer accurate or useful.
+
+    Use this when a lesson is outdated, wrong, or superseded.
+
+    Args:
+        lesson_id: The lesson ID to deprecate
+        reason: Why this lesson is being deprecated
+    """
+    from engrammar.db import deprecate_lesson, get_connection, get_all_active_lessons
+    from engrammar.embeddings import build_index
+
+    # Verify lesson exists
+    conn = get_connection()
+    row = conn.execute("SELECT text, category FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    conn.close()
+
+    if not row:
+        return f"Error: lesson #{lesson_id} not found."
+
+    deprecate_lesson(lesson_id)
+
+    # Rebuild index without deprecated lesson
+    lessons = get_all_active_lessons()
+    build_index(lessons)
+
+    return f"Deprecated lesson #{lesson_id} [{row['category']}]: \"{row['text'][:80]}...\"\nReason: {reason}\nIndex rebuilt with {len(lessons)} active lessons."
+
+
+@mcp.tool()
+def engrammar_feedback(
+    lesson_id: int,
+    applicable: bool,
+    reason: str = "",
+    add_prerequisites: str | None = None,
+) -> str:
+    """Give feedback on a lesson that was surfaced by hooks.
+
+    Use this when a lesson from hook context doesn't apply to the current
+    environment or situation. This helps Engrammar learn when to surface lessons.
+
+    Args:
+        lesson_id: The lesson ID (shown in search results as id:N)
+        applicable: Whether the lesson was applicable in this context
+        reason: Why the lesson did/didn't apply (e.g. "requires figma MCP which isn't connected")
+        add_prerequisites: Optional JSON prerequisites to add so this lesson only surfaces when they're met
+            (e.g. '{"mcp_servers":["figma"],"repos":["app-repo"]}')
+    """
+    from engrammar.db import get_connection
+    from datetime import datetime
+
+    conn = get_connection()
+    row = conn.execute("SELECT text, category, prerequisites FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+
+    if not row:
+        conn.close()
+        return f"Error: lesson #{lesson_id} not found."
+
+    now = datetime.utcnow().isoformat()
+    response_parts = []
+
+    if applicable:
+        # Positive feedback — increment match count
+        conn.execute(
+            "UPDATE lessons SET times_matched = times_matched + 1, last_matched = ? WHERE id = ?",
+            (now, lesson_id),
+        )
+        response_parts.append(f"Recorded positive feedback for lesson #{lesson_id}.")
+    else:
+        # Negative feedback — record reason
+        response_parts.append(f"Recorded negative feedback for lesson #{lesson_id}: {reason}")
+
+    # Add prerequisites if provided
+    if add_prerequisites:
+        try:
+            new_prereqs = json.loads(add_prerequisites)
+            existing = {}
+            if row["prerequisites"]:
+                try:
+                    existing = json.loads(row["prerequisites"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            # Merge: for list fields, union the values
+            for key, val in new_prereqs.items():
+                if key in existing:
+                    if isinstance(existing[key], list) and isinstance(val, list):
+                        existing[key] = list(set(existing[key] + val))
+                    else:
+                        existing[key] = val
+                else:
+                    existing[key] = val
+
+            conn.execute(
+                "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(existing), now, lesson_id),
+            )
+            response_parts.append(f"Updated prerequisites: {json.dumps(existing)}")
+
+        except json.JSONDecodeError:
+            response_parts.append(f"Warning: invalid prerequisites JSON, skipped: {add_prerequisites}")
+
+    conn.commit()
+    conn.close()
+
+    return "\n".join(response_parts)
+
+
+@mcp.tool()
+def engrammar_update(
+    lesson_id: int,
+    text: str | None = None,
+    category: str | None = None,
+    prerequisites: str | None = None,
+) -> str:
+    """Update an existing lesson's text, category, or prerequisites.
+
+    Args:
+        lesson_id: The lesson ID to update
+        text: New lesson text (if changing)
+        category: New category (if changing)
+        prerequisites: New prerequisites JSON (if changing)
+    """
+    from engrammar.db import get_connection, get_all_active_lessons
+    from engrammar.embeddings import build_index
+    from datetime import datetime
+
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    if not row:
+        conn.close()
+        return f"Error: lesson #{lesson_id} not found."
+
+    now = datetime.utcnow().isoformat()
+    updates = []
+    params = []
+
+    if text is not None:
+        updates.append("text = ?")
+        params.append(text)
+
+    if category is not None:
+        parts = category.strip("/").split("/")
+        updates.append("category = ?")
+        params.append(category)
+        updates.append("level1 = ?")
+        params.append(parts[0] if len(parts) > 0 else None)
+        updates.append("level2 = ?")
+        params.append(parts[1] if len(parts) > 1 else None)
+        updates.append("level3 = ?")
+        params.append(parts[2] if len(parts) > 2 else None)
+
+    if prerequisites is not None:
+        try:
+            json.loads(prerequisites)  # validate
+            updates.append("prerequisites = ?")
+            params.append(prerequisites)
+        except json.JSONDecodeError:
+            conn.close()
+            return f"Error: prerequisites must be valid JSON."
+
+    if not updates:
+        conn.close()
+        return "Nothing to update — provide at least one of: text, category, prerequisites."
+
+    updates.append("updated_at = ?")
+    params.append(now)
+    params.append(lesson_id)
+
+    conn.execute(f"UPDATE lessons SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+
+    # Rebuild index if text changed
+    if text is not None:
+        lessons = get_all_active_lessons()
+        build_index(lessons)
+
+    return f"Updated lesson #{lesson_id}."
+
+
+@mcp.tool()
+def engrammar_status() -> str:
+    """Show Engrammar system status — lesson count, categories, index health."""
+    from engrammar.db import get_lesson_count, get_category_stats
+    from engrammar.config import DB_PATH, INDEX_PATH
+
+    lines = ["=== Engrammar Status ===\n"]
+
+    if os.path.exists(DB_PATH):
+        count = get_lesson_count()
+        lines.append(f"Lessons: {count} active")
+        stats = get_category_stats()
+        if stats:
+            lines.append("\nCategories:")
+            for cat, cnt in stats:
+                lines.append(f"  {cat or 'uncategorized'}: {cnt}")
+    else:
+        lines.append("Database: NOT FOUND")
+
+    if os.path.exists(INDEX_PATH):
+        import numpy as np
+        emb = np.load(INDEX_PATH, mmap_mode="r")
+        lines.append(f"\nIndex: {emb.shape[0]} vectors x {emb.shape[1]} dims")
+    else:
+        lines.append("\nIndex: NOT BUILT")
+
+    # Show environment
+    from engrammar.environment import detect_environment
+    env = detect_environment()
+    lines.append(f"\nEnvironment:")
+    lines.append(f"  OS: {env['os']}")
+    lines.append(f"  Repo: {env.get('repo', 'unknown')}")
+    lines.append(f"  MCP servers: {', '.join(env.get('mcp_servers', [])) or 'none detected'}")
+
+    return "\n".join(lines)
+
+
+def main():
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
