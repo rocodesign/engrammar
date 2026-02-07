@@ -278,6 +278,54 @@ def engrammar_update(
 
 
 @mcp.tool()
+def engrammar_list(category: str | None = None, include_deprecated: bool = False) -> str:
+    """List all lessons in the knowledge base.
+
+    Use this to see everything Engrammar knows, optionally filtered by category.
+
+    Args:
+        category: Optional category prefix filter (e.g. "development", "tools/figma")
+        include_deprecated: Whether to include deprecated lessons (default False)
+    """
+    from engrammar.db import get_connection
+
+    conn = get_connection()
+    if include_deprecated:
+        rows = conn.execute("SELECT * FROM lessons ORDER BY category, id").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM lessons WHERE deprecated = 0 ORDER BY category, id").fetchall()
+    conn.close()
+
+    lessons = [dict(r) for r in rows]
+
+    if category:
+        lessons = [l for l in lessons if l.get("category", "").startswith(category)]
+
+    if not lessons:
+        return "No lessons found." + (f" (filter: {category})" if category else "")
+
+    lines = [f"Total: {len(lessons)} lessons\n"]
+    current_cat = None
+    for l in lessons:
+        cat = l.get("category", "general")
+        if cat != current_cat:
+            current_cat = cat
+            lines.append(f"\n## {cat}")
+
+        status = " [DEPRECATED]" if l.get("deprecated") else ""
+        prereqs = ""
+        if l.get("prerequisites"):
+            prereqs = f" | prereqs: {l['prerequisites']}"
+        lines.append(
+            f"  #{l['id']}: {l['text']}"
+            f"\n      matched: {l.get('times_matched', 0)}x | occurrences: {l.get('occurrence_count', 1)}"
+            f"{prereqs}{status}"
+        )
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def engrammar_status() -> str:
     """Show Engrammar system status — lesson count, categories, index health."""
     from engrammar.db import get_lesson_count, get_category_stats
