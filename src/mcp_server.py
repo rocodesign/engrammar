@@ -278,6 +278,74 @@ def engrammar_update(
 
 
 @mcp.tool()
+def engrammar_pin(lesson_id: int, prerequisites: str | None = None) -> str:
+    """Pin a lesson so it's always injected at session start when prerequisites match.
+
+    Pinned lessons appear in every prompt's context for matching environments,
+    regardless of search relevance. Use this for critical project rules.
+
+    Args:
+        lesson_id: The lesson ID to pin
+        prerequisites: Optional JSON prerequisites for when to show this lesson
+            (e.g. '{"paths":["~/work/acme"]}' or '{"repos":["app-repo"]}')
+    """
+    from engrammar.db import get_connection
+    from datetime import datetime
+
+    conn = get_connection()
+    row = conn.execute("SELECT text, category, pinned FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    if not row:
+        conn.close()
+        return f"Error: lesson #{lesson_id} not found."
+
+    if row["pinned"]:
+        conn.close()
+        return f"Lesson #{lesson_id} is already pinned."
+
+    now = datetime.utcnow().isoformat()
+    conn.execute("UPDATE lessons SET pinned = 1, updated_at = ? WHERE id = ?", (now, lesson_id))
+
+    if prerequisites:
+        try:
+            json.loads(prerequisites)  # validate
+            conn.execute("UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?", (prerequisites, now, lesson_id))
+        except json.JSONDecodeError:
+            conn.close()
+            return f"Error: prerequisites must be valid JSON."
+
+    conn.commit()
+    conn.close()
+    return f"Pinned lesson #{lesson_id} [{row['category']}]: \"{row['text'][:80]}...\""
+
+
+@mcp.tool()
+def engrammar_unpin(lesson_id: int) -> str:
+    """Unpin a lesson so it only appears via search relevance.
+
+    Args:
+        lesson_id: The lesson ID to unpin
+    """
+    from engrammar.db import get_connection
+    from datetime import datetime
+
+    conn = get_connection()
+    row = conn.execute("SELECT text, category, pinned FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    if not row:
+        conn.close()
+        return f"Error: lesson #{lesson_id} not found."
+
+    if not row["pinned"]:
+        conn.close()
+        return f"Lesson #{lesson_id} is not pinned."
+
+    now = datetime.utcnow().isoformat()
+    conn.execute("UPDATE lessons SET pinned = 0, updated_at = ? WHERE id = ?", (now, lesson_id))
+    conn.commit()
+    conn.close()
+    return f"Unpinned lesson #{lesson_id} [{row['category']}]: \"{row['text'][:80]}...\""
+
+
+@mcp.tool()
 def engrammar_list(category: str | None = None, include_deprecated: bool = False, limit: int = 20, offset: int = 0) -> str:
     """List lessons in the knowledge base.
 
@@ -322,7 +390,12 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
             current_cat = cat
             lines.append(f"\n## {cat}")
 
-        status = " [DEPRECATED]" if l.get("deprecated") else ""
+        flags = []
+        if l.get("pinned"):
+            flags.append("PINNED")
+        if l.get("deprecated"):
+            flags.append("DEPRECATED")
+        status = (" [" + ", ".join(flags) + "]") if flags else ""
         prereqs = ""
         if l.get("prerequisites"):
             prereqs = f" | prereqs: {l['prerequisites']}"
