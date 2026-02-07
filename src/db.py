@@ -36,7 +36,8 @@ def init_db(db_path=None):
             created_at TEXT,
             updated_at TEXT,
             deprecated INTEGER DEFAULT 0,
-            prerequisites TEXT DEFAULT NULL
+            prerequisites TEXT DEFAULT NULL,
+            pinned INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS categories (
@@ -49,10 +50,12 @@ def init_db(db_path=None):
         CREATE INDEX IF NOT EXISTS idx_lessons_deprecated ON lessons(deprecated);
     """)
 
-    # Migration: add prerequisites column if missing (for existing DBs)
+    # Migrations for existing DBs
     columns = [r[1] for r in conn.execute("PRAGMA table_info(lessons)").fetchall()]
     if "prerequisites" not in columns:
         conn.execute("ALTER TABLE lessons ADD COLUMN prerequisites TEXT DEFAULT NULL")
+    if "pinned" not in columns:
+        conn.execute("ALTER TABLE lessons ADD COLUMN pinned INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -163,6 +166,16 @@ def get_lesson_count(db_path=None):
     ).fetchone()[0]
     conn.close()
     return count
+
+
+def get_pinned_lessons(db_path=None):
+    """Get all pinned, non-deprecated lessons."""
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT * FROM lessons WHERE deprecated = 0 AND pinned = 1 ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def get_category_stats(db_path=None):
