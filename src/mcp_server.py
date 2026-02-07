@@ -278,7 +278,7 @@ def engrammar_update(
 
 
 @mcp.tool()
-def engrammar_list(category: str | None = None, include_deprecated: bool = False, limit: int = 0, offset: int = 0) -> str:
+def engrammar_list(category: str | None = None, include_deprecated: bool = False, limit: int = 20, offset: int = 0) -> str:
     """List lessons in the knowledge base.
 
     Use this to see everything Engrammar knows, optionally filtered and paginated.
