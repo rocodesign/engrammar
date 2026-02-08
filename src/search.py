@@ -92,16 +92,29 @@ def search(query, category_filter=None, top_k=None, db_path=None):
     # 3. Reciprocal Rank Fusion
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
 
-    # 4. Apply category filter
+    # 4. Apply category filter (check primary + junction table categories)
     if category_filter:
+        from .db import get_connection
+        conn = get_connection(db_path)
+        rows = conn.execute(
+            "SELECT lesson_id, category_path FROM lesson_categories WHERE category_path LIKE ?",
+            (category_filter + "%",),
+        ).fetchall()
+        conn.close()
+        junction_ids = {r["lesson_id"] for r in rows}
+
         fused = [
             (lid, score)
             for lid, score in fused
             if lid in lesson_map
-            and lesson_map[lid].get("category", "").startswith(category_filter)
+            and (
+                lesson_map[lid].get("category", "").startswith(category_filter)
+                or lid in junction_ids
+            )
         ]
 
     # 5. Take top_k with threshold
+    repo = env.get("repo")
     results = []
     for lesson_id, score in fused[:top_k]:
         if score < threshold and results:
@@ -110,7 +123,7 @@ def search(query, category_filter=None, top_k=None, db_path=None):
             result = dict(lesson_map[lesson_id])
             result["score"] = round(score, 4)
             results.append(result)
-            update_match_stats(lesson_id, db_path=db_path)
+            update_match_stats(lesson_id, repo=repo, db_path=db_path)
 
     # Save last search for introspection
     _save_last_search(query, results)

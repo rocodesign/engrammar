@@ -278,6 +278,46 @@ def engrammar_update(
 
 
 @mcp.tool()
+def engrammar_categorize(lesson_id: int, add: str | None = None, remove: str | None = None) -> str:
+    """Manage multiple categories for a lesson.
+
+    Lessons can belong to multiple categories. The primary category (set via add/update)
+    is used for display; additional categories improve search filtering.
+
+    Args:
+        lesson_id: The lesson ID
+        add: Category path to add (e.g. "development/frontend/styling")
+        remove: Category path to remove
+    """
+    from engrammar.db import get_lesson_categories, add_lesson_category, remove_lesson_category, get_connection
+
+    conn = get_connection()
+    row = conn.execute("SELECT id FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    conn.close()
+    if not row:
+        return f"Error: lesson #{lesson_id} not found."
+
+    if not add and not remove:
+        cats = get_lesson_categories(lesson_id)
+        if cats:
+            return f"Lesson #{lesson_id} categories: {', '.join(cats)}"
+        return f"Lesson #{lesson_id} has no additional categories."
+
+    parts = []
+    if add:
+        add_lesson_category(lesson_id, add)
+        parts.append(f"Added category '{add}'")
+    if remove:
+        remove_lesson_category(lesson_id, remove)
+        parts.append(f"Removed category '{remove}'")
+
+    cats = get_lesson_categories(lesson_id)
+    parts.append(f"Current categories: {', '.join(cats) if cats else 'none'}")
+
+    return f"Lesson #{lesson_id}: " + ". ".join(parts)
+
+
+@mcp.tool()
 def engrammar_pin(lesson_id: int, prerequisites: str | None = None) -> str:
     """Pin a lesson so it's always injected at session start when prerequisites match.
 
@@ -399,10 +439,15 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
         prereqs = ""
         if l.get("prerequisites"):
             prereqs = f" | prereqs: {l['prerequisites']}"
+        # Show additional categories from junction table
+        from engrammar.db import get_lesson_categories
+        extra_cats = get_lesson_categories(l["id"])
+        extra_cats = [c for c in extra_cats if c != l.get("category")]
+        cats_str = f" | also in: {', '.join(extra_cats)}" if extra_cats else ""
         lines.append(
             f"  #{l['id']}: {l['text']}"
             f"\n      matched: {l.get('times_matched', 0)}x | occurrences: {l.get('occurrence_count', 1)}"
-            f"{prereqs}{status}"
+            f"{prereqs}{cats_str}{status}"
         )
 
     return "\n".join(lines)
