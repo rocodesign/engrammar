@@ -199,6 +199,20 @@ def cmd_export(args):
             print(f"- {l['text']}")
 
 
+def cmd_extract(args):
+    """Extract lessons from Claude Code session facets."""
+    dry_run = "--dry-run" in args
+
+    from engrammar.extractor import extract_from_sessions
+
+    summary = extract_from_sessions(dry_run=dry_run)
+
+    if not dry_run:
+        print(f"\nSummary: {summary['new_sessions']} new sessions, "
+              f"{summary['with_friction']} with friction, "
+              f"{summary['extracted']} added, {summary['merged']} merged")
+
+
 def cmd_rebuild(args):
     """Rebuild the embedding index."""
     from engrammar.db import get_all_active_lessons
@@ -226,6 +240,7 @@ def main():
         print("  add        Add lesson: add \"text\" --category cat")
         print("  import     Import from file: import FILE")
         print("  export     Export all lessons to markdown")
+        print("  extract    Extract lessons from session facets")
         print("  rebuild    Rebuild embedding index")
         return
 
@@ -239,6 +254,7 @@ def main():
         "add": cmd_add,
         "import": cmd_import,
         "export": cmd_export,
+        "extract": cmd_extract,
         "rebuild": cmd_rebuild,
     }
 
