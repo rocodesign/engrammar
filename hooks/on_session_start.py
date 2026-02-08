@@ -18,6 +18,15 @@ def main():
         from engrammar.db import get_pinned_lessons
         from engrammar.environment import check_prerequisites, detect_environment
 
+        # Clear session-shown tracking (new session = fresh slate)
+        from engrammar.config import ENGRAMMAR_HOME as home
+        shown_path = os.path.join(home, ".session-shown.json")
+        try:
+            with open(shown_path, "w") as f:
+                json.dump([], f)
+        except Exception:
+            pass
+
         env = detect_environment()
         pinned = get_pinned_lessons()
 
