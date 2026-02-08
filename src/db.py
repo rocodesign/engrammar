@@ -48,6 +48,22 @@ def init_db(db_path=None):
         CREATE INDEX IF NOT EXISTS idx_lessons_category ON lessons(category);
         CREATE INDEX IF NOT EXISTS idx_lessons_level1 ON lessons(level1);
         CREATE INDEX IF NOT EXISTS idx_lessons_deprecated ON lessons(deprecated);
+
+        CREATE TABLE IF NOT EXISTS lesson_categories (
+            lesson_id INTEGER NOT NULL,
+            category_path TEXT NOT NULL,
+            PRIMARY KEY (lesson_id, category_path),
+            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS lesson_repo_stats (
+            lesson_id INTEGER NOT NULL,
+            repo TEXT NOT NULL,
+            times_matched INTEGER DEFAULT 0,
+            last_matched TEXT,
+            PRIMARY KEY (lesson_id, repo),
+            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+        );
     """)
 
     # Migrations for existing DBs
@@ -71,8 +87,17 @@ def _parse_category(category):
     )
 
 
-def add_lesson(text, category="general", source="manual", source_sessions=None, occurrence_count=1, db_path=None):
-    """Insert a new lesson."""
+def add_lesson(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, db_path=None):
+    """Insert a new lesson.
+
+    Args:
+        text: lesson content
+        category: primary category (used for display/level parsing)
+        categories: optional list of additional category paths
+        source: "auto-extracted" | "manual" | "feedback"
+        source_sessions: list of session IDs
+        occurrence_count: how many sessions produced this
+    """
     conn = get_connection(db_path)
     level1, level2, level3 = _parse_category(category)
     now = datetime.utcnow().isoformat()
@@ -87,8 +112,21 @@ def add_lesson(text, category="general", source="manual", source_sessions=None, 
     )
     lesson_id = cursor.lastrowid
 
-    # Ensure category path exists
+    # Ensure primary category path exists and add to junction table
     _ensure_category(conn, category)
+    conn.execute(
+        "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
+        (lesson_id, category),
+    )
+
+    # Add additional categories
+    if categories:
+        for cat in categories:
+            _ensure_category(conn, cat)
+            conn.execute(
+                "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
+                (lesson_id, cat),
+            )
 
     conn.commit()
     conn.close()
@@ -133,14 +171,97 @@ def get_lessons_by_category(level1, level2=None, level3=None, db_path=None):
     return [dict(r) for r in rows]
 
 
-def update_match_stats(lesson_id, db_path=None):
-    """Increment times_matched and update last_matched."""
+AUTO_PIN_THRESHOLD = 15
+
+
+def update_match_stats(lesson_id, repo=None, db_path=None):
+    """Increment times_matched (global + per-repo) and auto-pin if threshold reached.
+
+    Args:
+        lesson_id: the lesson that matched
+        repo: current repo name (for per-repo tracking)
+    """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
+
+    # Global counter
     conn.execute(
         """UPDATE lessons SET times_matched = times_matched + 1,
            last_matched = ?, updated_at = ? WHERE id = ?""",
         (now, now, lesson_id),
+    )
+
+    # Per-repo counter
+    if repo:
+        conn.execute(
+            """INSERT INTO lesson_repo_stats (lesson_id, repo, times_matched, last_matched)
+               VALUES (?, ?, 1, ?)
+               ON CONFLICT(lesson_id, repo) DO UPDATE SET
+               times_matched = times_matched + 1, last_matched = ?""",
+            (lesson_id, repo, now, now),
+        )
+
+        # Check auto-pin threshold
+        row = conn.execute(
+            "SELECT times_matched FROM lesson_repo_stats WHERE lesson_id = ? AND repo = ?",
+            (lesson_id, repo),
+        ).fetchone()
+
+        if row and row["times_matched"] >= AUTO_PIN_THRESHOLD:
+            lesson = conn.execute(
+                "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+            ).fetchone()
+
+            if lesson and not lesson["pinned"]:
+                # Auto-pin with repo prerequisite
+                existing = {}
+                if lesson["prerequisites"]:
+                    try:
+                        existing = json.loads(lesson["prerequisites"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+                repos = set(existing.get("repos", []))
+                repos.add(repo)
+                existing["repos"] = list(repos)
+
+                conn.execute(
+                    "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(existing), now, lesson_id),
+                )
+
+    conn.commit()
+    conn.close()
+
+
+def get_lesson_categories(lesson_id, db_path=None):
+    """Get all categories for a lesson."""
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT category_path FROM lesson_categories WHERE lesson_id = ?", (lesson_id,)
+    ).fetchall()
+    conn.close()
+    return [r["category_path"] for r in rows]
+
+
+def add_lesson_category(lesson_id, category_path, db_path=None):
+    """Add a category to an existing lesson."""
+    conn = get_connection(db_path)
+    _ensure_category(conn, category_path)
+    conn.execute(
+        "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
+        (lesson_id, category_path),
+    )
+    conn.commit()
+    conn.close()
+
+
+def remove_lesson_category(lesson_id, category_path, db_path=None):
+    """Remove a category from a lesson."""
+    conn = get_connection(db_path)
+    conn.execute(
+        "DELETE FROM lesson_categories WHERE lesson_id = ? AND category_path = ?",
+        (lesson_id, category_path),
     )
     conn.commit()
     conn.close()
