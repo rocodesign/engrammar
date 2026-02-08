@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""SessionStart hook — injects pinned lessons and starts the search daemon."""
+"""SessionStart hook — injects pinned lessons, starts daemon, and extracts new lessons."""
 
 import json
+import subprocess
 import sys
 import os
 
@@ -10,6 +11,9 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 sys.path.insert(0, ENGRAMMAR_HOME)
 
 SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
+VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
+CLI_PATH = os.path.join(ENGRAMMAR_HOME, "cli.py")
+LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
 
 
 def main():
@@ -54,6 +58,18 @@ def main():
             }
         }
         print(json.dumps(output))
+
+        # Kick off lesson extraction in background (non-blocking, takes 2-10s)
+        try:
+            with open(LOG_PATH, "a") as log:
+                subprocess.Popen(
+                    [VENV_PYTHON, CLI_PATH, "extract"],
+                    stdout=log,
+                    stderr=log,
+                    start_new_session=True,
+                )
+        except Exception:
+            pass
 
     except Exception:
         pass

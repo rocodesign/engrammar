@@ -61,6 +61,18 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
         allow_list.append(mcp_pattern)
         print(f"Auto-allowed {mcp_pattern}")
 
+    # Remove old extract-lessons.py hook (replaced by Engrammar extraction)
+    for event_name in list(hooks.keys()):
+        for hook_group in hooks.get(event_name, []):
+            hook_group["hooks"] = [
+                h for h in hook_group.get("hooks", [])
+                if "extract-lessons.py" not in h.get("command", "")
+            ]
+        # Remove empty hook groups
+        hooks[event_name] = [
+            hg for hg in hooks[event_name] if hg.get("hooks")
+        ]
+
     # Clean up mcpServers from settings.json (wrong location)
     if "mcpServers" in settings:
         del settings["mcpServers"]

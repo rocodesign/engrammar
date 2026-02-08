@@ -64,6 +64,13 @@ def init_db(db_path=None):
             PRIMARY KEY (lesson_id, repo),
             FOREIGN KEY (lesson_id) REFERENCES lessons(id)
         );
+
+        CREATE TABLE IF NOT EXISTS processed_sessions (
+            session_id TEXT PRIMARY KEY,
+            processed_at TEXT,
+            had_friction INTEGER DEFAULT 0,
+            lessons_extracted INTEGER DEFAULT 0
+        );
     """)
 
     # Migrations for existing DBs
@@ -324,6 +331,82 @@ TOPIC_CATEGORY_MAP = {
     "request-clarification": "workflow/communication",
     "instructions": "workflow/setup",
 }
+
+
+def get_processed_session_ids(db_path=None):
+    """Get set of already-processed session IDs."""
+    conn = get_connection(db_path)
+    rows = conn.execute("SELECT session_id FROM processed_sessions").fetchall()
+    conn.close()
+    return {r["session_id"] for r in rows}
+
+
+def mark_sessions_processed(sessions, db_path=None):
+    """Bulk mark sessions as processed.
+
+    Args:
+        sessions: list of dicts with session_id, had_friction, lessons_extracted
+    """
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    for s in sessions:
+        conn.execute(
+            """INSERT OR IGNORE INTO processed_sessions
+               (session_id, processed_at, had_friction, lessons_extracted)
+               VALUES (?, ?, ?, ?)""",
+            (s["session_id"], now, s.get("had_friction", 0), s.get("lessons_extracted", 0)),
+        )
+    conn.commit()
+    conn.close()
+
+
+def find_similar_lesson(text, db_path=None):
+    """Find an existing active lesson with similar text (word overlap > 50%).
+
+    Returns the lesson dict if found, None otherwise.
+    """
+    lessons = get_all_active_lessons(db_path=db_path)
+    text_words = set(text.lower().split())
+    if not text_words:
+        return None
+
+    for lesson in lessons:
+        lesson_words = set(lesson["text"].lower().split())
+        if not lesson_words:
+            continue
+        overlap = len(text_words & lesson_words)
+        smaller = min(len(text_words), len(lesson_words))
+        if overlap / smaller > 0.5:
+            return lesson
+
+    return None
+
+
+def increment_lesson_occurrence(lesson_id, new_sessions=None, db_path=None):
+    """Merge source sessions and bump occurrence count for an existing lesson."""
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+
+    row = conn.execute(
+        "SELECT source_sessions, occurrence_count FROM lessons WHERE id = ?",
+        (lesson_id,),
+    ).fetchone()
+
+    if row:
+        existing_sessions = json.loads(row["source_sessions"] or "[]")
+        if new_sessions:
+            for s in new_sessions:
+                if s not in existing_sessions:
+                    existing_sessions.append(s)
+
+        conn.execute(
+            """UPDATE lessons SET source_sessions = ?, occurrence_count = ?,
+               updated_at = ? WHERE id = ?""",
+            (json.dumps(existing_sessions), len(existing_sessions), now, lesson_id),
+        )
+
+    conn.commit()
+    conn.close()
 
 
 def import_from_state_file(path, db_path=None):
