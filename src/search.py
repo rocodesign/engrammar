@@ -52,7 +52,6 @@ def search(query, category_filter=None, top_k=None, db_path=None):
     config = load_config()
     if top_k is None:
         top_k = config["search"]["top_k"]
-    threshold = config["search"]["score_threshold"]
 
     all_lessons = get_all_active_lessons(db_path=db_path)
     if not all_lessons:
@@ -113,12 +112,10 @@ def search(query, category_filter=None, top_k=None, db_path=None):
             )
         ]
 
-    # 5. Take top_k with threshold
+    # 5. Take top_k results (no threshold for RRF - it's rank-based, not similarity-based)
     repo = env.get("repo")
     results = []
     for lesson_id, score in fused[:top_k]:
-        if score < threshold and results:
-            break  # Stop if below threshold (but always include at least first result if it exists)
         if lesson_id in lesson_map:
             result = dict(lesson_map[lesson_id])
             result["score"] = round(score, 4)
