@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook — searches lessons relevant to the user's prompt.
 
+Uses the daemon for fast search (~20ms). Falls back to direct search if daemon unavailable.
 Skips lessons already shown in this session (tracked in .session-shown.json).
 """
 
@@ -35,6 +36,30 @@ def _save_shown(shown_ids):
         pass
 
 
+def _search_via_daemon(prompt, max_results):
+    """Try daemon first, return results or None."""
+    try:
+        from engrammar.client import send_request
+
+        response = send_request({"type": "search", "query": prompt, "top_k": max_results})
+        if response and "results" in response:
+            return response["results"]
+    except Exception:
+        pass
+    return None
+
+
+def _search_direct(prompt, max_results):
+    """Fallback: direct search (cold start ~300ms)."""
+    try:
+        from engrammar.search import search
+
+        return search(prompt, top_k=max_results)
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         raw = sys.stdin.read().strip()
@@ -47,13 +72,17 @@ def main():
             return
 
         from engrammar.config import load_config
+
         config = load_config()
         if not config["hooks"]["prompt_enabled"]:
             return
 
-        from engrammar.search import search
         max_results = config["display"]["max_lessons_per_prompt"]
-        results = search(prompt, top_k=max_results)
+
+        # Try daemon, fall back to direct
+        results = _search_via_daemon(prompt, max_results)
+        if results is None:
+            results = _search_direct(prompt, max_results)
 
         if not results:
             return

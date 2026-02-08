@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse hook — searches lessons relevant to the tool being called.
 
+Uses the daemon for fast search (~20ms). Falls back to direct search if daemon unavailable.
 Shares session-shown tracking with on_prompt.py to avoid repeating lessons.
 """
 
@@ -33,6 +34,34 @@ def _save_shown(shown_ids):
         pass
 
 
+def _search_via_daemon(tool_name, tool_input):
+    """Try daemon first, return results or None."""
+    try:
+        from engrammar.client import send_request
+
+        response = send_request({
+            "type": "tool_context",
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+        })
+        if response and "results" in response:
+            return response["results"]
+    except Exception:
+        pass
+    return None
+
+
+def _search_direct(tool_name, tool_input):
+    """Fallback: direct search (cold start ~300ms)."""
+    try:
+        from engrammar.search import search_for_tool_context
+
+        return search_for_tool_context(tool_name, tool_input)
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         raw = sys.stdin.read().strip()
@@ -47,6 +76,7 @@ def main():
             return
 
         from engrammar.config import load_config
+
         config = load_config()
         if not config["hooks"]["tool_use_enabled"]:
             return
@@ -55,8 +85,10 @@ def main():
         if tool_name in skip_tools:
             return
 
-        from engrammar.search import search_for_tool_context
-        results = search_for_tool_context(tool_name, tool_input)
+        # Try daemon, fall back to direct
+        results = _search_via_daemon(tool_name, tool_input)
+        if results is None:
+            results = _search_direct(tool_name, tool_input)
 
         if not results:
             return

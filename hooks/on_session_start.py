@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SessionStart hook — injects pinned lessons that match the current environment."""
+"""SessionStart hook — injects pinned lessons and starts the search daemon."""
 
 import json
 import sys
@@ -9,24 +9,29 @@ import os
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
+SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
+
 
 def main():
     try:
-        from engrammar.config import load_config
-        config = load_config()
-
-        from engrammar.db import get_pinned_lessons
-        from engrammar.environment import check_prerequisites, detect_environment
-
         # Clear session-shown tracking (new session = fresh slate)
-        from engrammar.config import ENGRAMMAR_HOME as home
-        shown_path = os.path.join(home, ".session-shown.json")
         try:
-            with open(shown_path, "w") as f:
+            with open(SHOWN_PATH, "w") as f:
                 json.dump([], f)
         except Exception:
             pass
 
+        # Start daemon in background (don't block — it warms up while user types)
+        from engrammar.client import _start_daemon_background
+
+        _start_daemon_background()
+
+        # Get pinned lessons directly (fast — just DB query, no model needed)
+        from engrammar.config import load_config
+        from engrammar.db import get_pinned_lessons
+        from engrammar.environment import check_prerequisites, detect_environment
+
+        config = load_config()
         env = detect_environment()
         pinned = get_pinned_lessons()
 
