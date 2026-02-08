@@ -30,6 +30,18 @@ def main():
 
         _start_daemon_background()
 
+        # Kick off lesson extraction in background (always run — learns from past sessions)
+        try:
+            with open(LOG_PATH, "a") as log:
+                subprocess.Popen(
+                    [VENV_PYTHON, CLI_PATH, "extract"],
+                    stdout=log,
+                    stderr=log,
+                    start_new_session=True,
+                )
+        except Exception:
+            pass
+
         # Get pinned lessons directly (fast — just DB query, no model needed)
         from engrammar.config import load_config
         from engrammar.db import get_pinned_lessons
@@ -58,18 +70,6 @@ def main():
             }
         }
         print(json.dumps(output))
-
-        # Kick off lesson extraction in background (non-blocking, takes 2-10s)
-        try:
-            with open(LOG_PATH, "a") as log:
-                subprocess.Popen(
-                    [VENV_PYTHON, CLI_PATH, "extract"],
-                    stdout=log,
-                    stderr=log,
-                    start_new_session=True,
-                )
-        except Exception:
-            pass
 
     except Exception:
         pass
