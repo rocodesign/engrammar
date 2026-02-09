@@ -55,7 +55,7 @@ def engrammar_search(query: str, category: str | None = None, top_k: int = 5) ->
 def engrammar_add(
     text: str,
     category: str = "general",
-    prerequisites: str | None = None,
+    prerequisites: dict | str | None = None,
     source: str = "manual",
 ) -> str:
     """Add a new lesson to the knowledge base.
@@ -65,26 +65,33 @@ def engrammar_add(
     Args:
         text: The lesson text — what was learned
         category: Hierarchical category (e.g. "development/frontend/styling")
-        prerequisites: Optional JSON string of requirements (e.g. '{"repos":["app-repo"],"os":["darwin"]}')
+        prerequisites: Optional requirements dict or JSON string (e.g. {"repos":["app-repo"],"os":["darwin"]})
         source: How this lesson was discovered ("manual", "auto-extracted", "feedback")
     """
     from engrammar.db import add_lesson, get_all_active_lessons
     from engrammar.embeddings import build_index
 
-    # Validate prerequisites JSON if provided
+    # Normalize prerequisites to JSON string
+    prereqs_json = None
     if prerequisites:
-        try:
-            json.loads(prerequisites)
-        except json.JSONDecodeError:
-            return f"Error: prerequisites must be valid JSON. Got: {prerequisites}"
+        if isinstance(prerequisites, dict):
+            prereqs_json = json.dumps(prerequisites)
+        elif isinstance(prerequisites, str):
+            try:
+                json.loads(prerequisites)  # Validate it's valid JSON
+                prereqs_json = prerequisites
+            except json.JSONDecodeError:
+                return f"Error: prerequisites must be valid JSON. Got: {prerequisites}"
+        else:
+            return f"Error: prerequisites must be dict or JSON string. Got: {type(prerequisites)}"
 
     lesson_id = add_lesson(text=text, category=category, source=source)
 
     # Update prerequisites if provided
-    if prerequisites:
+    if prereqs_json:
         from engrammar.db import get_connection
         conn = get_connection()
-        conn.execute("UPDATE lessons SET prerequisites = ? WHERE id = ?", (prerequisites, lesson_id))
+        conn.execute("UPDATE lessons SET prerequisites = ? WHERE id = ?", (prereqs_json, lesson_id))
         conn.commit()
         conn.close()
 
@@ -130,7 +137,7 @@ def engrammar_feedback(
     lesson_id: int,
     applicable: bool,
     reason: str = "",
-    add_prerequisites: str | None = None,
+    add_prerequisites: dict | str | None = None,
 ) -> str:
     """Give feedback on a lesson that was surfaced by hooks.
 
@@ -141,8 +148,8 @@ def engrammar_feedback(
         lesson_id: The lesson ID (shown in search results as id:N)
         applicable: Whether the lesson was applicable in this context
         reason: Why the lesson did/didn't apply (e.g. "requires figma MCP which isn't connected")
-        add_prerequisites: Optional JSON prerequisites to add so this lesson only surfaces when they're met
-            (e.g. '{"mcp_servers":["figma"],"repos":["app-repo"]}')
+        add_prerequisites: Optional prerequisites dict or JSON string to add
+            (e.g. {"mcp_servers":["figma"],"repos":["app-repo"]})
     """
     from engrammar.db import get_connection
     from datetime import datetime
@@ -170,33 +177,45 @@ def engrammar_feedback(
 
     # Add prerequisites if provided
     if add_prerequisites:
-        try:
-            new_prereqs = json.loads(add_prerequisites)
-            existing = {}
-            if row["prerequisites"]:
-                try:
-                    existing = json.loads(row["prerequisites"])
-                except (json.JSONDecodeError, TypeError):
-                    pass
+        # Normalize to dict
+        if isinstance(add_prerequisites, str):
+            try:
+                new_prereqs = json.loads(add_prerequisites)
+            except json.JSONDecodeError:
+                response_parts.append(f"Warning: invalid prerequisites JSON, skipped: {add_prerequisites}")
+                conn.commit()
+                conn.close()
+                return "\n".join(response_parts)
+        elif isinstance(add_prerequisites, dict):
+            new_prereqs = add_prerequisites
+        else:
+            response_parts.append(f"Warning: prerequisites must be dict or JSON string, skipped")
+            conn.commit()
+            conn.close()
+            return "\n".join(response_parts)
 
-            # Merge: for list fields, union the values
-            for key, val in new_prereqs.items():
-                if key in existing:
-                    if isinstance(existing[key], list) and isinstance(val, list):
-                        existing[key] = list(set(existing[key] + val))
-                    else:
-                        existing[key] = val
+        existing = {}
+        if row["prerequisites"]:
+            try:
+                existing = json.loads(row["prerequisites"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Merge: for list fields, union the values
+        for key, val in new_prereqs.items():
+            if key in existing:
+                if isinstance(existing[key], list) and isinstance(val, list):
+                    existing[key] = list(set(existing[key] + val))
                 else:
                     existing[key] = val
+            else:
+                existing[key] = val
 
-            conn.execute(
-                "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(existing), now, lesson_id),
-            )
-            response_parts.append(f"Updated prerequisites: {json.dumps(existing)}")
-
-        except json.JSONDecodeError:
-            response_parts.append(f"Warning: invalid prerequisites JSON, skipped: {add_prerequisites}")
+        conn.execute(
+            "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(existing), now, lesson_id),
+        )
+        response_parts.append(f"Updated prerequisites: {json.dumps(existing)}")
 
     conn.commit()
     conn.close()
@@ -209,7 +228,7 @@ def engrammar_update(
     lesson_id: int,
     text: str | None = None,
     category: str | None = None,
-    prerequisites: str | None = None,
+    prerequisites: dict | str | None = None,
 ) -> str:
     """Update an existing lesson's text, category, or prerequisites.
 
@@ -217,7 +236,7 @@ def engrammar_update(
         lesson_id: The lesson ID to update
         text: New lesson text (if changing)
         category: New category (if changing)
-        prerequisites: New prerequisites JSON (if changing)
+        prerequisites: New prerequisites dict or JSON string (if changing)
     """
     from engrammar.db import get_connection, get_all_active_lessons
     from engrammar.embeddings import build_index
@@ -257,13 +276,23 @@ def engrammar_update(
         params.append(parts[2] if len(parts) > 2 else None)
 
     if prerequisites is not None:
-        try:
-            json.loads(prerequisites)  # validate
-            updates.append("prerequisites = ?")
-            params.append(prerequisites)
-        except json.JSONDecodeError:
+        # Normalize to JSON string
+        prereqs_json = None
+        if isinstance(prerequisites, dict):
+            prereqs_json = json.dumps(prerequisites)
+        elif isinstance(prerequisites, str):
+            try:
+                json.loads(prerequisites)  # validate
+                prereqs_json = prerequisites
+            except json.JSONDecodeError:
+                conn.close()
+                return f"Error: prerequisites must be valid JSON."
+        else:
             conn.close()
-            return f"Error: prerequisites must be valid JSON."
+            return f"Error: prerequisites must be dict or JSON string."
+
+        updates.append("prerequisites = ?")
+        params.append(prereqs_json)
 
     if not updates:
         conn.close()
@@ -326,7 +355,7 @@ def engrammar_categorize(lesson_id: int, add: str | None = None, remove: str | N
 
 
 @mcp.tool()
-def engrammar_pin(lesson_id: int, prerequisites: str | None = None) -> str:
+def engrammar_pin(lesson_id: int, prerequisites: dict | str | None = None) -> str:
     """Pin a lesson so it's always injected at session start when prerequisites match.
 
     Pinned lessons appear in every prompt's context for matching environments,
@@ -334,8 +363,8 @@ def engrammar_pin(lesson_id: int, prerequisites: str | None = None) -> str:
 
     Args:
         lesson_id: The lesson ID to pin
-        prerequisites: Optional JSON prerequisites for when to show this lesson
-            (e.g. '{"paths":["~/work/acme"]}' or '{"repos":["app-repo"]}')
+        prerequisites: Optional prerequisites dict or JSON string for when to show this lesson
+            (e.g. {"paths":["~/work/acme"]} or {"repos":["app-repo"]})
     """
     from engrammar.db import get_connection
     from datetime import datetime
@@ -354,12 +383,22 @@ def engrammar_pin(lesson_id: int, prerequisites: str | None = None) -> str:
     conn.execute("UPDATE lessons SET pinned = 1, updated_at = ? WHERE id = ?", (now, lesson_id))
 
     if prerequisites:
-        try:
-            json.loads(prerequisites)  # validate
-            conn.execute("UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?", (prerequisites, now, lesson_id))
-        except json.JSONDecodeError:
+        # Normalize to JSON string
+        prereqs_json = None
+        if isinstance(prerequisites, dict):
+            prereqs_json = json.dumps(prerequisites)
+        elif isinstance(prerequisites, str):
+            try:
+                json.loads(prerequisites)  # validate
+                prereqs_json = prerequisites
+            except json.JSONDecodeError:
+                conn.close()
+                return f"Error: prerequisites must be valid JSON."
+        else:
             conn.close()
-            return f"Error: prerequisites must be valid JSON."
+            return f"Error: prerequisites must be dict or JSON string."
+
+        conn.execute("UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?", (prereqs_json, now, lesson_id))
 
     conn.commit()
     conn.close()
