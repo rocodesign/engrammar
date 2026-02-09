@@ -8,12 +8,27 @@ Skips lessons already shown in this session (tracked in .session-shown.json).
 import json
 import sys
 import os
+import traceback
+from datetime import datetime
 
 # Add engrammar package to path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
 SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
+ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
+
+
+def _log_error(context, error):
+    """Log errors to .hook-errors.log for debugging."""
+    try:
+        with open(ERROR_LOG_PATH, "a") as f:
+            timestamp = datetime.utcnow().isoformat()
+            f.write(f"\n[{timestamp}] UserPromptSubmit - {context}\n")
+            f.write(f"Error: {error}\n")
+            f.write(traceback.format_exc())
+    except Exception:
+        pass  # Can't log the logging error
 
 
 def _load_shown():
@@ -22,8 +37,8 @@ def _load_shown():
         if os.path.exists(SHOWN_PATH):
             with open(SHOWN_PATH, "r") as f:
                 return set(json.load(f))
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error("load shown lessons", e)
     return set()
 
 
@@ -32,8 +47,8 @@ def _save_shown(shown_ids):
     try:
         with open(SHOWN_PATH, "w") as f:
             json.dump(list(shown_ids), f)
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error("save shown lessons", e)
 
 
 def _search_via_daemon(prompt, max_results):
@@ -44,8 +59,8 @@ def _search_via_daemon(prompt, max_results):
         response = send_request({"type": "search", "query": prompt, "top_k": max_results})
         if response and "results" in response:
             return response["results"]
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error(f"daemon search: {prompt[:50]}", e)
     return None
 
 
@@ -55,8 +70,8 @@ def _search_direct(prompt, max_results):
         from engrammar.search import search
 
         return search(prompt, top_k=max_results)
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error(f"direct search: {prompt[:50]}", e)
     return None
 
 
@@ -113,8 +128,8 @@ def main():
         }
         print(json.dumps(output))
 
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error("main execution", e)
 
 
 if __name__ == "__main__":

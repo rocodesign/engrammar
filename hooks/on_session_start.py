@@ -5,6 +5,8 @@ import json
 import subprocess
 import sys
 import os
+import traceback
+from datetime import datetime
 
 # Add engrammar package to path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
@@ -14,6 +16,19 @@ SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
 VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
 CLI_PATH = os.path.join(ENGRAMMAR_HOME, "cli.py")
 LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
+ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
+
+
+def _log_error(context, error):
+    """Log errors to .hook-errors.log for debugging."""
+    try:
+        with open(ERROR_LOG_PATH, "a") as f:
+            timestamp = datetime.utcnow().isoformat()
+            f.write(f"\n[{timestamp}] SessionStart - {context}\n")
+            f.write(f"Error: {error}\n")
+            f.write(traceback.format_exc())
+    except Exception:
+        pass  # Can't log the logging error
 
 
 def main():
@@ -22,13 +37,15 @@ def main():
         try:
             with open(SHOWN_PATH, "w") as f:
                 json.dump([], f)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_error("clear session-shown", e)
 
         # Start daemon in background (don't block — it warms up while user types)
-        from engrammar.client import _start_daemon_background
-
-        _start_daemon_background()
+        try:
+            from engrammar.client import _start_daemon_background
+            _start_daemon_background()
+        except Exception as e:
+            _log_error("start daemon", e)
 
         # Kick off lesson extraction in background (always run — learns from past sessions)
         try:
@@ -39,8 +56,8 @@ def main():
                     stderr=log,
                     start_new_session=True,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _log_error("start extraction", e)
 
         # Get pinned lessons directly (fast — just DB query, no model needed)
         from engrammar.config import load_config
@@ -71,8 +88,8 @@ def main():
         }
         print(json.dumps(output))
 
-    except Exception:
-        pass
+    except Exception as e:
+        _log_error("main execution", e)
 
 
 if __name__ == "__main__":
