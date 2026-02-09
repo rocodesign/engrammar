@@ -238,6 +238,14 @@ def engrammar_update(
         params.append(text)
 
     if category is not None:
+        # Sync junction table: remove old primary category, add new one
+        old_category = row["category"]
+        from engrammar.db import remove_lesson_category, add_lesson_category
+        if old_category:
+            remove_lesson_category(lesson_id, old_category)
+        add_lesson_category(lesson_id, category)
+
+        # Update primary category fields
         parts = category.strip("/").split("/")
         updates.append("category = ?")
         params.append(category)
