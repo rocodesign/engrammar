@@ -22,9 +22,6 @@ def load_config():
     defaults = {
         "search": {
             "top_k": 3,
-            "score_threshold": 0.3,
-            "vector_weight": 0.6,
-            "bm25_weight": 0.4,
         },
         "hooks": {
             "prompt_enabled": True,

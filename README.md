@@ -145,8 +145,7 @@ Edit `~/.engrammar/config.json`:
 ```json
 {
   "search": {
-    "top_k": 3,
-    "score_threshold": 0.3
+    "top_k": 3
   },
   "hooks": {
     "prompt_enabled": true,
