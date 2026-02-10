@@ -62,9 +62,20 @@ Requires Python 3.10+ (for MCP SDK). The setup script will:
 - Initialize the database and import existing lessons
 - Build the embedding index
 - Register hooks in `~/.claude/settings.json`
-- Register the MCP server in `~/.claude.json`
+- Register the MCP server in `~/.claude.json` with `defer_initialization: false`
+- Auto-allow engrammar MCP tools in permissions
 
 After setup, restart Claude Code to activate the hooks and MCP server.
+
+### Why `defer_initialization: false`?
+
+By default, MCP tools are deferred (loaded on-demand via ToolSearch). Engrammar tools are set to load immediately because:
+- They're core system infrastructure for learning and knowledge management
+- Deferring them requires Claude to call ToolSearch twice (once without prefix, once with `mcp__engrammar__` prefix)
+- Loading them immediately (~100ms) is acceptable for 10 tools
+- Makes tools available instantly without discovery friction
+
+If you need to re-enable deferring (e.g., for performance with many MCP servers), remove the `defer_initialization` line from `~/.claude.json`.
 
 ## Search
 

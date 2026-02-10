@@ -99,6 +99,7 @@ def _register_mcp_server(engrammar_home, python_bin):
         "type": "stdio",
         "command": python_bin,
         "args": [mcp_server_script],
+        "defer_initialization": False,  # Load immediately - core system tool
         "env": {
             "ENGRAMMAR_HOME": engrammar_home,
         },
