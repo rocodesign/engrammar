@@ -94,12 +94,16 @@ def check_prerequisites(prerequisites, env=None):
         if env["os"] not in req_os:
             return False
 
-    # Check repo
+    # Check repo (fail-closed: reject if lesson requires repos but we don't know which repo we're in)
     req_repos = prerequisites.get("repos") or prerequisites.get("repo")
     if req_repos:
         if isinstance(req_repos, str):
             req_repos = [req_repos]
-        if env["repo"] and env["repo"] not in req_repos:
+        # Reject if repo detection failed or we're not in git
+        if not env.get("repo"):
+            return False
+        # Reject if we're in a different repo
+        if env["repo"] not in req_repos:
             return False
 
     # Check paths (directory prefix match, e.g. "~/work/acme")
