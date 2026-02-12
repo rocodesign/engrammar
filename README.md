@@ -224,3 +224,21 @@ bash setup.sh  # Redeploys to ~/.engrammar/
 ```
 
 The setup script preserves `config.json` and `lessons.db` on redeploy.
+
+### Running Tests
+
+```bash
+# Run all tests
+bash run_tests.sh
+
+# Run specific test file
+~/.engrammar/venv/bin/pytest tests/test_prerequisites.py -v
+
+# Run tests matching a pattern
+~/.engrammar/venv/bin/pytest tests/ -k "repo" -v
+```
+
+Test coverage:
+- **Prerequisites**: Fail-closed repo logic, OS/path/MCP filtering
+- **Search**: RRF fusion, top_k handling, no threshold filtering
+- **Database**: Category sync, junction tables, match stats, auto-pin
