@@ -113,14 +113,12 @@ def search(query, category_filter=None, top_k=None, db_path=None):
         ]
 
     # 5. Take top_k results (no threshold for RRF - it's rank-based, not similarity-based)
-    repo = env.get("repo")
     results = []
     for lesson_id, score in fused[:top_k]:
         if lesson_id in lesson_map:
             result = dict(lesson_map[lesson_id])
             result["score"] = round(score, 4)
             results.append(result)
-            update_match_stats(lesson_id, repo=repo, db_path=db_path)
 
     # Save last search for introspection
     _save_last_search(query, results)
