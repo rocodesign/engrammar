@@ -6,14 +6,17 @@ A semantic knowledge system that learns from Claude Code sessions and injects re
 
 ## How it works
 
-Engrammar runs as three Claude Code hooks + an MCP server:
+Engrammar runs as four Claude Code hooks + an MCP server:
 
 1. **SessionStart** — injects pinned lessons matching the current environment (repo, OS, path) and starts the search daemon in the background
 2. **UserPromptSubmit** — searches lessons relevant to each prompt (~40ms via daemon)
 3. **PreToolUse** — searches lessons relevant to each tool call (file paths, commands)
-4. **MCP Server** — gives Claude direct access to add, search, update, and deprecate lessons
+4. **SessionEnd** — analyzes which shown lessons were actually useful (using Haiku) and updates match statistics
+5. **MCP Server** — gives Claude direct access to add, search, update, and deprecate lessons
 
 A background daemon keeps the embedding model warm for 15 minutes, bringing hook latency from ~300ms (cold start) to ~40ms (warm).
+
+**Intelligent match tracking**: Lessons are shown based on relevance during the session, but match statistics (used for auto-pinning) are only updated at session end. Haiku analyzes each shown lesson against the session context to determine if it was genuinely useful, preventing stat inflation from lessons that appear in hooks but aren't actually relevant.
 
 ## Architecture
 
@@ -175,9 +178,16 @@ Lessons can have JSON prerequisites that scope them to specific environments:
 
 A lesson only surfaces when **all** specified prerequisites match the current environment. Lessons without prerequisites are always eligible.
 
-## Auto-Pin
+## Match Tracking & Auto-Pin
 
-When a lesson is matched 15+ times in a specific repo, it's automatically pinned with that repo as a prerequisite. Pinned lessons are injected at every session start (when prerequisites match), regardless of search relevance.
+**Match tracking**: Lessons shown during a session are tracked, but match statistics are only updated at session end. The SessionEnd hook uses Haiku to analyze each shown lesson against the session context, asking: "Was this lesson actually relevant and useful?" Only lessons that Haiku deems useful get their `times_matched` counter incremented.
+
+This prevents stat inflation from lessons that:
+- Appear in hook context due to keyword matches but aren't actually relevant
+- Are shown repeatedly without being useful
+- Surface for tools/commands that Claude didn't actually need guidance on
+
+**Auto-pin**: When a lesson is matched 15+ times in a specific repo, it's automatically pinned with that repo as a prerequisite. Because match tracking is now gated by Haiku evaluation, auto-pinning only happens for lessons that have proven genuinely useful across multiple sessions. Pinned lessons are injected at every session start (when prerequisites match), regardless of search relevance.
 
 ## Database Schema
 

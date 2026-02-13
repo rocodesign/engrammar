@@ -109,17 +109,9 @@ def main():
         if not new_results:
             return
 
-        # Mark as shown and update match stats (only for lessons Claude actually sees)
+        # Mark as shown (match stats will be updated at session end by SessionEnd hook)
         shown.update(r["id"] for r in new_results)
         _save_shown(shown)
-
-        # Update match stats for shown lessons only
-        from engrammar.db import update_match_stats
-        from engrammar.environment import detect_environment
-        env = detect_environment()
-        repo = env.get("repo")
-        for r in new_results:
-            update_match_stats(r["id"], repo=repo)
 
         # Format
         show_categories = config["display"]["show_categories"]
