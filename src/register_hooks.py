@@ -20,6 +20,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
     session_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_start.py")}'
     prompt_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_prompt.py")}'
     tool_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_tool_use.py")}'
+    session_end_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_end.py")}'
 
     settings = {}
     if os.path.exists(settings_path):
@@ -52,6 +53,12 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
             "hooks": [{"type": "command", "command": tool_hook_cmd}]
         })
         print("Registered PreToolUse hook")
+
+    if not hook_exists("SessionEnd", session_end_hook_cmd):
+        hooks.setdefault("SessionEnd", []).append({
+            "hooks": [{"type": "command", "command": session_end_hook_cmd}]
+        })
+        print("Registered SessionEnd hook")
 
     # Auto-allow engrammar MCP tools
     permissions = settings.setdefault("permissions", {})
