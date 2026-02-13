@@ -7,7 +7,7 @@ import re
 from rank_bm25 import BM25Okapi
 
 from .config import LAST_SEARCH_PATH, load_config
-from .db import get_all_active_lessons, update_match_stats
+from .db import get_all_active_lessons
 from .embeddings import embed_text, load_index, vector_search
 from .environment import check_prerequisites, detect_environment
 
