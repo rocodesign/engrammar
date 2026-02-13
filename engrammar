@@ -1,0 +1,13 @@
+#!/bin/bash
+# Engrammar CLI wrapper
+
+ENGRAMMAR_HOME="${ENGRAMMAR_HOME:-$HOME/.engrammar}"
+PYTHON="$ENGRAMMAR_HOME/venv/bin/python"
+CLI="$ENGRAMMAR_HOME/cli.py"
+
+if [ ! -f "$PYTHON" ]; then
+    echo "Error: Engrammar not installed. Run setup.sh first."
+    exit 1
+fi
+
+exec "$PYTHON" "$CLI" "$@"
