@@ -230,18 +230,227 @@ def cmd_rebuild(args):
     print(f"Done. Indexed {n} lessons.")
 
 
+def cmd_list(args):
+    """List all lessons with optional pagination."""
+    from engrammar.db import get_all_active_lessons
+
+    offset = 0
+    limit = 20
+    category = None
+
+    # Parse args
+    i = 0
+    while i < len(args):
+        if args[i] == "--offset" and i + 1 < len(args):
+            offset = int(args[i + 1])
+            i += 2
+        elif args[i] == "--limit" and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif args[i] == "--category" and i + 1 < len(args):
+            category = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    lessons = get_all_active_lessons()
+
+    # Filter by category if specified
+    if category:
+        from engrammar.db import get_connection
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT lesson_id FROM lesson_categories WHERE category_path LIKE ?",
+            (category + "%",)
+        ).fetchall()
+        conn.close()
+        category_ids = {r["lesson_id"] for r in rows}
+        lessons = [l for l in lessons if l["id"] in category_ids]
+
+    total = len(lessons)
+    page = lessons[offset:offset + limit]
+
+    print(f"=== Lessons ({offset + 1}-{offset + len(page)} of {total}) ===\n")
+
+    for l in page:
+        print(f"ID {l['id']}: [{l.get('category', 'general')}] {l['text'][:80]}...")
+        if l.get("pinned"):
+            print(f"  📌 PINNED")
+        if l.get("prerequisites"):
+            prereqs = json.loads(l["prerequisites"]) if isinstance(l["prerequisites"], str) else l["prerequisites"]
+            print(f"  Prerequisites: {prereqs}")
+        print(f"  Matched: {l.get('times_matched', 0)}x | Occurrences: {l.get('occurrence_count', 1)}")
+        print()
+
+
+def cmd_update(args):
+    """Update a lesson's text, category, or prerequisites."""
+    if len(args) < 2:
+        print("Usage: engrammar update LESSON_ID [--text \"new text\"] [--category cat] [--prereqs '{\"repos\": [\"foo\"]}']")
+        return
+
+    lesson_id = int(args[0])
+    text = None
+    category = None
+    prereqs = None
+
+    i = 1
+    while i < len(args):
+        if args[i] == "--text" and i + 1 < len(args):
+            text = args[i + 1]
+            i += 2
+        elif args[i] == "--category" and i + 1 < len(args):
+            category = args[i + 1]
+            i += 2
+        elif args[i] == "--prereqs" and i + 1 < len(args):
+            prereqs = json.loads(args[i + 1])
+            i += 2
+        else:
+            i += 1
+
+    from engrammar.db import get_connection, get_all_active_lessons, remove_lesson_category, add_lesson_category
+    from engrammar.embeddings import build_index
+
+    conn = get_connection()
+
+    # Check if lesson exists
+    row = conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    if not row:
+        print(f"Lesson {lesson_id} not found.")
+        conn.close()
+        return
+
+    updates = []
+    params = []
+
+    if text is not None:
+        updates.append("text = ?")
+        params.append(text)
+
+    if category is not None:
+        # Sync junction table
+        old_category = row["category"]
+        if old_category:
+            remove_lesson_category(lesson_id, old_category)
+        add_lesson_category(lesson_id, category)
+
+        updates.append("category = ?")
+        params.append(category)
+
+    if prereqs is not None:
+        prereqs_json = json.dumps(prereqs) if isinstance(prereqs, dict) else prereqs
+        updates.append("prerequisites = ?")
+        params.append(prereqs_json)
+
+    if updates:
+        updates.append("updated_at = datetime('now')")
+        params.append(lesson_id)
+        conn.execute(
+            f"UPDATE lessons SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        conn.commit()
+
+    conn.close()
+
+    print(f"Updated lesson {lesson_id}")
+
+    # Rebuild index if text changed
+    if text is not None:
+        print("Rebuilding index...")
+        lessons = get_all_active_lessons()
+        build_index(lessons)
+        print("Done.")
+
+
+def cmd_deprecate(args):
+    """Deprecate (soft-delete) a lesson."""
+    if not args:
+        print("Usage: engrammar deprecate LESSON_ID")
+        return
+
+    lesson_id = int(args[0])
+
+    from engrammar.db import deprecate_lesson
+
+    deprecate_lesson(lesson_id)
+    print(f"Deprecated lesson {lesson_id}")
+
+
+def cmd_pin(args):
+    """Pin a lesson (always shown at session start)."""
+    if not args:
+        print("Usage: engrammar pin LESSON_ID")
+        return
+
+    lesson_id = int(args[0])
+
+    from engrammar.db import get_connection
+
+    conn = get_connection()
+    conn.execute("UPDATE lessons SET pinned = 1 WHERE id = ?", (lesson_id,))
+    conn.commit()
+    conn.close()
+
+    print(f"Pinned lesson {lesson_id}")
+
+
+def cmd_unpin(args):
+    """Unpin a lesson."""
+    if not args:
+        print("Usage: engrammar unpin LESSON_ID")
+        return
+
+    lesson_id = int(args[0])
+
+    from engrammar.db import get_connection
+
+    conn = get_connection()
+    conn.execute("UPDATE lessons SET pinned = 0 WHERE id = ?", (lesson_id,))
+    conn.commit()
+    conn.close()
+
+    print(f"Unpinned lesson {lesson_id}")
+
+
+def cmd_categorize(args):
+    """Add or remove categories from a lesson."""
+    if len(args) < 3 or args[1] not in ("add", "remove"):
+        print("Usage: engrammar categorize LESSON_ID add|remove CATEGORY")
+        return
+
+    lesson_id = int(args[0])
+    action = args[1]
+    category = args[2]
+
+    from engrammar.db import add_lesson_category, remove_lesson_category
+
+    if action == "add":
+        add_lesson_category(lesson_id, category)
+        print(f"Added category '{category}' to lesson {lesson_id}")
+    else:
+        remove_lesson_category(lesson_id, category)
+        print(f"Removed category '{category}' from lesson {lesson_id}")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
         print("Commands:")
-        print("  setup      Initialize DB, import lessons, build index")
-        print("  status     Show DB stats, index health, hook config")
-        print("  search     Search lessons: search \"query\"")
-        print("  add        Add lesson: add \"text\" --category cat")
-        print("  import     Import from file: import FILE")
-        print("  export     Export all lessons to markdown")
-        print("  extract    Extract lessons from session facets")
-        print("  rebuild    Rebuild embedding index")
+        print("  setup        Initialize DB, import lessons, build index")
+        print("  status       Show DB stats, index health, hook config")
+        print("  search       Search lessons: search \"query\"")
+        print("  list         List all lessons (--offset N --limit N --category cat)")
+        print("  add          Add lesson: add \"text\" --category cat")
+        print("  update       Update lesson: update ID --text \"new\" --category cat")
+        print("  deprecate    Soft-delete lesson: deprecate ID")
+        print("  pin          Pin lesson for session start: pin ID")
+        print("  unpin        Unpin lesson: unpin ID")
+        print("  categorize   Add/remove categories: categorize ID add|remove CATEGORY")
+        print("  import       Import from file: import FILE")
+        print("  export       Export all lessons to markdown")
+        print("  extract      Extract lessons from session facets")
+        print("  rebuild      Rebuild embedding index")
         return
 
     command = sys.argv[1]
@@ -251,7 +460,13 @@ def main():
         "setup": cmd_setup,
         "status": cmd_status,
         "search": cmd_search,
+        "list": cmd_list,
         "add": cmd_add,
+        "update": cmd_update,
+        "deprecate": cmd_deprecate,
+        "pin": cmd_pin,
+        "unpin": cmd_unpin,
+        "categorize": cmd_categorize,
         "import": cmd_import,
         "export": cmd_export,
         "extract": cmd_extract,
