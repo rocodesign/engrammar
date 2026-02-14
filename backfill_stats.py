@@ -51,32 +51,47 @@ def read_session_transcript(jsonl_path):
                 if not line.strip():
                     continue
 
-                msg = json.loads(line)
-                role = msg.get('role')
-                content = msg.get('content', '')
+                entry = json.loads(line)
+                entry_type = entry.get('type')
 
-                if role in ('user', 'assistant'):
-                    # Extract text content
-                    if isinstance(content, list):
-                        text_parts = []
-                        for part in content:
-                            if isinstance(part, dict) and part.get('type') == 'text':
-                                text_parts.append(part.get('text', ''))
-                        content = ' '.join(text_parts)
-
-                    messages.append({'role': role, 'content': content})
-
-                # Try to extract repo from cwd or other metadata
-                if not repo and 'cwd' in msg:
-                    cwd = msg['cwd']
+                # Extract cwd/repo from any entry
+                if not repo and 'cwd' in entry:
+                    cwd = entry['cwd']
                     # Extract repo name from path
                     if '/work/' in cwd:
                         parts = cwd.split('/work/')[-1].split('/')
                         if parts:
                             repo = parts[0]
 
-                if not timestamp and 'timestamp' in msg:
-                    timestamp = msg['timestamp']
+                # Extract timestamp
+                if not timestamp and 'timestamp' in entry:
+                    timestamp = entry['timestamp']
+
+                # Only process user and assistant message entries
+                if entry_type not in ('user', 'assistant'):
+                    continue
+
+                # Extract message content
+                message_obj = entry.get('message', {})
+                role = message_obj.get('role')
+                content = message_obj.get('content', '')
+
+                if not role or not content:
+                    continue
+
+                # Extract text content
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get('type') == 'text':
+                            text_parts.append(part.get('text', ''))
+                    content = ' '.join(text_parts)
+                elif isinstance(content, str):
+                    pass  # Already a string
+                else:
+                    continue
+
+                messages.append({'role': role, 'content': content})
 
     except Exception as e:
         print(f"Error reading {jsonl_path}: {e}")
