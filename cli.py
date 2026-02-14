@@ -89,19 +89,24 @@ def cmd_status(args):
 def cmd_search(args):
     """Search lessons."""
     if not args:
-        print("Usage: engrammar search \"query\" [--category CATEGORY]")
+        print("Usage: engrammar search \"query\" [--category CATEGORY] [--tags tag1,tag2,...]")
         return
 
     query = args[0]
     category = None
+    tags = None
     if "--category" in args:
         idx = args.index("--category")
         if idx + 1 < len(args):
             category = args[idx + 1]
+    if "--tags" in args:
+        idx = args.index("--tags")
+        if idx + 1 < len(args):
+            tags = args[idx + 1].split(",")
 
     from engrammar.search import search
 
-    results = search(query, category_filter=category, top_k=5)
+    results = search(query, category_filter=category, tag_filter=tags, top_k=5)
 
     if not results:
         print("No matching lessons found.")
@@ -118,21 +123,39 @@ def cmd_search(args):
 def cmd_add(args):
     """Add a new lesson."""
     if not args:
-        print("Usage: engrammar add \"lesson text\" --category dev/frontend/styling")
+        print("Usage: engrammar add \"lesson text\" --category dev/frontend/styling [--tags tag1,tag2,...]")
         return
 
     text = args[0]
     category = "general"
+    tags = None
     if "--category" in args:
         idx = args.index("--category")
         if idx + 1 < len(args):
             category = args[idx + 1]
+    if "--tags" in args:
+        idx = args.index("--tags")
+        if idx + 1 < len(args):
+            tags = args[idx + 1].split(",")
 
-    from engrammar.db import add_lesson, get_all_active_lessons
+    from engrammar.db import add_lesson, get_all_active_lessons, get_connection
     from engrammar.embeddings import build_index
 
     lesson_id = add_lesson(text=text, category=category, source="manual")
-    print(f"Added lesson #{lesson_id} in category '{category}'")
+
+    # Add tags to prerequisites if provided
+    if tags:
+        prereqs = {"tags": sorted(tags)}
+        conn = get_connection()
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+        conn.execute("UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(prereqs), now, lesson_id))
+        conn.commit()
+        conn.close()
+        print(f"Added lesson #{lesson_id} in category '{category}' with tags: {', '.join(tags)}")
+    else:
+        print(f"Added lesson #{lesson_id} in category '{category}'")
 
     # Rebuild index
     print("Rebuilding index...")
@@ -488,6 +511,24 @@ def cmd_backfill(args):
     sys.exit(result.returncode)
 
 
+def cmd_detect_tags(args):
+    """Show detected environment tags for the current directory."""
+    from engrammar.environment import detect_environment
+
+    env = detect_environment()
+    tags = env.get("tags", [])
+
+    print("Detected environment tags:")
+    if tags:
+        for tag in tags:
+            print(f"  - {tag}")
+    else:
+        print("  (no tags detected)")
+
+    print(f"\nCurrent directory: {env.get('cwd', 'unknown')}")
+    print(f"Repository: {env.get('repo', 'unknown')}")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -508,6 +549,7 @@ def main():
         print("  export       Export all lessons to markdown")
         print("  extract      Extract lessons from session facets")
         print("  rebuild      Rebuild embedding index")
+        print("  detect-tags  Show detected environment tags for current directory")
         return
 
     command = sys.argv[1]
@@ -530,6 +572,7 @@ def main():
         "export": cmd_export,
         "extract": cmd_extract,
         "rebuild": cmd_rebuild,
+        "detect-tags": cmd_detect_tags,
     }
 
     if command in commands:

@@ -22,7 +22,7 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def engrammar_search(query: str, category: str | None = None, top_k: int = 5) -> str:
+def engrammar_search(query: str, category: str | None = None, tags: list[str] | None = None, top_k: int = 5) -> str:
     """Search lessons by semantic similarity + keyword matching.
 
     Use this to find relevant lessons for the current task.
@@ -30,11 +30,12 @@ def engrammar_search(query: str, category: str | None = None, top_k: int = 5) ->
     Args:
         query: Natural language search query
         category: Optional category prefix filter (e.g. "development/frontend")
+        tags: Optional list of required tags (lessons must have ALL specified tags)
         top_k: Number of results to return (default 5)
     """
     from engrammar.search import search
 
-    results = search(query, category_filter=category, top_k=top_k)
+    results = search(query, category_filter=category, tag_filter=tags, top_k=top_k)
 
     if not results:
         return "No matching lessons found."
@@ -55,6 +56,7 @@ def engrammar_search(query: str, category: str | None = None, top_k: int = 5) ->
 def engrammar_add(
     text: str,
     category: str = "general",
+    tags: list[str] | None = None,
     prerequisites: dict | str | None = None,
     source: str = "manual",
 ) -> str:
@@ -65,6 +67,7 @@ def engrammar_add(
     Args:
         text: The lesson text — what was learned
         category: Hierarchical category (e.g. "development/frontend/styling")
+        tags: Optional list of environment tags (e.g. ["acme", "react", "frontend"])
         prerequisites: Optional requirements dict or JSON string (e.g. {"repos":["app-repo"],"os":["darwin"]})
         source: How this lesson was discovered ("manual", "auto-extracted", "feedback")
     """
@@ -73,17 +76,25 @@ def engrammar_add(
 
     # Normalize prerequisites to JSON string
     prereqs_json = None
+    prereqs_dict = {}
+
     if prerequisites:
         if isinstance(prerequisites, dict):
-            prereqs_json = json.dumps(prerequisites)
+            prereqs_dict = prerequisites
         elif isinstance(prerequisites, str):
             try:
-                json.loads(prerequisites)  # Validate it's valid JSON
-                prereqs_json = prerequisites
+                prereqs_dict = json.loads(prerequisites)
             except json.JSONDecodeError:
                 return f"Error: prerequisites must be valid JSON. Got: {prerequisites}"
         else:
             return f"Error: prerequisites must be dict or JSON string. Got: {type(prerequisites)}"
+
+    # Merge tags into prerequisites
+    if tags:
+        prereqs_dict["tags"] = sorted(tags)
+
+    if prereqs_dict:
+        prereqs_json = json.dumps(prereqs_dict)
 
     lesson_id = add_lesson(text=text, category=category, source=source)
 
@@ -533,6 +544,11 @@ def engrammar_status() -> str:
     lines.append(f"  OS: {env['os']}")
     lines.append(f"  Repo: {env.get('repo', 'unknown')}")
     lines.append(f"  MCP servers: {', '.join(env.get('mcp_servers', [])) or 'none detected'}")
+    tags = env.get('tags', [])
+    if tags:
+        lines.append(f"  Tags: {', '.join(tags)}")
+    else:
+        lines.append(f"  Tags: none detected")
 
     return "\n".join(lines)
 

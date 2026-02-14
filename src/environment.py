@@ -5,6 +5,8 @@ import os
 import platform
 import subprocess
 
+from .tag_detectors import detect_tags
+
 
 def detect_environment():
     """Detect current environment context.
@@ -14,13 +16,14 @@ def detect_environment():
         repo: repository name from git remote (e.g. "app-repo")
         cwd: current working directory
         mcp_servers: list of configured MCP server names
-        tools: list of available CLI tools
+        tags: list of detected environment tags
     """
     env = {
         "os": platform.system().lower(),
         "repo": _detect_repo(),
         "cwd": os.getcwd(),
         "mcp_servers": _detect_mcp_servers(),
+        "tags": detect_tags(),
     }
     return env
 
@@ -123,6 +126,16 @@ def check_prerequisites(prerequisites, env=None):
             req_mcp = [req_mcp]
         available = set(env.get("mcp_servers", []))
         if not all(s in available for s in req_mcp):
+            return False
+
+    # Check tags (lesson tags must be subset of environment tags)
+    req_tags = prerequisites.get("tags")
+    if req_tags:
+        if isinstance(req_tags, str):
+            req_tags = [req_tags]
+        env_tags = set(env.get("tags", []))
+        # ALL required tags must be in environment
+        if not all(tag in env_tags for tag in req_tags):
             return False
 
     return True

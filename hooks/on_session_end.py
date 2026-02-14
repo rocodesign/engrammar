@@ -61,9 +61,18 @@ def _evaluate_lesson_usefulness(lesson_text, lesson_category, session_summary):
 
     Returns:
         bool: True if lesson was useful, False otherwise
+
+    Note:
+        Requires ANTHROPIC_API_KEY environment variable or apiKey in ~/.claude.json.
+        If not available, defaults to marking all shown lessons as useful.
     """
     try:
-        import anthropic
+        # Check for anthropic package
+        try:
+            import anthropic
+        except ImportError:
+            # No anthropic package - fail open
+            return True
 
         # Get API key from environment
         api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -71,13 +80,17 @@ def _evaluate_lesson_usefulness(lesson_text, lesson_category, session_summary):
             # Try reading from Claude Code config
             claude_config_path = os.path.expanduser("~/.claude.json")
             if os.path.exists(claude_config_path):
-                with open(claude_config_path, "r") as f:
-                    config = json.load(f)
-                    api_key = config.get("apiKey")
+                try:
+                    with open(claude_config_path, "r") as f:
+                        config = json.load(f)
+                        api_key = config.get("apiKey")
+                except Exception:
+                    pass
 
         if not api_key:
-            _log_error("evaluate lesson", Exception("No ANTHROPIC_API_KEY found"))
-            return True  # Fail open - assume useful if we can't evaluate
+            # No API key - fail open (mark as useful)
+            # This allows the system to work without AI evaluation
+            return True
 
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -104,8 +117,9 @@ Answer only: YES or NO"""
         return answer == "YES"
 
     except Exception as e:
-        _log_error(f"evaluate lesson {lesson_text[:50]}", e)
-        return True  # Fail open - assume useful if evaluation fails
+        # Any error - fail open (mark as useful)
+        # This ensures the system continues working even if evaluation fails
+        return True
 
 
 def main():
@@ -158,18 +172,20 @@ def main():
 
         env = detect_environment()
         repo = env.get("repo")
+        tags = env.get("tags", [])
 
         useful_count = 0
         for row in rows:
             lesson_id = row["id"]
             lesson_text = row["text"]
-            lesson_category = row.get("category", "general")
+            # sqlite3.Row doesn't have .get(), use bracket with default
+            lesson_category = row["category"] if row["category"] else "general"
 
             # Evaluate with Haiku
             is_useful = _evaluate_lesson_usefulness(lesson_text, lesson_category, session_summary)
 
             if is_useful:
-                update_match_stats(lesson_id, repo=repo)
+                update_match_stats(lesson_id, repo=repo, tags=tags)
                 useful_count += 1
 
         # Log evaluation results

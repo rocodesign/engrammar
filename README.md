@@ -1,254 +1,205 @@
 # Engrammar
 
-A semantic knowledge system that learns from Claude Code sessions and injects relevant lessons per-prompt. Replaces flat `lessons-learned.md` files with hybrid search (vector + BM25) that surfaces the right knowledge at the right time.
+**Semantic Knowledge System for Claude Code**
 
-**Engram** (memory trace) + **Grammar** (learned rules) = workflow knowledge encoded as searchable lessons.
+Engrammar automatically learns from your Claude Code sessions and surfaces relevant lessons at the right time, making Claude more helpful with every interaction.
 
-## How it works
+## Quick Start
 
-Engrammar runs as four Claude Code hooks + an MCP server:
+```bash
+# Initialize
+~/.engrammar/engrammar-cli setup
 
-1. **SessionStart** — injects pinned lessons matching the current environment (repo, OS, path) and starts the search daemon in the background
-2. **UserPromptSubmit** — searches lessons relevant to each prompt (~40ms via daemon)
-3. **PreToolUse** — searches lessons relevant to each tool call (file paths, commands)
-4. **SessionEnd** — analyzes which shown lessons were actually useful (using Haiku) and updates match statistics
-5. **MCP Server** — gives Claude direct access to add, search, update, and deprecate lessons
+# Check status
+~/.engrammar/engrammar-cli status
 
-A background daemon keeps the embedding model warm for 15 minutes, bringing hook latency from ~300ms (cold start) to ~40ms (warm).
+# Detect environment tags
+~/.engrammar/engrammar-cli detect-tags
 
-**Intelligent match tracking**: Lessons are shown based on relevance during the session, but match statistics (used for auto-pinning) are only updated at session end. Haiku analyzes each shown lesson against the session context to determine if it was genuinely useful, preventing stat inflation from lessons that appear in hooks but aren't actually relevant.
+# Search lessons
+~/.engrammar/engrammar-cli search "component patterns"
 
-## Architecture
-
+# Add a lesson
+~/.engrammar/engrammar-cli add "Use Picasso for UI components" --category dev/frontend --tags acme,react
 ```
-~/.engrammar/
-├── engrammar/               # Python package
-│   ├── config.py            # Settings loader + paths
-│   ├── db.py                # SQLite CRUD + migrations
-│   ├── embeddings.py        # FastEmbed wrapper + numpy index
-│   ├── search.py            # Hybrid search (vector + BM25 + RRF)
-│   ├── environment.py       # OS/repo/path/MCP detection
-│   ├── daemon.py            # Background search daemon (Unix socket)
-│   ├── client.py            # Daemon client (used by hooks)
-│   ├── mcp_server.py        # MCP server (FastMCP over stdio)
-│   └── register_hooks.py    # Hook + MCP registration
-├── hooks/
-│   ├── on_session_start.py  # SessionStart hook
-│   ├── on_prompt.py         # UserPromptSubmit hook
-│   └── on_tool_use.py       # PreToolUse hook
-├── venv/                    # Python 3.10+ virtual environment
-├── cli.py                   # CLI tool
-├── lessons.db               # SQLite database
-├── embeddings.npy           # Vector index (memory-mapped)
-├── embedding_ids.npy        # Lesson ID mapping
-├── config.json              # User configuration
-├── .daemon.sock             # Unix socket (when daemon is running)
-├── .daemon.pid              # Daemon PID file
-├── .daemon.log              # Daemon log
-├── .session-shown.json      # Dedup tracking (cleared per session)
-└── .last-search.json        # Last search results (debug)
-```
+
+## Features
+
+### 🎯 Smart Tag-Based Filtering
+Lessons automatically adapt to your environment:
+- **Auto-detected tags**: Detects context from paths, git, files, dependencies
+- **Cross-project learning**: Lessons valuable in `['acme', 'frontend']` can auto-pin to all `['frontend']` projects
+- **Intelligent matching**: Only shows lessons relevant to your current stack
+
+### 📍 Auto-Pin System
+Lessons automatically become permanent when proven useful:
+- **15-match threshold**: After 15 matches, lessons auto-pin to their environment
+- **Tag subset algorithm**: Finds minimal common tags across matches
+- **Smart prerequisites**: Auto-adds repo or tag requirements
+
+### 🔍 Hybrid Search
+Vector similarity + BM25 keyword matching with Reciprocal Rank Fusion for optimal results.
+
+### 🔗 MCP Integration
+Direct access from Claude Code:
+- `engrammar_search` - Find relevant lessons
+- `engrammar_add` - Record new learnings
+- `engrammar_feedback` - Refine lesson relevance
+- `engrammar_status` - System health check
+
+### 🎣 Session Hooks
+Automatically surfaces lessons at the right moment:
+- **PreToolUse**: Shows lessons before tool execution
+- **SessionStart**: Displays pinned lessons
+- **SessionEnd**: Tracks which lessons were actually useful (no API key required)
 
 ## Installation
 
-```bash
-git clone https://github.com/user/engrammar.git
-cd engrammar
-bash setup.sh
+Engrammar is designed to work with Claude Code. It requires:
+- Python 3.12+
+- Claude Code CLI
+
+The system works completely **without API keys** - the AI evaluation in session end hooks is optional and fails open.
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `setup` | Initialize database and build index |
+| `status` | Show system stats and environment |
+| `detect-tags` | Show detected environment tags |
+| `search "query" [--tags tag1,tag2]` | Search lessons with optional tag filter |
+| `add "text" --category cat [--tags t1,t2]` | Add new lesson |
+| `list [--category cat] [--limit N]` | List all lessons |
+| `update ID --text "new"` | Update lesson |
+| `pin ID` | Pin lesson to always show |
+| `deprecate ID` | Mark lesson as outdated |
+
+## Environment Detection
+
+Engrammar detects tags from 5 sources:
+
+1. **Paths**: `~/work/acme/*` → `'acme'`
+2. **Git remotes**: `github.com/acme` → `'github'`, `'acme'`
+3. **File markers**: `tsconfig.json` → `'typescript'`
+4. **Dependencies**: `package.json` with `react` → `'react'`, `'frontend'`
+5. **Structure**: `packages/` directory → `'monorepo'`
+
+Example: In `~/work/acme/app-repo`:
+```
+Tags: davinci, docker, frontend, github, jest, monorepo,
+      nodejs, picasso, react, testing, acme, typescript
 ```
 
-Requires Python 3.10+ (for MCP SDK). The setup script will:
-- Find the best available Python (3.13 → 3.12 → 3.11 → 3.10)
-- Create a venv at `~/.engrammar/venv/`
-- Install dependencies (fastembed, numpy, rank_bm25, mcp)
-- Copy source to `~/.engrammar/`
-- Initialize the database and import existing lessons
-- Build the embedding index
-- Register hooks in `~/.claude/settings.json`
-- Register the MCP server in `~/.claude.json` with `defer_initialization: false`
-- Auto-allow engrammar MCP tools in permissions
+## Architecture
 
-After setup, restart Claude Code to activate the hooks and MCP server.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical documentation.
 
-### Why `defer_initialization: false`?
+## Examples
 
-By default, MCP tools are deferred (loaded on-demand via ToolSearch). Engrammar tools are set to load immediately because:
-- They're core system infrastructure for learning and knowledge management
-- Deferring them requires Claude to call ToolSearch twice (once without prefix, once with `mcp__engrammar__` prefix)
-- Loading them immediately (~100ms) is acceptable for 10 tools
-- Makes tools available instantly without discovery friction
-
-If you need to re-enable deferring (e.g., for performance with many MCP servers), remove the `defer_initialization` line from `~/.claude.json`.
-
-## Search
-
-Engrammar uses **hybrid search** combining two approaches with Reciprocal Rank Fusion:
-
-| Method | Strength | Example |
-|--------|----------|---------|
-| **Vector** (FastEmbed, BAAI/bge-small-en-v1.5) | Semantic similarity | "fix component layout" matches "Never use inline styles" |
-| **BM25** (rank_bm25) | Exact keyword match | "figma" matches lessons about Figma MCP tools |
-
-Results are filtered by **environment prerequisites** — lessons can be scoped to specific repos, OS, directory paths, or MCP server availability.
-
-### Performance (11 lessons, Apple Silicon)
-
-| Component | Latency |
-|-----------|---------|
-| Session start hook | 38ms |
-| Prompt hook (daemon warm) | 40ms |
-| Tool hook (daemon warm) | 40ms |
-| Raw daemon search (socket) | 20ms |
-| Embedding model cold load | 208ms (once, at daemon start) |
-
-## Daemon
-
-The search daemon starts lazily on the first hook call and keeps the FastEmbed model warm in memory. This avoids the ~200ms model load on every hook invocation.
-
-- **Starts**: automatically on first hook call (or session start)
-- **Stops**: after 15 minutes of inactivity
-- **Socket**: `~/.engrammar/.daemon.sock` (Unix domain socket)
-- **Fallback**: if daemon is unavailable, hooks fall back to direct search (~300ms)
-
-## MCP Tools
-
-When the MCP server is connected, Claude has access to these tools:
-
-| Tool | Description |
-|------|-------------|
-| `engrammar_search` | Search lessons by semantic similarity + keywords |
-| `engrammar_add` | Add a new lesson |
-| `engrammar_update` | Update lesson text, category, or prerequisites |
-| `engrammar_deprecate` | Soft-delete a lesson |
-| `engrammar_feedback` | Report whether a surfaced lesson was applicable |
-| `engrammar_categorize` | Add/remove categories (lessons can have multiple) |
-| `engrammar_pin` | Pin a lesson (always injected at session start) |
-| `engrammar_unpin` | Unpin a lesson |
-| `engrammar_list` | List all lessons with pagination |
-| `engrammar_status` | System status — lesson count, categories, index health |
-
-## CLI
-
+### Auto-Pin Scenario
 ```bash
-PYTHON=~/.engrammar/venv/bin/python
-CLI=~/.engrammar/cli.py
+# Lesson matches 6 times in ['acme', 'frontend', 'typescript']
+# Lesson matches 5 times in ['acme', 'frontend', 'react']
+# Lesson matches 4 times in ['personal', 'frontend', 'typescript']
+# → Total: 15 matches with 'frontend' tag
+# → Auto-pins with {"tags": ["frontend"]}
+# → Now shows in ALL frontend projects
+```
 
-$PYTHON $CLI status                          # DB stats, index health
-$PYTHON $CLI search "inline styles"          # Search lessons
-$PYTHON $CLI add "lesson text" --category dev/frontend  # Add a lesson
-$PYTHON $CLI import lessons.json             # Import from JSON
-$PYTHON $CLI export                          # Export to markdown
-$PYTHON $CLI rebuild                         # Rebuild embedding index
+### Manual Tagging
+```bash
+# Add lesson for specific context
+engrammar add "Follow Acme's React patterns" \
+  --category development/frontend \
+  --tags acme,react,frontend
+
+# Search within context
+engrammar search "state management" --tags react
+```
+
+### MCP Usage
+```python
+# In Claude Code session
+engrammar_add(
+    text="Use Picasso table components for all data tables",
+    category="development/frontend/components",
+    tags=["acme", "react", "picasso"]
+)
+
+engrammar_search(query="table component", tags=["react"])
 ```
 
 ## Configuration
 
-Edit `~/.engrammar/config.json`:
+Located at `~/.engrammar/config.json`:
 
 ```json
 {
-  "search": {
-    "top_k": 3
-  },
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
-    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
+    "skip_tools": ["Read", "Glob"]
+  },
+  "search": {
+    "top_k": 5
   },
   "display": {
-    "max_lessons_per_prompt": 3,
-    "max_lessons_per_tool": 2,
-    "show_categories": true
+    "max_lessons_per_tool": 2
   }
 }
 ```
 
-## Prerequisites (Environment Filtering)
+## Project Structure
 
-Lessons can have JSON prerequisites that scope them to specific environments:
-
-```json
-{
-  "repos": ["app-repo"],
-  "os": ["darwin"],
-  "paths": ["~/work/acme"],
-  "mcp_servers": ["figma"]
-}
+```
+~/.engrammar/
+├── engrammar/           # Core package
+│   ├── db.py           # SQLite + auto-pin logic
+│   ├── embeddings.py   # Vector search
+│   ├── environment.py  # Tag detection
+│   ├── search.py       # Hybrid search
+│   ├── tag_detectors.py # Tag detection algorithms
+│   ├── tag_patterns.py  # Detection patterns
+│   └── mcp_server.py   # MCP integration
+├── hooks/              # Claude Code hooks
+│   ├── on_session_start.py
+│   ├── on_tool_use.py
+│   └── on_session_end.py
+├── cli.py              # CLI interface
+├── tests/              # Test suite
+└── docs/               # Documentation
 ```
 
-A lesson only surfaces when **all** specified prerequisites match the current environment. Lessons without prerequisites are always eligible.
+## Performance
 
-## Match Tracking & Auto-Pin
-
-**Match tracking**: Lessons shown during a session are tracked, but match statistics are only updated at session end. The SessionEnd hook uses Haiku to analyze each shown lesson against the session context, asking: "Was this lesson actually relevant and useful?" Only lessons that Haiku deems useful get their `times_matched` counter incremented.
-
-This prevents stat inflation from lessons that:
-- Appear in hook context due to keyword matches but aren't actually relevant
-- Are shown repeatedly without being useful
-- Surface for tools/commands that Claude didn't actually need guidance on
-
-**Auto-pin**: When a lesson is matched 15+ times in a specific repo, it's automatically pinned with that repo as a prerequisite. Because match tracking is now gated by Haiku evaluation, auto-pinning only happens for lessons that have proven genuinely useful across multiple sessions. Pinned lessons are injected at every session start (when prerequisites match), regardless of search relevance.
-
-## Database Schema
-
-```sql
--- Core lesson storage
-CREATE TABLE lessons (
-    id INTEGER PRIMARY KEY,
-    text TEXT NOT NULL,
-    category TEXT NOT NULL DEFAULT 'general',
-    level1 TEXT, level2 TEXT, level3 TEXT,  -- parsed from category path
-    source TEXT,                             -- "auto-extracted" | "manual" | "feedback"
-    prerequisites TEXT,                      -- JSON: {repos, os, paths, mcp_servers}
-    pinned INTEGER DEFAULT 0,
-    occurrence_count INTEGER DEFAULT 1,
-    times_matched INTEGER DEFAULT 0,
-    last_matched TEXT,
-    deprecated INTEGER DEFAULT 0,
-    created_at TEXT, updated_at TEXT
-);
-
--- Multiple categories per lesson
-CREATE TABLE lesson_categories (
-    lesson_id INTEGER,
-    category_path TEXT,
-    PRIMARY KEY (lesson_id, category_path)
-);
-
--- Per-repo match tracking (for auto-pin)
-CREATE TABLE lesson_repo_stats (
-    lesson_id INTEGER,
-    repo TEXT,
-    match_count INTEGER DEFAULT 0,
-    last_matched TEXT,
-    PRIMARY KEY (lesson_id, repo)
-);
-```
+| Operation | Time | Memory |
+|-----------|------|--------|
+| Tag detection | <30ms | Negligible |
+| Tag subset algorithm | <20ms | ~50KB |
+| Search with tags | +5ms overhead | Negligible |
+| Session start | <100ms | ~1MB |
 
 ## Development
 
-Source lives at `~/work/ai-tools/engrammar/`. After making changes:
-
 ```bash
-bash setup.sh  # Redeploys to ~/.engrammar/
+# Run tests
+~/.engrammar/venv/bin/python -m pytest tests/ -v
+
+# Tag detection tests
+pytest tests/test_tag_detection.py -v
+
+# Filtering tests
+pytest tests/test_tag_filtering.py -v
+
+# Database tests
+pytest tests/test_tag_stats.py -v
 ```
 
-The setup script preserves `config.json` and `lessons.db` on redeploy.
+## License
 
-### Running Tests
+MIT
 
-```bash
-# Run all tests
-bash run_tests.sh
+## Contributing
 
-# Run specific test file
-~/.engrammar/venv/bin/pytest tests/test_prerequisites.py -v
-
-# Run tests matching a pattern
-~/.engrammar/venv/bin/pytest tests/ -k "repo" -v
-```
-
-Test coverage:
-- **Prerequisites**: Fail-closed repo logic, OS/path/MCP filtering
-- **Search**: RRF fusion, top_k handling, no threshold filtering
-- **Database**: Category sync, junction tables, match stats, auto-pin
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical details on the system design.

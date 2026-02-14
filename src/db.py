@@ -65,6 +65,15 @@ def init_db(db_path=None):
             FOREIGN KEY (lesson_id) REFERENCES lessons(id)
         );
 
+        CREATE TABLE IF NOT EXISTS lesson_tag_stats (
+            lesson_id INTEGER NOT NULL,
+            tag_set TEXT NOT NULL,
+            times_matched INTEGER DEFAULT 0,
+            last_matched TEXT,
+            PRIMARY KEY (lesson_id, tag_set),
+            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+        );
+
         CREATE TABLE IF NOT EXISTS processed_sessions (
             session_id TEXT PRIMARY KEY,
             processed_at TEXT,
@@ -181,12 +190,91 @@ def get_lessons_by_category(level1, level2=None, level3=None, db_path=None):
 AUTO_PIN_THRESHOLD = 15
 
 
-def update_match_stats(lesson_id, repo=None, db_path=None):
-    """Increment times_matched (global + per-repo) and auto-pin if threshold reached.
+def find_auto_pin_tag_subsets(lesson_id, threshold=AUTO_PIN_THRESHOLD, db_path=None):
+    """Find minimal common tag subset with threshold+ matches.
+
+    Algorithm:
+    1. Get all tag_sets where lesson matched
+    2. Generate powerset of all unique tags (limit size=4 for performance)
+    3. Count matches for each subset across all tag_sets
+    4. Find minimal subsets (no proper subset also meets threshold)
+    5. Return smallest minimal subset
+
+    Args:
+        lesson_id: the lesson to check
+        threshold: minimum matches required (default 15)
+        db_path: optional database path
+
+    Returns:
+        Sorted list of tags for auto-pin, or None if no subset meets threshold
+    """
+    conn = get_connection(db_path)
+
+    # Get all tag sets for this lesson
+    rows = conn.execute(
+        """SELECT tag_set, times_matched
+           FROM lesson_tag_stats
+           WHERE lesson_id = ?""",
+        (lesson_id,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return None
+
+    # Parse and collect all unique tags
+    tag_sets = []
+    for row in rows:
+        try:
+            tags = set(json.loads(row["tag_set"]))
+            tag_sets.append((tags, row["times_matched"]))
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    if not tag_sets:
+        return None
+
+    all_tags = set().union(*[ts for ts, _ in tag_sets])
+
+    # Generate powerset (limit size to 4 for performance)
+    from itertools import combinations
+    candidates = []
+    for r in range(1, min(len(all_tags), 4) + 1):
+        candidates.extend([set(c) for c in combinations(sorted(all_tags), r)])
+
+    # Count matches for each subset
+    subset_counts = {}
+    for candidate in candidates:
+        total = sum(count for tag_set, count in tag_sets if candidate.issubset(tag_set))
+        if total >= threshold:
+            subset_counts[frozenset(candidate)] = total
+
+    if not subset_counts:
+        return None
+
+    # Find minimal subsets (no proper subset also meets threshold)
+    sorted_subsets = sorted(subset_counts.keys(), key=len)
+    minimal = []
+    for subset in sorted_subsets:
+        # Check if any subset already in minimal is a proper subset of this one
+        if not any(other < subset for other in minimal):
+            minimal.append(subset)
+
+    if not minimal:
+        return None
+
+    # Return smallest minimal subset
+    smallest = min(minimal, key=len)
+    return sorted(list(smallest))
+
+
+def update_match_stats(lesson_id, repo=None, tags=None, db_path=None):
+    """Increment times_matched (global + per-repo + per-tag-set) and auto-pin if threshold reached.
 
     Args:
         lesson_id: the lesson that matched
         repo: current repo name (for per-repo tracking)
+        tags: list of environment tags (for per-tag-set tracking)
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
@@ -208,7 +296,7 @@ def update_match_stats(lesson_id, repo=None, db_path=None):
             (lesson_id, repo, now, now),
         )
 
-        # Check auto-pin threshold
+        # Check repo-based auto-pin threshold
         row = conn.execute(
             "SELECT times_matched FROM lesson_repo_stats WHERE lesson_id = ? AND repo = ?",
             (lesson_id, repo),
@@ -231,6 +319,42 @@ def update_match_stats(lesson_id, repo=None, db_path=None):
                 repos = set(existing.get("repos", []))
                 repos.add(repo)
                 existing["repos"] = list(repos)
+
+                conn.execute(
+                    "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(existing), now, lesson_id),
+                )
+
+    # Per-tag-set counter (NEW)
+    if tags:
+        tag_set_json = json.dumps(sorted(tags))
+        conn.execute(
+            """INSERT INTO lesson_tag_stats (lesson_id, tag_set, times_matched, last_matched)
+               VALUES (?, ?, 1, ?)
+               ON CONFLICT(lesson_id, tag_set) DO UPDATE SET
+               times_matched = times_matched + 1, last_matched = ?""",
+            (lesson_id, tag_set_json, now, now),
+        )
+
+        # Check for tag-based auto-pin
+        conn.commit()  # Commit first to make stats visible to find_auto_pin_tag_subsets
+        auto_pin_tags = find_auto_pin_tag_subsets(lesson_id, db_path=db_path)
+        if auto_pin_tags:
+            # Check if lesson is already pinned
+            lesson = conn.execute(
+                "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+            ).fetchone()
+
+            if lesson and not lesson["pinned"]:
+                # Auto-pin with tag prerequisite
+                existing = {}
+                if lesson["prerequisites"]:
+                    try:
+                        existing = json.loads(lesson["prerequisites"])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+                existing["tags"] = auto_pin_tags
 
                 conn.execute(
                     "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
