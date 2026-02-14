@@ -476,6 +476,18 @@ def cmd_reset_stats(args):
     print("Match counts will rebuild with intelligent tracking as you use Claude Code.")
 
 
+def cmd_backfill(args):
+    """Backfill match statistics from past sessions."""
+    import subprocess
+
+    backfill_script = os.path.join(ENGRAMMAR_HOME, "backfill_stats.py")
+    venv_python = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
+
+    # Forward all args to backfill script
+    result = subprocess.run([venv_python, backfill_script] + args)
+    sys.exit(result.returncode)
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -491,6 +503,7 @@ def main():
         print("  unpin        Unpin lesson: unpin ID")
         print("  categorize   Add/remove categories: categorize ID add|remove CATEGORY")
         print("  reset-stats  Reset all match counts and pins: reset-stats --confirm")
+        print("  backfill     Backfill stats from past sessions: backfill [--dry-run] [--limit N]")
         print("  import       Import from file: import FILE")
         print("  export       Export all lessons to markdown")
         print("  extract      Extract lessons from session facets")
@@ -512,6 +525,7 @@ def main():
         "unpin": cmd_unpin,
         "categorize": cmd_categorize,
         "reset-stats": cmd_reset_stats,
+        "backfill": cmd_backfill,
         "import": cmd_import,
         "export": cmd_export,
         "extract": cmd_extract,
