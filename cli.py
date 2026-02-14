@@ -433,6 +433,49 @@ def cmd_categorize(args):
         print(f"Removed category '{category}' from lesson {lesson_id}")
 
 
+def cmd_reset_stats(args):
+    """Reset all match statistics and pins to start fresh."""
+    confirm = "--confirm" in args
+
+    if not confirm:
+        print("This will reset all lessons:")
+        print("  - Unpin all lessons (pinned = 0)")
+        print("  - Reset match counts (times_matched = 0)")
+        print("  - Clear per-repo match tracking")
+        print("  - Preserve lesson text, categories, and manual prerequisites")
+        print()
+        print("Run with --confirm to proceed: engrammar reset-stats --confirm")
+        return
+
+    from engrammar.db import get_connection
+
+    conn = get_connection()
+
+    # Reset all lesson stats
+    conn.execute("""
+        UPDATE lessons
+        SET pinned = 0,
+            times_matched = 0,
+            last_matched = NULL
+    """)
+
+    # Clear per-repo stats
+    conn.execute("DELETE FROM lesson_repo_stats")
+
+    conn.commit()
+
+    # Get count for confirmation
+    count = conn.execute("SELECT COUNT(*) FROM lessons WHERE deprecated = 0").fetchone()[0]
+    conn.close()
+
+    print(f"✅ Reset complete:")
+    print(f"   - Unpinned all lessons")
+    print(f"   - Reset match counts to 0 for {count} active lessons")
+    print(f"   - Cleared per-repo tracking")
+    print()
+    print("Match counts will rebuild with intelligent tracking as you use Claude Code.")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -447,6 +490,7 @@ def main():
         print("  pin          Pin lesson for session start: pin ID")
         print("  unpin        Unpin lesson: unpin ID")
         print("  categorize   Add/remove categories: categorize ID add|remove CATEGORY")
+        print("  reset-stats  Reset all match counts and pins: reset-stats --confirm")
         print("  import       Import from file: import FILE")
         print("  export       Export all lessons to markdown")
         print("  extract      Extract lessons from session facets")
@@ -467,6 +511,7 @@ def main():
         "pin": cmd_pin,
         "unpin": cmd_unpin,
         "categorize": cmd_categorize,
+        "reset-stats": cmd_reset_stats,
         "import": cmd_import,
         "export": cmd_export,
         "extract": cmd_extract,
