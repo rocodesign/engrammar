@@ -46,8 +46,10 @@ cp "$SOURCE_DIR/hooks/on_prompt.py" "$ENGRAMMAR_HOME/hooks/on_prompt.py"
 cp "$SOURCE_DIR/hooks/on_tool_use.py" "$ENGRAMMAR_HOME/hooks/on_tool_use.py"
 cp "$SOURCE_DIR/hooks/on_session_end.py" "$ENGRAMMAR_HOME/hooks/on_session_end.py"
 cp "$SOURCE_DIR/cli.py" "$ENGRAMMAR_HOME/cli.py"
+cp "$SOURCE_DIR/backfill_stats.py" "$ENGRAMMAR_HOME/backfill_stats.py"
 cp "$SOURCE_DIR/engrammar" "$ENGRAMMAR_HOME/engrammar-cli"
 chmod +x "$ENGRAMMAR_HOME/engrammar-cli"
+chmod +x "$ENGRAMMAR_HOME/backfill_stats.py"
 
 # 5. Copy config (only if not exists — don't overwrite user customizations)
 if [ ! -f "$ENGRAMMAR_HOME/config.json" ]; then
