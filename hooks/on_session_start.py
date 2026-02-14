@@ -1,53 +1,37 @@
 #!/usr/bin/env python3
-"""SessionStart hook — injects pinned lessons, starts daemon, and extracts new lessons."""
+"""SessionStart hook — generates session ID, injects pinned lessons, starts daemon, extracts lessons."""
 
 import json
 import subprocess
 import sys
 import os
-import traceback
-from datetime import datetime
+import uuid
 
 # Add engrammar package to path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
-SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
 VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
 CLI_PATH = os.path.join(ENGRAMMAR_HOME, "cli.py")
 LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
-ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
-
-
-def _log_error(context, error):
-    """Log errors to .hook-errors.log for debugging."""
-    try:
-        with open(ERROR_LOG_PATH, "a") as f:
-            timestamp = datetime.utcnow().isoformat()
-            f.write(f"\n[{timestamp}] SessionStart - {context}\n")
-            f.write(f"Error: {error}\n")
-            f.write(traceback.format_exc())
-    except Exception:
-        pass  # Can't log the logging error
 
 
 def main():
-    try:
-        # Clear session-shown tracking (new session = fresh slate)
-        try:
-            with open(SHOWN_PATH, "w") as f:
-                json.dump([], f)
-        except Exception as e:
-            _log_error("clear session-shown", e)
+    from engrammar.hook_utils import log_error, write_session_id, format_lessons_block, make_hook_output
 
-        # Start daemon in background (don't block — it warms up while user types)
+    try:
+        # Generate session ID
+        session_id = str(uuid.uuid4())
+        write_session_id(session_id)
+
+        # Start daemon in background
         try:
             from engrammar.client import _start_daemon_background
             _start_daemon_background()
         except Exception as e:
-            _log_error("start daemon", e)
+            log_error("SessionStart", "start daemon", e)
 
-        # Kick off lesson extraction in background (always run — learns from past sessions)
+        # Kick off lesson extraction in background
         try:
             with open(LOG_PATH, "a") as log:
                 subprocess.Popen(
@@ -57,9 +41,21 @@ def main():
                     start_new_session=True,
                 )
         except Exception as e:
-            _log_error("start extraction", e)
+            log_error("SessionStart", "start extraction", e)
 
-        # Get pinned lessons directly (fast — just DB query, no model needed)
+        # Kick off evaluation of previous sessions in background
+        try:
+            with open(LOG_PATH, "a") as log:
+                subprocess.Popen(
+                    [VENV_PYTHON, CLI_PATH, "evaluate"],
+                    stdout=log,
+                    stderr=log,
+                    start_new_session=True,
+                )
+        except Exception as e:
+            log_error("SessionStart", "start evaluation", e)
+
+        # Get pinned lessons
         from engrammar.config import load_config
         from engrammar.db import get_pinned_lessons
         from engrammar.environment import check_prerequisites, detect_environment
@@ -69,27 +65,20 @@ def main():
         pinned = get_pinned_lessons()
 
         show_categories = config["display"]["show_categories"]
-        lines = []
+        matching = []
         for p in pinned:
             if check_prerequisites(p.get("prerequisites"), env):
-                prefix = f"[{p['category']}] " if show_categories and p.get("category") else ""
-                lines.append(f"- {prefix}{p['text']}")
+                matching.append(p)
 
-        if not lines:
+        if not matching:
             return
 
-        context = "Active lessons for this project:\n" + "\n".join(lines)
-
-        output = {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": context,
-            }
-        }
+        context = format_lessons_block(matching, show_categories=show_categories)
+        output = make_hook_output("SessionStart", context)
         print(json.dumps(output))
 
     except Exception as e:
-        _log_error("main execution", e)
+        log_error("SessionStart", "main execution", e)
 
 
 if __name__ == "__main__":

@@ -2,80 +2,43 @@
 """UserPromptSubmit hook — searches lessons relevant to the user's prompt.
 
 Uses the daemon for fast search (~20ms). Falls back to direct search if daemon unavailable.
-Skips lessons already shown in this session (tracked in .session-shown.json).
+Tracks shown lessons in DB (keyed by session ID) to avoid repeats.
 """
 
 import json
 import sys
 import os
-import traceback
-from datetime import datetime
 
 # Add engrammar package to path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
-SHOWN_PATH = os.path.join(ENGRAMMAR_HOME, ".session-shown.json")
-ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
-
-
-def _log_error(context, error):
-    """Log errors to .hook-errors.log for debugging."""
-    try:
-        with open(ERROR_LOG_PATH, "a") as f:
-            timestamp = datetime.utcnow().isoformat()
-            f.write(f"\n[{timestamp}] UserPromptSubmit - {context}\n")
-            f.write(f"Error: {error}\n")
-            f.write(traceback.format_exc())
-    except Exception:
-        pass  # Can't log the logging error
-
-
-def _load_shown():
-    """Load set of lesson IDs already shown this session."""
-    try:
-        if os.path.exists(SHOWN_PATH):
-            with open(SHOWN_PATH, "r") as f:
-                return set(json.load(f))
-    except Exception as e:
-        _log_error("load shown lessons", e)
-    return set()
-
-
-def _save_shown(shown_ids):
-    """Save shown lesson IDs."""
-    try:
-        with open(SHOWN_PATH, "w") as f:
-            json.dump(list(shown_ids), f)
-    except Exception as e:
-        _log_error("save shown lessons", e)
-
 
 def _search_via_daemon(prompt, max_results):
-    """Try daemon first, return results or None."""
     try:
         from engrammar.client import send_request
-
         response = send_request({"type": "search", "query": prompt, "top_k": max_results})
         if response and "results" in response:
             return response["results"]
     except Exception as e:
-        _log_error(f"daemon search: {prompt[:50]}", e)
+        from engrammar.hook_utils import log_error
+        log_error("UserPromptSubmit", f"daemon search: {prompt[:50]}", e)
     return None
 
 
 def _search_direct(prompt, max_results):
-    """Fallback: direct search (cold start ~300ms)."""
     try:
         from engrammar.search import search
-
         return search(prompt, top_k=max_results)
     except Exception as e:
-        _log_error(f"direct search: {prompt[:50]}", e)
+        from engrammar.hook_utils import log_error
+        log_error("UserPromptSubmit", f"direct search: {prompt[:50]}", e)
     return None
 
 
 def main():
+    from engrammar.hook_utils import log_error, read_session_id, format_lessons_block, make_hook_output
+
     try:
         raw = sys.stdin.read().strip()
         if not raw:
@@ -87,12 +50,12 @@ def main():
             return
 
         from engrammar.config import load_config
-
         config = load_config()
         if not config["hooks"]["prompt_enabled"]:
             return
 
         max_results = config["display"]["max_lessons_per_prompt"]
+        show_categories = config["display"]["show_categories"]
 
         # Try daemon, fall back to direct
         results = _search_via_daemon(prompt, max_results)
@@ -102,34 +65,29 @@ def main():
         if not results:
             return
 
-        # Filter out already-shown lessons
-        shown = _load_shown()
-        new_results = [r for r in results if r["id"] not in shown]
+        # Filter out already-shown lessons (DB-based)
+        session_id = read_session_id()
+        if session_id:
+            from engrammar.db import get_shown_lesson_ids, record_shown_lesson
+            shown = get_shown_lesson_ids(session_id)
+            new_results = [r for r in results if r["id"] not in shown]
+        else:
+            new_results = results
 
         if not new_results:
             return
 
-        # Mark as shown (match stats will be updated at session end by SessionEnd hook)
-        shown.update(r["id"] for r in new_results)
-        _save_shown(shown)
+        # Record shown lessons in DB
+        if session_id:
+            for r in new_results:
+                record_shown_lesson(session_id, r["id"], "UserPromptSubmit")
 
-        # Format
-        show_categories = config["display"]["show_categories"]
-        lines = ["Relevant lessons from past sessions:"]
-        for r in new_results:
-            prefix = f"[{r['category']}] " if show_categories and r.get("category") else ""
-            lines.append(f"- {prefix}{r['text']}")
-
-        output = {
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": "\n".join(lines),
-            }
-        }
+        context = format_lessons_block(new_results, show_categories=show_categories)
+        output = make_hook_output("UserPromptSubmit", context)
         print(json.dumps(output))
 
     except Exception as e:
-        _log_error("main execution", e)
+        log_error("UserPromptSubmit", "main execution", e)
 
 
 if __name__ == "__main__":

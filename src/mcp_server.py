@@ -15,8 +15,9 @@ mcp = FastMCP(
     instructions=(
         "Engrammar is your semantic knowledge system. Use it to search past lessons, "
         "add new learnings, mark lessons as not applicable, and check system status. "
-        "When you notice a lesson from hook context doesn't apply to the current "
-        "environment, use engrammar_feedback to record why."
+        "Lessons from hooks appear in [ENGRAMMAR_V1] blocks with EG#ID markers "
+        "(e.g. [EG#42]). When you notice a lesson from hook context doesn't apply "
+        "to the current environment, use engrammar_feedback to record why."
     ),
 )
 
