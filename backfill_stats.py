@@ -193,8 +193,14 @@ Answer only: YES or NO"""
         return False  # Fail closed on errors
 
 
-def backfill_session(session_data, dry_run=False, verbose=False):
+def backfill_session(session_data, dry_run=False, verbose=False, no_eval=False):
     """Analyze a session and update match stats for useful lessons.
+
+    Args:
+        session_data: Session transcript data
+        dry_run: Don't update database
+        verbose: Show per-lesson evaluation
+        no_eval: Skip Haiku evaluation, mark all as useful
 
     Returns:
         dict: {'shown': int, 'useful': int, 'lessons': [ids]}
@@ -227,11 +233,16 @@ def backfill_session(session_data, dry_run=False, verbose=False):
     # Evaluate each lesson
     useful_lessons = []
     for lesson_id, lesson in all_lessons.items():
-        is_useful = evaluate_lesson_in_session(lesson, messages)
+        if no_eval:
+            # Skip evaluation, assume all shown lessons are useful
+            is_useful = True
+        else:
+            is_useful = evaluate_lesson_in_session(lesson, messages)
 
         if verbose:
             status = "✓ useful" if is_useful else "✗ not useful"
-            print(f"  Lesson {lesson_id}: {status}")
+            evaluation = " (no eval)" if no_eval else ""
+            print(f"  Lesson {lesson_id}: {status}{evaluation}")
 
         if is_useful:
             useful_lessons.append(lesson_id)
@@ -254,6 +265,7 @@ def main():
     parser.add_argument("--limit", type=int, help="Process only N most recent sessions")
     parser.add_argument("--session", help="Process a specific session file")
     parser.add_argument("--projects-dir", help="Override projects directory (default: ~/.claude/projects)")
+    parser.add_argument("--no-eval", action="store_true", help="Skip Haiku evaluation, mark all shown lessons as useful")
 
     args = parser.parse_args()
 
@@ -294,7 +306,7 @@ def main():
             skipped += 1
             continue
 
-        result = backfill_session(session_data, dry_run=args.dry_run, verbose=args.verbose)
+        result = backfill_session(session_data, dry_run=args.dry_run, verbose=args.verbose, no_eval=args.no_eval)
 
         if result['shown'] == 0:
             print(f"  No lessons shown")
