@@ -80,6 +80,44 @@ def init_db(db_path=None):
             had_friction INTEGER DEFAULT 0,
             lessons_extracted INTEGER DEFAULT 0
         );
+
+        -- Replaces .session-shown.json (fixes race condition)
+        CREATE TABLE IF NOT EXISTS session_shown_lessons (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            lesson_id INTEGER NOT NULL,
+            hook_event TEXT NOT NULL,
+            shown_at TEXT NOT NULL,
+            UNIQUE(session_id, lesson_id)
+        );
+
+        -- Per-tag relevance scoring
+        CREATE TABLE IF NOT EXISTS lesson_tag_relevance (
+            lesson_id INTEGER NOT NULL,
+            tag TEXT NOT NULL,
+            score REAL DEFAULT 0.0,
+            positive_evals INTEGER DEFAULT 0,
+            negative_evals INTEGER DEFAULT 0,
+            last_evaluated TEXT,
+            PRIMARY KEY (lesson_id, tag)
+        );
+
+        -- Ground truth for what was shown per session
+        CREATE TABLE IF NOT EXISTS session_audit (
+            session_id TEXT PRIMARY KEY,
+            shown_lesson_ids TEXT NOT NULL,
+            env_tags TEXT NOT NULL,
+            repo TEXT,
+            timestamp TEXT NOT NULL
+        );
+
+        -- Evaluation tracking, separate from extraction pipeline
+        CREATE TABLE IF NOT EXISTS processed_relevance_sessions (
+            session_id TEXT PRIMARY KEY,
+            processed_at TEXT,
+            retry_count INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending'
+        );
     """)
 
     # Migrations for existing DBs
@@ -531,6 +569,75 @@ def increment_lesson_occurrence(lesson_id, new_sessions=None, db_path=None):
 
     conn.commit()
     conn.close()
+
+
+def record_shown_lesson(session_id, lesson_id, hook_event, db_path=None):
+    """Record that a lesson was shown during a session (DB-based, replaces file tracking)."""
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """INSERT OR IGNORE INTO session_shown_lessons (session_id, lesson_id, hook_event, shown_at)
+           VALUES (?, ?, ?, ?)""",
+        (session_id, lesson_id, hook_event, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_shown_lesson_ids(session_id, db_path=None):
+    """Get set of lesson IDs shown during a session."""
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT lesson_id FROM session_shown_lessons WHERE session_id = ?",
+        (session_id,),
+    ).fetchall()
+    conn.close()
+    return {r["lesson_id"] for r in rows}
+
+
+def clear_session_shown(session_id, db_path=None):
+    """Clear shown lessons for a session."""
+    conn = get_connection(db_path)
+    conn.execute(
+        "DELETE FROM session_shown_lessons WHERE session_id = ?",
+        (session_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def write_session_audit(session_id, shown_lesson_ids, env_tags, repo, db_path=None):
+    """Write audit record of what was shown in a session."""
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """INSERT OR REPLACE INTO session_audit (session_id, shown_lesson_ids, env_tags, repo, timestamp)
+           VALUES (?, ?, ?, ?, ?)""",
+        (session_id, json.dumps(sorted(shown_lesson_ids)), json.dumps(sorted(env_tags)), repo, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_unprocessed_audit_sessions(limit=10, db_path=None):
+    """Get audit sessions that haven't been evaluated yet.
+
+    Returns sessions from session_audit that don't have a completed entry
+    in processed_relevance_sessions, with retry_count < 3.
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        """SELECT sa.session_id, sa.shown_lesson_ids, sa.env_tags, sa.repo, sa.timestamp
+           FROM session_audit sa
+           LEFT JOIN processed_relevance_sessions prs ON sa.session_id = prs.session_id
+           WHERE prs.session_id IS NULL
+              OR (prs.status != 'completed' AND prs.retry_count < 3)
+           ORDER BY sa.timestamp ASC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def import_from_state_file(path, db_path=None):
