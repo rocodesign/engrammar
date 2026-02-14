@@ -37,12 +37,13 @@ def _reciprocal_rank_fusion(ranked_lists, k=60):
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-def search(query, category_filter=None, top_k=None, db_path=None):
+def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=None):
     """Main hybrid search entry point.
 
     Args:
         query: search query string
         category_filter: optional category prefix to filter results (e.g. "development/frontend")
+        tag_filter: optional list of required tags (lessons must have ALL specified tags)
         top_k: number of results (defaults to config value)
         db_path: optional database path override
 
@@ -112,6 +113,14 @@ def search(query, category_filter=None, top_k=None, db_path=None):
             )
         ]
 
+    # 4.5. Apply tag filter (NEW)
+    if tag_filter:
+        required_tags = set(tag_filter if isinstance(tag_filter, list) else [tag_filter])
+        fused = [
+            (lid, score) for lid, score in fused
+            if lid in lesson_map and _lesson_has_all_tags(lesson_map[lid], required_tags)
+        ]
+
     # 5. Take top_k results (no threshold for RRF - it's rank-based, not similarity-based)
     results = []
     for lesson_id, score in fused[:top_k]:
@@ -124,6 +133,25 @@ def search(query, category_filter=None, top_k=None, db_path=None):
     _save_last_search(query, results)
 
     return results
+
+
+def _lesson_has_all_tags(lesson, required_tags):
+    """Check if lesson has all required tags in prerequisites.
+
+    Args:
+        lesson: lesson dict with prerequisites field
+        required_tags: set of tags that must all be present
+
+    Returns:
+        True if lesson has all required tags, False otherwise
+    """
+    prereqs = lesson.get("prerequisites")
+    if not prereqs:
+        return False
+
+    prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
+    lesson_tags = set(prereq_dict.get("tags", []))
+    return required_tags.issubset(lesson_tags)
 
 
 def search_for_tool_context(tool_name, tool_input, db_path=None):
