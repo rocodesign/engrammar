@@ -492,7 +492,7 @@ def cmd_reset_stats(args):
 
 
 def cmd_backfill(args):
-    """Backfill match statistics from past sessions."""
+    """Create audit records from past sessions for the evaluator pipeline."""
     import subprocess
 
     backfill_script = os.path.join(ENGRAMMAR_HOME, "backfill_stats.py")
@@ -602,7 +602,7 @@ def main():
         print("  unpin        Unpin lesson: unpin ID")
         print("  categorize   Add/remove categories: categorize ID add|remove CATEGORY")
         print("  reset-stats  Reset all match counts and pins: reset-stats --confirm")
-        print("  backfill     Backfill stats from past sessions: backfill [--dry-run] [--limit N]")
+        print("  backfill     Create audit records from past sessions: backfill [--dry-run] [--limit N] [--evaluate]")
         print("  import       Import from file: import FILE")
         print("  export       Export all lessons to markdown")
         print("  extract      Extract lessons from session facets")
