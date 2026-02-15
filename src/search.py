@@ -37,7 +37,7 @@ def _reciprocal_rank_fusion(ranked_lists, k=60):
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=None):
+def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=None, skip_prerequisites=False):
     """Main hybrid search entry point.
 
     Args:
@@ -46,6 +46,7 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         tag_filter: optional list of required tags (lessons must have ALL specified tags)
         top_k: number of results (defaults to config value)
         db_path: optional database path override
+        skip_prerequisites: if True, skip environment prerequisite filtering (used by backfill)
 
     Returns:
         list of dicts with lesson data + score
@@ -58,9 +59,13 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     if not all_lessons:
         return []
 
-    # Filter by environment prerequisites
-    env = detect_environment()
-    lessons = [l for l in all_lessons if check_prerequisites(l.get("prerequisites"), env)]
+    # Filter by environment prerequisites (unless skipped for backfill)
+    if skip_prerequisites:
+        lessons = all_lessons
+        env = {}
+    else:
+        env = detect_environment()
+        lessons = [l for l in all_lessons if check_prerequisites(l.get("prerequisites"), env)]
     if not lessons:
         return []
 
