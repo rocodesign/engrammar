@@ -75,8 +75,7 @@ def engrammar_add(
     from engrammar.db import add_lesson, get_all_active_lessons
     from engrammar.embeddings import build_index
 
-    # Normalize prerequisites to JSON string
-    prereqs_json = None
+    # Normalize prerequisites to dict
     prereqs_dict = {}
 
     if prerequisites:
@@ -94,18 +93,12 @@ def engrammar_add(
     if tags:
         prereqs_dict["tags"] = sorted(tags)
 
-    if prereqs_dict:
-        prereqs_json = json.dumps(prereqs_dict)
-
-    lesson_id = add_lesson(text=text, category=category, source=source)
-
-    # Update prerequisites if provided
-    if prereqs_json:
-        from engrammar.db import get_connection
-        conn = get_connection()
-        conn.execute("UPDATE lessons SET prerequisites = ? WHERE id = ?", (prereqs_json, lesson_id))
-        conn.commit()
-        conn.close()
+    lesson_id = add_lesson(
+        text=text,
+        category=category,
+        source=source,
+        prerequisites=prereqs_dict if prereqs_dict else None,
+    )
 
     # Rebuild index
     lessons = get_all_active_lessons()

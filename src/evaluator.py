@@ -141,9 +141,10 @@ def _call_claude_for_evaluation(session_id, shown_lessons, env_tags, repo, trans
     try:
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
+        env["ENGRAMMAR_INTERNAL_RUN"] = "1"
 
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text"],
+            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=300,

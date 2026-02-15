@@ -138,21 +138,13 @@ def cmd_add(args):
         if idx + 1 < len(args):
             tags = args[idx + 1].split(",")
 
-    from engrammar.db import add_lesson, get_all_active_lessons, get_connection
+    from engrammar.db import add_lesson, get_all_active_lessons
     from engrammar.embeddings import build_index
 
-    lesson_id = add_lesson(text=text, category=category, source="manual")
+    prereqs = {"tags": sorted(tags)} if tags else None
+    lesson_id = add_lesson(text=text, category=category, source="manual", prerequisites=prereqs)
 
-    # Add tags to prerequisites if provided
     if tags:
-        prereqs = {"tags": sorted(tags)}
-        conn = get_connection()
-        from datetime import datetime
-        now = datetime.utcnow().isoformat()
-        conn.execute("UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(prereqs), now, lesson_id))
-        conn.commit()
-        conn.close()
         print(f"Added lesson #{lesson_id} in category '{category}' with tags: {', '.join(tags)}")
     else:
         print(f"Added lesson #{lesson_id} in category '{category}'")
@@ -532,6 +524,51 @@ def cmd_evaluate(args):
     print(f"  Total:     {results['total']}")
 
 
+def cmd_backfill_prereqs(args):
+    """Retroactively set prerequisites on existing lessons using keyword inference."""
+    dry_run = "--dry-run" in args
+
+    from engrammar.db import get_all_active_lessons, get_connection
+    from engrammar.extractor import _infer_prerequisites
+
+    lessons = get_all_active_lessons()
+    if not lessons:
+        print("No active lessons found.")
+        return
+
+    updated = 0
+    skipped = 0
+    for lesson in lessons:
+        # Skip lessons that already have prerequisites
+        if lesson.get("prerequisites"):
+            skipped += 1
+            continue
+
+        prerequisites = _infer_prerequisites(lesson["text"])
+        if not prerequisites:
+            continue
+
+        if dry_run:
+            print(f"  Would set lesson #{lesson['id']}: {json.dumps(prerequisites)}")
+            print(f"    Text: {lesson['text'][:80]}...")
+            updated += 1
+        else:
+            from datetime import datetime
+            conn = get_connection()
+            now = datetime.utcnow().isoformat()
+            conn.execute(
+                "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(prerequisites), now, lesson["id"]),
+            )
+            conn.commit()
+            conn.close()
+            print(f"  Set lesson #{lesson['id']}: {json.dumps(prerequisites)}")
+            updated += 1
+
+    mode = "Would update" if dry_run else "Updated"
+    print(f"\n{mode} {updated} lessons, skipped {skipped} (already have prerequisites).")
+
+
 def cmd_detect_tags(args):
     """Show detected environment tags for the current directory."""
     from engrammar.environment import detect_environment
@@ -572,6 +609,7 @@ def main():
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
+        print("  backfill-prereqs  Retroactively set prerequisites on existing lessons [--dry-run]")
         return
 
     command = sys.argv[1]
@@ -596,6 +634,7 @@ def main():
         "rebuild": cmd_rebuild,
         "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
+        "backfill-prereqs": cmd_backfill_prereqs,
     }
 
     if command in commands:

@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import time
 
@@ -17,6 +18,8 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 SOCKET_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.sock")
 PID_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.pid")
 LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
+VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
+CLI_PATH = os.path.join(ENGRAMMAR_HOME, "cli.py")
 IDLE_TIMEOUT = 15 * 60  # 15 minutes
 
 
@@ -34,6 +37,36 @@ class EngrammarDaemon:
         self.last_activity = time.time()
         self.start_time = time.time()
         self.running = True
+        self.extract_proc = None
+        self.evaluate_proc = None
+
+    @staticmethod
+    def _is_running(proc):
+        return proc is not None and proc.poll() is None
+
+    def _spawn_cli_job(self, job_name, cli_args):
+        """Start a CLI background job if not already running."""
+        proc_attr = f"{job_name}_proc"
+        proc = getattr(self, proc_attr)
+
+        if self._is_running(proc):
+            return {"started": False, "status": "already_running", "pid": proc.pid}
+
+        env = os.environ.copy()
+        env["ENGRAMMAR_INTERNAL_RUN"] = "1"
+
+        with open(LOG_PATH, "a") as log:
+            new_proc = subprocess.Popen(
+                [VENV_PYTHON, CLI_PATH] + cli_args,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+                env=env,
+            )
+
+        setattr(self, proc_attr, new_proc)
+        _log(f"Started {job_name} job (pid={new_proc.pid})")
+        return {"started": True, "status": "started", "pid": new_proc.pid}
 
     def _warm_up(self):
         """Pre-load the embedding model so first search is fast."""
@@ -88,6 +121,15 @@ class EngrammarDaemon:
         elif req_type == "shutdown":
             self.running = False
             return {"status": "shutting_down"}
+
+        elif req_type == "run_maintenance":
+            extract = self._spawn_cli_job("extract", ["extract"])
+            evaluate_args = ["evaluate"]
+            limit = data.get("evaluate_limit")
+            if isinstance(limit, int) and limit > 0:
+                evaluate_args.extend(["--limit", str(limit)])
+            evaluate = self._spawn_cli_job("evaluate", evaluate_args)
+            return {"status": "ok", "extract": extract, "evaluate": evaluate}
 
         return {"error": f"unknown request type: {req_type}"}
 

@@ -40,6 +40,9 @@ def main():
     from engrammar.hook_utils import log_error, read_session_id, format_lessons_block, make_hook_output
 
     try:
+        if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
+            return
+
         raw = sys.stdin.read().strip()
         if not raw:
             return
