@@ -511,6 +511,27 @@ def cmd_backfill(args):
     sys.exit(result.returncode)
 
 
+def cmd_evaluate(args):
+    """Run pending relevance evaluations for past sessions."""
+    limit = 5
+    i = 0
+    while i < len(args):
+        if args[i] == "--limit" and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        else:
+            i += 1
+
+    from engrammar.evaluator import run_pending_evaluations
+
+    print(f"Running pending evaluations (limit: {limit})...")
+    results = run_pending_evaluations(limit=limit)
+
+    print(f"  Completed: {results['completed']}")
+    print(f"  Failed:    {results['failed']}")
+    print(f"  Total:     {results['total']}")
+
+
 def cmd_detect_tags(args):
     """Show detected environment tags for the current directory."""
     from engrammar.environment import detect_environment
@@ -549,6 +570,7 @@ def main():
         print("  export       Export all lessons to markdown")
         print("  extract      Extract lessons from session facets")
         print("  rebuild      Rebuild embedding index")
+        print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
         return
 
@@ -572,6 +594,7 @@ def main():
         "export": cmd_export,
         "extract": cmd_extract,
         "rebuild": cmd_rebuild,
+        "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
     }
 
