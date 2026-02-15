@@ -18,6 +18,9 @@ def main():
     from engrammar.hook_utils import log_error, read_session_id, clear_session_id
 
     try:
+        if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
+            return
+
         # Read stdin (session end data) — not used for audit but consumed
         sys.stdin.read()
 

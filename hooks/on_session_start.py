@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""SessionStart hook — generates session ID, injects pinned lessons, starts daemon, extracts lessons."""
+"""SessionStart hook — generates session ID, injects pinned lessons, and queues maintenance."""
 
 import json
-import subprocess
 import sys
 import os
 import uuid
@@ -11,49 +10,24 @@ import uuid
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
-VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
-CLI_PATH = os.path.join(ENGRAMMAR_HOME, "cli.py")
-LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
-
 
 def main():
     from engrammar.hook_utils import log_error, write_session_id, format_lessons_block, make_hook_output
 
     try:
+        if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
+            return
+
         # Generate session ID
         session_id = str(uuid.uuid4())
         write_session_id(session_id)
 
-        # Start daemon in background
+        # Start daemon (if needed) and trigger maintenance jobs with single-flight behavior
         try:
-            from engrammar.client import _start_daemon_background
-            _start_daemon_background()
+            from engrammar.client import send_request
+            send_request({"type": "run_maintenance"})
         except Exception as e:
-            log_error("SessionStart", "start daemon", e)
-
-        # Kick off lesson extraction in background
-        try:
-            with open(LOG_PATH, "a") as log:
-                subprocess.Popen(
-                    [VENV_PYTHON, CLI_PATH, "extract"],
-                    stdout=log,
-                    stderr=log,
-                    start_new_session=True,
-                )
-        except Exception as e:
-            log_error("SessionStart", "start extraction", e)
-
-        # Kick off evaluation of previous sessions in background
-        try:
-            with open(LOG_PATH, "a") as log:
-                subprocess.Popen(
-                    [VENV_PYTHON, CLI_PATH, "evaluate"],
-                    stdout=log,
-                    stderr=log,
-                    start_new_session=True,
-                )
-        except Exception as e:
-            log_error("SessionStart", "start evaluation", e)
+            log_error("SessionStart", "start daemon/maintenance", e)
 
         # Get pinned lessons
         from engrammar.config import load_config

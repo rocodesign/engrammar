@@ -26,6 +26,21 @@ from .embeddings import build_index
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30
 
+# Keyword → prerequisites mapping for auto-inference
+PROJECT_KEYWORD_PREREQUISITES = {
+    # Acme ecosystem
+    "acme": {"tags": ["acme"]},
+    "taps": {"tags": ["acme"]},
+    "picasso": {"tags": ["acme"]},
+    "davinci": {"tags": ["acme"]},
+    "app-repo": {"tags": ["acme"]},
+    "app repo": {"tags": ["acme"]},
+    # Tool-specific
+    "figma mcp": {"mcp_servers": ["figma"]},
+    "figma server": {"mcp_servers": ["figma"]},
+    "playwright": {"tags": ["playwright"]},
+}
+
 EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE lessons.
 
 DO NOT produce generic advice like "investigate methodically" or "ask for clarification."
@@ -46,8 +61,81 @@ Output a JSON array of objects, each with:
 - "topic": short category (e.g. "browser-testing", "figma", "git-workflow", "styling", "project-structure", "tool-usage", "pr-creation")
 - "lesson": the specific, concrete lesson (1-2 sentences max)
 - "source_sessions": list of session IDs this was derived from
+- "scope": "general" if the lesson applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
+- "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TAPS", "Picasso", "Figma MCP", "Playwright"]). Empty list when scope is "general".
 
 Output ONLY valid JSON, no markdown fences, no explanation."""
+
+
+def _infer_prerequisites(text, project_signals=None):
+    """Infer prerequisites from lesson text and optional project signals.
+
+    Args:
+        text: the lesson text
+        project_signals: optional list of project names from Haiku output
+
+    Returns:
+        dict of prerequisites (e.g. {"tags": ["acme"]}) or None
+    """
+    merged = {}
+    text_lower = text.lower()
+
+    # Check keyword map against lesson text
+    for keyword, prereqs in PROJECT_KEYWORD_PREREQUISITES.items():
+        if keyword in text_lower:
+            for key, val in prereqs.items():
+                if key in merged:
+                    if isinstance(merged[key], list) and isinstance(val, list):
+                        merged[key] = sorted(set(merged[key] + val))
+                    else:
+                        merged[key] = val
+                else:
+                    merged[key] = list(val) if isinstance(val, list) else val
+
+    # Check project_signals from Haiku
+    if project_signals:
+        for signal in project_signals:
+            signal_lower = signal.lower()
+            for keyword, prereqs in PROJECT_KEYWORD_PREREQUISITES.items():
+                if keyword in signal_lower or signal_lower in keyword:
+                    for key, val in prereqs.items():
+                        if key in merged:
+                            if isinstance(merged[key], list) and isinstance(val, list):
+                                merged[key] = sorted(set(merged[key] + val))
+                            else:
+                                merged[key] = val
+                        else:
+                            merged[key] = list(val) if isinstance(val, list) else val
+
+    return merged if merged else None
+
+
+def _maybe_backfill_prerequisites(lesson_id, prerequisites, db_path=None):
+    """Backfill prerequisites on an existing lesson if it has none.
+
+    Args:
+        lesson_id: existing lesson to potentially update
+        prerequisites: dict of prerequisites to set
+        db_path: optional database path
+    """
+    if not prerequisites:
+        return
+
+    from .db import get_connection
+
+    conn = get_connection(db_path)
+    row = conn.execute(
+        "SELECT prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+    ).fetchone()
+
+    if row and not row["prerequisites"]:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(prerequisites), now, lesson_id),
+        )
+        conn.commit()
+    conn.close()
 
 
 def _load_facets():
@@ -86,9 +174,10 @@ def _call_claude_for_extraction(sessions):
     try:
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
+        env["ENGRAMMAR_INTERNAL_RUN"] = "1"
 
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text"],
+            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=300,
@@ -194,14 +283,20 @@ def extract_from_sessions(dry_run=False):
         text = lesson_data.get("lesson", "")
         topic = lesson_data.get("topic", "general")
         source_sessions = lesson_data.get("source_sessions", [])
+        project_signals = lesson_data.get("project_signals", [])
 
         if not text:
             continue
+
+        # Infer prerequisites from text + Haiku signals
+        prerequisites = _infer_prerequisites(text, project_signals)
 
         # Check for similar existing lesson
         existing = find_similar_lesson(text)
         if existing:
             increment_lesson_occurrence(existing["id"], source_sessions)
+            # Backfill prerequisites on existing lesson if it has none
+            _maybe_backfill_prerequisites(existing["id"], prerequisites)
             merged += 1
             print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
         else:
@@ -212,9 +307,11 @@ def extract_from_sessions(dry_run=False):
                 source="auto-extracted",
                 source_sessions=source_sessions,
                 occurrence_count=len(source_sessions) if source_sessions else 1,
+                prerequisites=prerequisites,
             )
             added += 1
-            print(f"  Added lesson #{lesson_id} [{category}]: {text[:60]}...")
+            prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
+            print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
 
     summary["extracted"] = added
     summary["merged"] = merged

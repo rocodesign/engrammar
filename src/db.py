@@ -141,7 +141,7 @@ def _parse_category(category):
     )
 
 
-def add_lesson(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, db_path=None):
+def add_lesson(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, prerequisites=None, db_path=None):
     """Insert a new lesson.
 
     Args:
@@ -151,18 +151,28 @@ def add_lesson(text, category="general", categories=None, source="manual", sourc
         source: "auto-extracted" | "manual" | "feedback"
         source_sessions: list of session IDs
         occurrence_count: how many sessions produced this
+        prerequisites: optional dict or JSON string of prerequisites (e.g. {"tags": ["acme"]})
     """
     conn = get_connection(db_path)
     level1, level2, level3 = _parse_category(category)
     now = datetime.utcnow().isoformat()
     sessions_json = json.dumps(source_sessions or [])
 
+    # Normalize prerequisites to JSON string
+    prereqs_json = None
+    if prerequisites is not None:
+        if isinstance(prerequisites, dict):
+            prereqs_json = json.dumps(prerequisites)
+        elif isinstance(prerequisites, str):
+            prereqs_json = prerequisites
+        # else: leave as None
+
     cursor = conn.execute(
         """INSERT INTO lessons (text, category, level1, level2, level3, source,
-           source_sessions, occurrence_count, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           source_sessions, occurrence_count, prerequisites, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (text, category, level1, level2, level3, source, sessions_json,
-         occurrence_count, now, now),
+         occurrence_count, prereqs_json, now, now),
     )
     lesson_id = cursor.lastrowid
 
@@ -523,11 +533,32 @@ def mark_sessions_processed(sessions, db_path=None):
 
 
 def find_similar_lesson(text, db_path=None):
-    """Find an existing active lesson with similar text (word overlap > 50%).
+    """Find an existing active lesson with similar text.
+
+    Uses embedding cosine similarity (threshold 0.85) when index is available,
+    falls back to word overlap (threshold 0.70).
 
     Returns the lesson dict if found, None otherwise.
     """
     lessons = get_all_active_lessons(db_path=db_path)
+    if not lessons:
+        return None
+
+    # Try embedding-based similarity first
+    try:
+        from .embeddings import embed_text, load_index, vector_search
+        embeddings, ids = load_index()
+        if embeddings is not None and ids is not None:
+            query_emb = embed_text(text)
+            results = vector_search(query_emb, embeddings, ids, top_k=3)
+            lessons_by_id = {l["id"]: l for l in lessons}
+            for lesson_id, score in results:
+                if score >= 0.85 and lesson_id in lessons_by_id:
+                    return lessons_by_id[lesson_id]
+    except Exception:
+        pass  # Fall through to word overlap
+
+    # Fallback: word overlap (raised from 0.50 to 0.70)
     text_words = set(text.lower().split())
     if not text_words:
         return None
@@ -538,7 +569,7 @@ def find_similar_lesson(text, db_path=None):
             continue
         overlap = len(text_words & lesson_words)
         smaller = min(len(text_words), len(lesson_words))
-        if overlap / smaller > 0.5:
+        if smaller > 0 and overlap / smaller > 0.7:
             return lesson
 
     return None
