@@ -149,6 +149,7 @@ def engrammar_feedback(
     lesson_id: int,
     applicable: bool,
     reason: str = "",
+    tag_scores: dict | None = None,
     add_prerequisites: dict | str | None = None,
 ) -> str:
     """Give feedback on a lesson that was surfaced by hooks.
@@ -157,13 +158,17 @@ def engrammar_feedback(
     environment or situation. This helps Engrammar learn when to surface lessons.
 
     Args:
-        lesson_id: The lesson ID (shown in search results as id:N)
+        lesson_id: The lesson ID (shown in hook context as [EG#N])
         applicable: Whether the lesson was applicable in this context
         reason: Why the lesson did/didn't apply (e.g. "requires figma MCP which isn't connected")
+        tag_scores: Optional per-tag relevance scores (e.g. {"typescript": 0.9, "frontend": -0.3}).
+            When provided, updates tag relevance with 2x weight. When omitted, derives
+            weak signal from environment tags (+0.5 if applicable, -0.5 if not).
         add_prerequisites: Optional prerequisites dict or JSON string to add
             (e.g. {"mcp_servers":["figma"],"repos":["app-repo"]})
     """
-    from engrammar.db import get_connection
+    from engrammar.db import get_connection, update_tag_relevance
+    from engrammar.environment import detect_environment
     from datetime import datetime
 
     conn = get_connection()
@@ -187,22 +192,39 @@ def engrammar_feedback(
         # Negative feedback — record reason
         response_parts.append(f"Recorded negative feedback for lesson #{lesson_id}: {reason}")
 
+    conn.commit()
+    conn.close()
+
+    # Update tag relevance scores
+    if tag_scores:
+        # Explicit tag scores from the model — high weight
+        update_tag_relevance(lesson_id, tag_scores, weight=2.0)
+        response_parts.append(f"Updated tag relevance with explicit scores: {tag_scores}")
+    else:
+        # Derive weak signal from environment tags
+        env = detect_environment()
+        env_tags = env.get("tags", [])
+        if env_tags:
+            weak_score = 0.5 if applicable else -0.5
+            derived_scores = {tag: weak_score for tag in env_tags}
+            update_tag_relevance(lesson_id, derived_scores, weight=1.0)
+            response_parts.append(f"Updated tag relevance from env tags ({weak_score:+.1f})")
+
     # Add prerequisites if provided
     if add_prerequisites:
+        conn = get_connection()
         # Normalize to dict
         if isinstance(add_prerequisites, str):
             try:
                 new_prereqs = json.loads(add_prerequisites)
             except json.JSONDecodeError:
                 response_parts.append(f"Warning: invalid prerequisites JSON, skipped: {add_prerequisites}")
-                conn.commit()
                 conn.close()
                 return "\n".join(response_parts)
         elif isinstance(add_prerequisites, dict):
             new_prereqs = add_prerequisites
         else:
             response_parts.append(f"Warning: prerequisites must be dict or JSON string, skipped")
-            conn.commit()
             conn.close()
             return "\n".join(response_parts)
 
@@ -228,9 +250,8 @@ def engrammar_feedback(
             (json.dumps(existing), now, lesson_id),
         )
         response_parts.append(f"Updated prerequisites: {json.dumps(existing)}")
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
     return "\n".join(response_parts)
 

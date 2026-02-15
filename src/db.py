@@ -640,6 +640,184 @@ def get_unprocessed_audit_sessions(limit=10, db_path=None):
     return [dict(r) for r in rows]
 
 
+# --- Tag relevance scoring constants ---
+EMA_ALPHA = 0.3
+SCORE_CLAMP = (-3.0, 3.0)
+MIN_EVIDENCE_FOR_PIN = 5
+PIN_THRESHOLD = 0.6
+UNPIN_THRESHOLD = 0.2
+
+
+def update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=None):
+    """Update per-tag relevance scores using EMA.
+
+    Formula: new = clamp(old * (1 - EMA_ALPHA) + raw * EMA_ALPHA * weight, -3, 3)
+
+    Args:
+        lesson_id: the lesson
+        tag_scores: dict mapping tag -> raw score (e.g. {"typescript": 0.9, "frontend": -0.5})
+        weight: multiplier for the raw score (2.0 for direct MCP feedback, 1.0 for eval)
+        db_path: optional database path
+    """
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+
+    for tag, raw_score in tag_scores.items():
+        row = conn.execute(
+            "SELECT score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ? AND tag = ?",
+            (lesson_id, tag),
+        ).fetchone()
+
+        if row:
+            old_score = row["score"]
+            new_score = old_score * (1 - EMA_ALPHA) + raw_score * EMA_ALPHA * weight
+            new_score = max(SCORE_CLAMP[0], min(SCORE_CLAMP[1], new_score))
+
+            pos = row["positive_evals"] + (1 if raw_score > 0 else 0)
+            neg = row["negative_evals"] + (1 if raw_score < 0 else 0)
+
+            conn.execute(
+                """UPDATE lesson_tag_relevance
+                   SET score = ?, positive_evals = ?, negative_evals = ?, last_evaluated = ?
+                   WHERE lesson_id = ? AND tag = ?""",
+                (new_score, pos, neg, now, lesson_id, tag),
+            )
+        else:
+            initial_score = max(SCORE_CLAMP[0], min(SCORE_CLAMP[1], raw_score * EMA_ALPHA * weight))
+            pos = 1 if raw_score > 0 else 0
+            neg = 1 if raw_score < 0 else 0
+
+            conn.execute(
+                """INSERT INTO lesson_tag_relevance (lesson_id, tag, score, positive_evals, negative_evals, last_evaluated)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (lesson_id, tag, initial_score, pos, neg, now),
+            )
+
+    conn.commit()
+    conn.close()
+
+    # Check pin/unpin decisions after score update
+    check_and_apply_pin_decisions(lesson_id, db_path=db_path)
+
+
+def get_tag_relevance_scores(lesson_id, db_path=None):
+    """Get all tag relevance scores for a lesson.
+
+    Returns:
+        dict mapping tag -> score
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT tag, score FROM lesson_tag_relevance WHERE lesson_id = ?",
+        (lesson_id,),
+    ).fetchall()
+    conn.close()
+    return {r["tag"]: r["score"] for r in rows}
+
+
+def get_avg_tag_relevance(lesson_id, tags, db_path=None):
+    """Get average relevance score for a lesson across given tags.
+
+    Args:
+        lesson_id: the lesson
+        tags: list of env tags to average over
+
+    Returns:
+        float: average score (0.0 if no scores found)
+    """
+    if not tags:
+        return 0.0
+
+    conn = get_connection(db_path)
+    placeholders = ",".join("?" * len(tags))
+    rows = conn.execute(
+        f"SELECT score FROM lesson_tag_relevance WHERE lesson_id = ? AND tag IN ({placeholders})",
+        (lesson_id, *tags),
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return 0.0
+    return sum(r["score"] for r in rows) / len(rows)
+
+
+def check_and_apply_pin_decisions(lesson_id, db_path=None):
+    """Auto-pin at avg > PIN_THRESHOLD with enough evidence, auto-unpin at avg < UNPIN_THRESHOLD.
+
+    Only auto-unpins if the lesson was auto-pinned (has "auto_pinned": true in prerequisites).
+    Manual pins are never auto-unpinned.
+
+    Returns:
+        "pinned", "unpinned", or None
+    """
+    conn = get_connection(db_path)
+
+    # Get all tag relevance data
+    rows = conn.execute(
+        "SELECT tag, score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ?",
+        (lesson_id,),
+    ).fetchall()
+
+    if not rows:
+        conn.close()
+        return None
+
+    total_evals = sum(r["positive_evals"] + r["negative_evals"] for r in rows)
+    avg_score = sum(r["score"] for r in rows) / len(rows)
+
+    lesson = conn.execute(
+        "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+    ).fetchone()
+
+    if not lesson:
+        conn.close()
+        return None
+
+    now = datetime.utcnow().isoformat()
+    result = None
+
+    if not lesson["pinned"] and avg_score > PIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
+        # Auto-pin
+        existing = {}
+        if lesson["prerequisites"]:
+            try:
+                existing = json.loads(lesson["prerequisites"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        existing["auto_pinned"] = True
+        # Add tags with positive scores as tag prerequisites
+        positive_tags = sorted([r["tag"] for r in rows if r["score"] > 0])
+        if positive_tags:
+            existing["tags"] = positive_tags
+
+        conn.execute(
+            "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(existing), now, lesson_id),
+        )
+        result = "pinned"
+
+    elif lesson["pinned"] and avg_score < UNPIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
+        # Only auto-unpin if it was auto-pinned
+        existing = {}
+        if lesson["prerequisites"]:
+            try:
+                existing = json.loads(lesson["prerequisites"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if existing.get("auto_pinned"):
+            conn.execute(
+                "UPDATE lessons SET pinned = 0, updated_at = ? WHERE id = ?",
+                (now, lesson_id),
+            )
+            result = "unpinned"
+
+    conn.commit()
+    conn.close()
+    return result
+
+
 def import_from_state_file(path, db_path=None):
     """Import lessons from .lessons-state.json."""
     if not os.path.exists(path):
