@@ -118,81 +118,6 @@ def find_relevant_lessons(prompt, db_path=None):
         return []
 
 
-def evaluate_lesson_in_session(lesson, session_messages):
-    """Use Haiku to evaluate if a lesson was useful in a session.
-
-    Args:
-        lesson: dict with lesson data
-        session_messages: list of message dicts with 'role' and 'content'
-
-    Returns:
-        bool: True if lesson was useful
-    """
-    import anthropic
-
-    # Get API key
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        claude_config_path = os.path.expanduser("~/.claude.json")
-        if os.path.exists(claude_config_path):
-            with open(claude_config_path, "r") as f:
-                config = json.load(f)
-                api_key = config.get("apiKey")
-
-    if not api_key:
-        print("Warning: No ANTHROPIC_API_KEY found, assuming all lessons useful")
-        return True
-
-    # Build session summary (first and last few messages)
-    summary_parts = []
-    if len(session_messages) > 0:
-        summary_parts.append("Session start:")
-        for msg in session_messages[:3]:
-            role = msg['role']
-            content = msg['content'][:200]  # Truncate
-            summary_parts.append(f"{role}: {content}")
-
-    if len(session_messages) > 6:
-        summary_parts.append("...")
-        summary_parts.append("Session end:")
-        for msg in session_messages[-3:]:
-            role = msg['role']
-            content = msg['content'][:200]
-            summary_parts.append(f"{role}: {content}")
-
-    session_summary = "\n".join(summary_parts)
-
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-
-        prompt = f"""You are evaluating whether a lesson was useful during a Claude Code session.
-
-Lesson: [{lesson.get('category', 'general')}] {lesson['text']}
-
-Session transcript excerpt:
-{session_summary}
-
-Was this lesson actually relevant and useful during this session? Consider:
-- Did the assistant follow this lesson's guidance?
-- Did the lesson prevent an error or guide correct behavior?
-- Was the topic of the lesson even relevant to what was done?
-
-Answer only: YES or NO"""
-
-        response = client.messages.create(
-            model="claude-haiku-4.5-20251001",
-            max_tokens=10,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        answer = response.content[0].text.strip().upper()
-        return answer == "YES"
-
-    except Exception as e:
-        print(f"Error evaluating lesson {lesson['id']}: {e}")
-        return False  # Fail closed on errors
-
-
 def backfill_session(session_data, dry_run=False, verbose=False, no_eval=False):
     """Analyze a session and update match stats for useful lessons.
 
@@ -230,18 +155,14 @@ def backfill_session(session_data, dry_run=False, verbose=False, no_eval=False):
     if not all_lessons:
         return {'shown': 0, 'useful': 0, 'lessons': []}
 
-    # Evaluate each lesson
+    # Mark all shown lessons as useful (evaluation moved to evaluator pipeline)
     useful_lessons = []
     for lesson_id, lesson in all_lessons.items():
-        if no_eval:
-            # Skip evaluation, assume all shown lessons are useful
-            is_useful = True
-        else:
-            is_useful = evaluate_lesson_in_session(lesson, messages)
+        is_useful = True
 
         if verbose:
-            status = "✓ useful" if is_useful else "✗ not useful"
-            evaluation = " (no eval)" if no_eval else ""
+            status = "✓ useful"
+            evaluation = ""
             print(f"  Lesson {lesson_id}: {status}{evaluation}")
 
         if is_useful:
