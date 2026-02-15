@@ -92,6 +92,17 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     # 3. Reciprocal Rank Fusion
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
 
+    # 3.5. Apply tag relevance boost (after RRF, before filters)
+    env_tags = env.get("tags", [])
+    if env_tags:
+        from .db import get_avg_tag_relevance
+        RELEVANCE_WEIGHT = 0.005  # small relative to RRF range ~0.014-0.033
+        fused = [
+            (lid, score + (get_avg_tag_relevance(lid, env_tags, db_path=db_path) / 3.0 * RELEVANCE_WEIGHT))
+            for lid, score in fused
+        ]
+        fused.sort(key=lambda x: x[1], reverse=True)
+
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:
         from .db import get_connection
