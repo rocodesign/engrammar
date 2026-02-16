@@ -9,7 +9,7 @@ from rank_bm25 import BM25Okapi
 from .config import LAST_SEARCH_PATH, load_config
 from .db import get_all_active_lessons
 from .embeddings import embed_text, load_index, vector_search
-from .environment import check_prerequisites, detect_environment
+from .environment import detect_environment
 
 
 def _tokenize(text):
@@ -59,15 +59,13 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     if not all_lessons:
         return []
 
-    # Filter by environment prerequisites (unless skipped for backfill)
+    # Detect environment (skip_prerequisites sets env={} which naturally skips tag filtering)
     if skip_prerequisites:
-        lessons = all_lessons
         env = {}
     else:
         env = detect_environment()
-        lessons = [l for l in all_lessons if check_prerequisites(l.get("prerequisites"), env)]
-    if not lessons:
-        return []
+
+    lessons = all_lessons
 
     # Build lesson lookup
     lesson_map = {l["id"]: l for l in lessons}
@@ -97,16 +95,25 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     # 3. Reciprocal Rank Fusion
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
 
-    # 3.5. Apply tag relevance boost (after RRF, before filters)
+    # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
     env_tags = env.get("tags", [])
     if env_tags:
-        from .db import get_avg_tag_relevance
-        RELEVANCE_WEIGHT = 0.005  # small relative to RRF range ~0.014-0.033
-        fused = [
-            (lid, score + (get_avg_tag_relevance(lid, env_tags, db_path=db_path) / 3.0 * RELEVANCE_WEIGHT))
-            for lid, score in fused
-        ]
-        fused.sort(key=lambda x: x[1], reverse=True)
+        from .db import get_tag_relevance_with_evidence
+        MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
+        NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
+        RELEVANCE_WEIGHT = 0.01          # boost weight (RRF range ~0.014-0.033)
+
+        filtered_fused = []
+        for lid, score in fused:
+            avg_score, total_evals = get_tag_relevance_with_evidence(lid, env_tags, db_path=db_path)
+            # Filter: strong negative signal with enough evidence
+            if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
+                continue
+            # Boost: apply tag relevance as score adjustment
+            score += (avg_score / 3.0) * RELEVANCE_WEIGHT
+            filtered_fused.append((lid, score))
+
+        fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:

@@ -35,6 +35,13 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
   - Performance benchmarks
   - Data flow diagrams
 
+- **[evaluation.md](evaluation.md)** - Evaluation & tag relevance scoring
+  - How the evaluator pipeline works
+  - EMA scoring math and convergence
+  - Tag relevance filtering in search
+  - Structural vs tag prerequisites
+  - Debugging lesson visibility
+
 ## What Should I Read?
 
 ### I want to...
@@ -56,6 +63,9 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
 
 **...use MCP tools**
 → [CHEATSHEET.md - MCP Tools](CHEATSHEET.md#mcp-tools)
+
+**...understand how evaluation and tag scoring works**
+→ [evaluation.md](evaluation.md)
 
 **...understand the internals**
 → [ARCHITECTURE.md - Core Components](ARCHITECTURE.md#core-components)
@@ -87,6 +97,8 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
 | Auto-Pin | [Architecture - Auto-Pin Algorithm](ARCHITECTURE.md#auto-pin-algorithm) |
 | Search | [Architecture - Search Architecture](ARCHITECTURE.md#search-architecture) |
 | Hooks | [Architecture - Hook System](ARCHITECTURE.md#hook-system) |
+| Evaluation | [evaluation.md](evaluation.md) |
+| Tag Relevance | [evaluation.md - Tag Relevance Scores](evaluation.md#tag-relevance-scores) |
 
 ## Feature Highlights
 

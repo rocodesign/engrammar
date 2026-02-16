@@ -778,6 +778,41 @@ def get_avg_tag_relevance(lesson_id, tags, db_path=None):
     return sum(r["score"] for r in rows) / len(rows)
 
 
+def get_tag_relevance_with_evidence(lesson_id, tags, db_path=None):
+    """Get average relevance score and total evidence count for a lesson across given tags.
+
+    Unlike get_avg_tag_relevance(), this:
+    - Divides by total requested tags (not just matched rows) — treats missing tags as 0.0
+    - Returns evidence count (sum of positive + negative evals) for filter threshold decisions
+
+    Args:
+        lesson_id: the lesson
+        tags: list of env tags to check
+
+    Returns:
+        tuple: (avg_score, total_evals) where avg_score divides by len(tags) and
+               total_evals is sum of all positive + negative evals across matched tags
+    """
+    if not tags:
+        return (0.0, 0)
+
+    conn = get_connection(db_path)
+    placeholders = ",".join("?" * len(tags))
+    rows = conn.execute(
+        f"SELECT score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ? AND tag IN ({placeholders})",
+        (lesson_id, *tags),
+    ).fetchall()
+    conn.close()
+
+    total_score = sum(r["score"] for r in rows)
+    total_evals = sum(r["positive_evals"] + r["negative_evals"] for r in rows)
+
+    # Divide by total requested tags, not just matched rows
+    avg_score = total_score / len(tags)
+
+    return (avg_score, total_evals)
+
+
 def check_and_apply_pin_decisions(lesson_id, db_path=None):
     """Auto-pin at avg > PIN_THRESHOLD with enough evidence, auto-unpin at avg < UNPIN_THRESHOLD.
 

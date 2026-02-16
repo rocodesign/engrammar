@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.environment import check_prerequisites
+from src.environment import check_prerequisites, check_structural_prerequisites
 from src.search import search, _lesson_has_all_tags
-from src.db import init_db, add_lesson, get_connection
+from src.db import init_db, add_lesson, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
 from src.embeddings import build_index
 
 
@@ -237,3 +237,97 @@ class TestSearchWithTagFilter:
 
         # Should work (though may be empty due to env filtering)
         assert isinstance(results, list)
+
+
+class TestStructuralPrerequisites:
+    """Test check_structural_prerequisites strips tags and checks the rest."""
+
+    def test_passes_with_no_prerequisites(self):
+        env = {"os": "darwin", "tags": ["frontend"]}
+        assert check_structural_prerequisites(None, env) is True
+        assert check_structural_prerequisites({}, env) is True
+
+    def test_ignores_tags(self):
+        """Should pass even when tag prereqs wouldn't match."""
+        env = {"os": "darwin", "tags": []}
+        prereqs = {"tags": ["frontend", "react"]}
+        assert check_structural_prerequisites(prereqs, env) is True
+
+    def test_still_checks_os(self):
+        env = {"os": "linux", "tags": ["frontend"]}
+        prereqs = {"os": "darwin", "tags": ["frontend"]}
+        assert check_structural_prerequisites(prereqs, env) is False
+
+    def test_still_checks_repo(self):
+        env = {"repo": "other-repo", "tags": ["frontend"]}
+        prereqs = {"repos": ["app-repo"], "tags": ["frontend"]}
+        assert check_structural_prerequisites(prereqs, env) is False
+
+    def test_json_string_prerequisites(self):
+        env = {"os": "darwin", "tags": []}
+        prereqs_json = json.dumps({"tags": ["frontend"], "os": "darwin"})
+        assert check_structural_prerequisites(prereqs_json, env) is True
+
+    def test_combined_structural_pass_with_tag_mismatch(self):
+        """Should pass when structural prereqs match but tags don't."""
+        env = {"os": "darwin", "repo": "app-repo", "tags": []}
+        prereqs = {"os": "darwin", "repos": ["app-repo"], "tags": ["nonexistent"]}
+        assert check_structural_prerequisites(prereqs, env) is True
+
+
+class TestTagRelevanceFiltering:
+    """Test tag relevance score filtering in search context."""
+
+    def test_strong_negative_with_enough_evidence_filters(self, test_db):
+        """Lesson with strong negative signal and enough evals should be filtered."""
+        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+
+        for _ in range(5):
+            update_tag_relevance(lid, {"frontend": -1.0}, weight=1.0, db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
+        assert evals >= 3
+        assert avg < -0.1
+
+    def test_strong_negative_low_evidence_passes(self, test_db):
+        """Lesson with negative signal but low evidence should not be filtered."""
+        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+
+        # Only 1 eval — not enough to filter
+        update_tag_relevance(lid, {"frontend": -1.0}, weight=1.0, db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
+        assert evals < 3
+        # Would not be filtered (exploration allowed)
+
+    def test_positive_signal_passes(self, test_db):
+        """Lesson with positive signal should pass and get boosted."""
+        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+
+        for _ in range(5):
+            update_tag_relevance(lid, {"frontend": 1.0}, weight=1.0, db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
+        assert evals >= 3
+        assert avg > 0
+
+    def test_no_data_passes(self, test_db):
+        """Lesson with no tag relevance data should pass with no boost."""
+        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
+        assert avg == 0.0
+        assert evals == 0
+
+    def test_weak_negative_passes(self, test_db):
+        """Lesson with weak negative signal should pass (above threshold)."""
+        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+
+        # Mix of slightly negative signals — should stay above -0.1
+        update_tag_relevance(lid, {"frontend": -0.1}, weight=1.0, db_path=test_db)
+        update_tag_relevance(lid, {"frontend": 0.1}, weight=1.0, db_path=test_db)
+        update_tag_relevance(lid, {"frontend": -0.1}, weight=1.0, db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
+        assert evals >= 3
+        # Weak signal — should not be strongly negative enough to filter

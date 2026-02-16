@@ -79,33 +79,29 @@ def test_search_respects_top_k():
         assert len(results) <= 5
 
 
-def test_search_filters_by_prerequisites():
-    """Search should filter results by environment prerequisites."""
+def test_search_filters_by_tag_relevance():
+    """Search should filter lessons with strong negative tag relevance."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
-        # Add lesson with repo prerequisite
-        lesson_id = add_lesson(
-            text="App repo specific lesson",
-            category="test",
-            db_path=db_path
-        )
+        from src.db import get_connection, update_tag_relevance
 
-        # Set prerequisites
-        from src.db import get_connection
-        import json
-        conn = get_connection(db_path)
-        conn.execute(
-            "UPDATE lessons SET prerequisites = ? WHERE id = ?",
-            (json.dumps({"repos": ["app-repo"]}), lesson_id)
-        )
-        conn.commit()
-        conn.close()
+        # Add two lessons about the same topic
+        good_id = add_lesson(text="Good testing lesson", category="test", db_path=db_path)
+        bad_id = add_lesson(text="Bad testing lesson", category="test", db_path=db_path)
 
-        # Search should not return lesson when repo doesn't match
-        # (We can't easily test this without mocking detect_environment,
-        # but the prerequisite filtering is tested in test_prerequisites.py)
+        # Give bad_id strong negative signal for tag "frontend" (enough evidence to filter)
+        for _ in range(5):
+            update_tag_relevance(bad_id, {"frontend": -1.0}, weight=1.0, db_path=db_path)
+
+        # Give good_id positive signal
+        for _ in range(5):
+            update_tag_relevance(good_id, {"frontend": 1.0}, weight=1.0, db_path=db_path)
+
+        # The tag relevance filtering is applied when env has tags
+        # We can't easily mock detect_environment here, but the filtering
+        # logic is tested thoroughly in test_tag_filtering.py
 
 
 def test_search_handles_empty_database():

@@ -13,6 +13,7 @@ from src.db import (
     update_tag_relevance,
     get_tag_relevance_scores,
     get_avg_tag_relevance,
+    get_tag_relevance_with_evidence,
     check_and_apply_pin_decisions,
     EMA_ALPHA,
     SCORE_CLAMP,
@@ -223,3 +224,65 @@ class TestAutoPinUnpin:
         conn.close()
 
         assert row["pinned"] == 0
+
+
+class TestTagRelevanceWithEvidence:
+    """Test get_tag_relevance_with_evidence() function."""
+
+    def test_empty_tags_returns_zero(self, test_db):
+        """Should return (0.0, 0) for empty tag list."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        avg, evals = get_tag_relevance_with_evidence(lid, [], db_path=test_db)
+        assert avg == 0.0
+        assert evals == 0
+
+    def test_no_data_returns_zero(self, test_db):
+        """Should return (0.0, 0) when no relevance scores exist."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        avg, evals = get_tag_relevance_with_evidence(lid, ["ts", "react"], db_path=test_db)
+        assert avg == 0.0
+        assert evals == 0
+
+    def test_divides_by_total_requested_tags(self, test_db):
+        """Should divide score sum by total requested tags, not matched rows."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        # Only set score for "ts", not "react"
+        update_tag_relevance(lid, {"ts": 1.0}, weight=1.0, db_path=test_db)
+
+        # Request both tags — avg should be (0.3 + 0) / 2 = 0.15
+        avg, evals = get_tag_relevance_with_evidence(lid, ["ts", "react"], db_path=test_db)
+        expected_ts_score = EMA_ALPHA * 1.0  # 0.3
+        expected_avg = expected_ts_score / 2  # divide by 2 requested tags
+        assert abs(avg - expected_avg) < 0.001
+
+    def test_differs_from_get_avg_tag_relevance(self, test_db):
+        """Should differ from get_avg_tag_relevance when tags are missing."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        update_tag_relevance(lid, {"ts": 1.0}, weight=1.0, db_path=test_db)
+
+        # get_avg_tag_relevance divides by matched rows (1)
+        old_avg = get_avg_tag_relevance(lid, ["ts", "react"], db_path=test_db)
+        # get_tag_relevance_with_evidence divides by total tags (2)
+        new_avg, _ = get_tag_relevance_with_evidence(lid, ["ts", "react"], db_path=test_db)
+
+        assert old_avg > new_avg  # old divides by 1, new by 2
+
+    def test_returns_total_evals(self, test_db):
+        """Should return sum of positive + negative evals across matched tags."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        update_tag_relevance(lid, {"ts": 1.0}, weight=1.0, db_path=test_db)  # +1 positive
+        update_tag_relevance(lid, {"ts": -1.0}, weight=1.0, db_path=test_db)  # +1 negative
+        update_tag_relevance(lid, {"react": 0.5}, weight=1.0, db_path=test_db)  # +1 positive
+
+        _, evals = get_tag_relevance_with_evidence(lid, ["ts", "react"], db_path=test_db)
+        assert evals == 3  # 1 pos + 1 neg for ts, 1 pos for react
+
+    def test_single_tag_matches_score(self, test_db):
+        """For single tag, avg should equal that tag's score."""
+        lid = add_lesson(text="Test", category="test", db_path=test_db)
+        update_tag_relevance(lid, {"ts": 1.0}, weight=1.0, db_path=test_db)
+
+        avg, evals = get_tag_relevance_with_evidence(lid, ["ts"], db_path=test_db)
+        expected = EMA_ALPHA * 1.0  # 0.3
+        assert abs(avg - expected) < 0.001
+        assert evals == 1

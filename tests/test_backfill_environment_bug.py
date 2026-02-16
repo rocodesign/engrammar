@@ -35,12 +35,13 @@ def test_db():
 class TestBackfillEnvironmentBug:
     """Tests documenting the backfill environment filtering bug."""
 
-    def test_search_uses_current_environment_not_historical(self, test_db, monkeypatch):
+    def test_search_no_longer_hard_gates_on_tags(self, test_db, monkeypatch):
         """
-        KNOWN BUG: search() always uses current environment, not historical context.
+        RESOLVED: Tag prerequisites no longer hard-gate search results.
 
-        This test demonstrates that backfill cannot accurately determine which lessons
-        should have matched in historical sessions from different environments.
+        Tag relevance scoring now handles context filtering dynamically.
+        Lessons with tag prerequisites are no longer excluded from search
+        when the current environment doesn't have matching tags.
         """
         # Create a lesson with acme tag prerequisite
         conn = get_connection(test_db)
@@ -56,20 +57,9 @@ class TestBackfillEnvironmentBug:
         conn.commit()
         conn.close()
 
-        # Simulate historical session environment (acme project)
-        historical_env = {
-            'os': 'darwin',
-            'repo': 'app-repo',
-            'cwd': '/Users/user/work/acme/app-repo',
-            'tags': ['acme', 'react', 'frontend'],  # Had acme tag!
-        }
-
-        # Simulate current environment (personal project)
+        # Simulate current environment (personal project, no acme tag)
         monkeypatch.setattr(os, 'getcwd', lambda: '/Users/user/work/personal/my-app')
-        current_env = detect_environment()
-        # current_env.tags will NOT include 'acme'
 
-        # Search using current environment (what backfill does)
         from src.embeddings import build_index
         from src.db import get_all_active_lessons
         lessons = get_all_active_lessons(test_db)
@@ -77,21 +67,18 @@ class TestBackfillEnvironmentBug:
 
         results = search("acme patterns", db_path=test_db)
 
-        # BUG: Lesson is excluded because current env doesn't have 'acme' tag
-        # even though historical session DID have the tag
-        assert len(results) == 0, "Lesson excluded due to current env (should have matched in historical env)"
+        # FIXED: Lesson is now included because tag prerequisites no longer hard-gate.
+        # Tag relevance scoring handles context filtering dynamically.
+        assert len(results) >= 1, "Lesson should be included — tag prereqs no longer hard-gate search"
 
-        # What SHOULD happen: Lesson should be included because historical session
-        # had the acme tag. But backfill has no way to know this.
-        # Historical session data: ✓ has repo, ✗ doesn't have tags
-
-    def test_backfill_false_negative_scenario(self, test_db):
+    def test_backfill_false_negative_resolved(self, test_db):
         """
-        Demonstrate false negative: Lesson should match historical session but doesn't.
+        RESOLVED: False negative no longer occurs.
 
-        Historical session: acme/app-repo with ['acme', 'react'] tags
-        Backfill run from:  personal/my-app with ['personal', 'vue'] tags
-        Result: Acme-specific lessons are excluded (WRONG)
+        Previously: Lessons with tag prereqs were excluded from search when
+        current env didn't have matching tags (false negative for backfill).
+        Now: Tag prereqs no longer hard-gate search. Tag relevance scoring
+        handles filtering dynamically, so lessons enter the candidate pool.
         """
         # Create acme-specific lesson
         conn = get_connection(test_db)
@@ -108,15 +95,6 @@ class TestBackfillEnvironmentBug:
         conn.commit()
         conn.close()
 
-        # Historical session was in acme/app-repo
-        # User prompt: "How to create a table component"
-        # Lesson SHOULD match because session had ['acme', 'react'] tags
-
-        # But when backfill runs from personal/my-app...
-        # search() filters by current env which has ['personal', 'vue']
-        # Lesson is excluded (FALSE NEGATIVE)
-
-        # This is what backfill_stats.py:115 does:
         from src.search import search
         from src.embeddings import build_index
         from src.db import get_all_active_lessons
@@ -125,14 +103,11 @@ class TestBackfillEnvironmentBug:
         build_index(lessons)
 
         results = search("table component", db_path=test_db)
-
-        # Lesson won't be in results because current env doesn't match prerequisites
         lesson_ids = [r['id'] for r in results]
 
-        # BUG DEMONSTRATED: Lesson is excluded
-        assert lesson_id not in lesson_ids, \
-            "BUG: Lesson excluded from backfill because current env doesn't match, " \
-            "even though historical session DID match"
+        # FIXED: Lesson is now included — tag prereqs no longer hard-gate search
+        assert lesson_id in lesson_ids, \
+            "Lesson should be included — tag prerequisites no longer hard-gate search"
 
     def test_backfill_false_positive_scenario(self, test_db):
         """
