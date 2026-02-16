@@ -168,7 +168,7 @@ claude -p "You are being tested. Your ONLY job is to report what [ENGRAMMAR_V1] 
 
 First, report ALL [ENGRAMMAR_V1] blocks you see (from SessionStart and UserPromptSubmit hooks).
 
-My actual prompt context is: I need to create a new React component with Tailwind CSS styling for a Acme app-repo frontend feature. I'll need to create a git branch and PR.
+My actual prompt context is: I need to create a new React component with Tailwind CSS styling for a frontend feature. I'll need to create a git branch and PR.
 
 Instructions:
 1. List every [ENGRAMMAR_V1] block with the hook event and all EG#IDs

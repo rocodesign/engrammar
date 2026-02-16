@@ -19,13 +19,6 @@ from pathlib import Path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
-# Known path segments that map to environment tags
-PATH_TAG_MAP = {
-    "acme": ["acme"],
-    "app-repo": ["acme", "frontend"],
-    "talent-resume": ["acme", "frontend"],
-    "engrammar": ["engrammar"],
-}
 
 
 def find_session_files(projects_dir=None):
@@ -124,15 +117,21 @@ def read_session_transcript(jsonl_path):
 def _infer_env_from_transcript(session_data):
     """Infer environment tags from transcript data (best-effort).
 
+    Uses GIT_REMOTE_PATTERNS from the tag detection system applied against
+    the transcript's git remote info.
+
     Returns:
         list of tag strings
     """
-    tags = set()
-    cwd = session_data.get('cwd', '') or ''
+    from engrammar.tag_patterns import GIT_REMOTE_PATTERNS
 
-    for path_segment, path_tags in PATH_TAG_MAP.items():
-        if path_segment in cwd.lower():
-            tags.update(path_tags)
+    tags = set()
+
+    git_remote = session_data.get('git_remote', '') or ''
+    if git_remote:
+        for pattern, tag in GIT_REMOTE_PATTERNS:
+            if pattern.search(git_remote):
+                tags.add(tag)
 
     return sorted(tags)
 

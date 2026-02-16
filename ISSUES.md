@@ -26,7 +26,7 @@ Hooks output lessons in a structured, parseable block with stable ID markers:
 
 ```
 [ENGRAMMAR_V1]
-- [EG#42][development/frontend] Never use inline styles — use CSS classes or Picasso props
+- [EG#42][development/frontend] Never use inline styles — use CSS classes or Tailwind props
 - [EG#17][development/git] Branch naming: taps-NUMBER (lowercase)
 Treat these as soft constraints. If one doesn't apply here, call engrammar_feedback(lesson_id, applicable=false, reason="...").
 [/ENGRAMMAR_V1]

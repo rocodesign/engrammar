@@ -80,24 +80,24 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
 
 ### Common Tasks
 
-| Task | Reference |
-|------|-----------|
-| Add a lesson | [Cheatsheet - Add](CHEATSHEET.md#add-lessons) |
-| Search lessons | [Cheatsheet - Search](CHEATSHEET.md#search) |
-| Use tags | [Cheatsheet - Tag System](CHEATSHEET.md#tag-system) |
-| Pin lessons | [Cheatsheet - Pin Management](CHEATSHEET.md#pin-management) |
+| Task                | Reference                                                     |
+| ------------------- | ------------------------------------------------------------- |
+| Add a lesson        | [Cheatsheet - Add](CHEATSHEET.md#add-lessons)                 |
+| Search lessons      | [Cheatsheet - Search](CHEATSHEET.md#search)                   |
+| Use tags            | [Cheatsheet - Tag System](CHEATSHEET.md#tag-system)           |
+| Pin lessons         | [Cheatsheet - Pin Management](CHEATSHEET.md#pin-management)   |
 | Understand auto-pin | [Architecture - Auto-Pin](ARCHITECTURE.md#auto-pin-algorithm) |
 
 ### Key Concepts
 
-| Concept | Where to Learn |
-|---------|----------------|
-| Tags | [Cheatsheet - Tag System](CHEATSHEET.md#tag-system) |
-| Prerequisites | [Cheatsheet - Prerequisites](CHEATSHEET.md#prerequisites) |
-| Auto-Pin | [Architecture - Auto-Pin Algorithm](ARCHITECTURE.md#auto-pin-algorithm) |
-| Search | [Architecture - Search Architecture](ARCHITECTURE.md#search-architecture) |
-| Hooks | [Architecture - Hook System](ARCHITECTURE.md#hook-system) |
-| Evaluation | [evaluation.md](evaluation.md) |
+| Concept       | Where to Learn                                                             |
+| ------------- | -------------------------------------------------------------------------- |
+| Tags          | [Cheatsheet - Tag System](CHEATSHEET.md#tag-system)                        |
+| Prerequisites | [Cheatsheet - Prerequisites](CHEATSHEET.md#prerequisites)                  |
+| Auto-Pin      | [Architecture - Auto-Pin Algorithm](ARCHITECTURE.md#auto-pin-algorithm)    |
+| Search        | [Architecture - Search Architecture](ARCHITECTURE.md#search-architecture)  |
+| Hooks         | [Architecture - Hook System](ARCHITECTURE.md#hook-system)                  |
+| Evaluation    | [evaluation.md](evaluation.md)                                             |
 | Tag Relevance | [evaluation.md - Tag Relevance Scores](evaluation.md#tag-relevance-scores) |
 
 ## Feature Highlights
@@ -105,6 +105,7 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
 ### 🏷️ Tag System
 
 Automatically detects project context from:
+
 - File paths (`~/work/acme/*` → `acme`)
 - Git remotes (`github.com/acme` → `acme`, `github`)
 - File markers (`tsconfig.json` → `typescript`)
@@ -116,11 +117,13 @@ Automatically detects project context from:
 ### 🎯 Auto-Pin Algorithm
 
 Learns which lessons are valuable across projects:
+
 - Tracks matches per tag set
 - Finds minimal common tags with 15+ matches
 - Auto-pins to broader contexts
 
 **Example**:
+
 ```
 6 matches in ['acme', 'frontend', 'typescript']
 5 matches in ['acme', 'frontend', 'react']
@@ -133,6 +136,7 @@ Learns which lessons are valuable across projects:
 ### 🔍 Hybrid Search
 
 Combines vector similarity and BM25 keyword matching:
+
 - **Vector**: Semantic understanding (Voyage embeddings)
 - **BM25**: Keyword precision
 - **RRF**: Reciprocal Rank Fusion merges results
@@ -142,6 +146,7 @@ Combines vector similarity and BM25 keyword matching:
 ### 🎣 Smart Hooks
 
 Surfaces lessons at the perfect moment:
+
 - **SessionStart**: Shows pinned lessons
 - **PreToolUse**: Contextual suggestions before tool execution
 - **SessionEnd**: Tracks usefulness (no API key required)
@@ -178,7 +183,7 @@ engrammar_add(
 ```bash
 # Lesson auto-detects context
 cd ~/work/acme/app-repo
-engrammar search "table component"  # Shows Acme-specific
+engrammar search "table component"  # Shows acme-specific
 
 cd ~/work/personal/my-app
 engrammar search "table component"  # Shows generic frontend
@@ -237,6 +242,7 @@ Location: `~/.engrammar/config.json`
 ### Contributing
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for:
+
 - System architecture
 - Database schema
 - Component details

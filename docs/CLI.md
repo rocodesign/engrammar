@@ -28,6 +28,7 @@ Now you can use: `engrammar status` instead of the full path.
 ### Setup & Status
 
 #### `setup`
+
 Initialize database, import existing lessons, and build embedding index.
 
 ```bash
@@ -35,6 +36,7 @@ engrammar setup
 ```
 
 #### `status`
+
 Show database stats, index health, and hook configuration.
 
 ```bash
@@ -42,6 +44,7 @@ engrammar status
 ```
 
 **Output:**
+
 - Database path and lesson count
 - Category breakdown
 - Embedding index status
@@ -50,6 +53,7 @@ engrammar status
 ### Search & Browse
 
 #### `search`
+
 Search lessons using hybrid search (vector + BM25).
 
 ```bash
@@ -58,13 +62,16 @@ engrammar search "figma" --category tools
 ```
 
 **Options:**
+
 - `--category CATEGORY` - Filter by category prefix
 
 **Output:**
+
 - Ranked results with scores
 - Match count and occurrence count per lesson
 
 #### `list`
+
 List all active lessons with pagination.
 
 ```bash
@@ -74,11 +81,13 @@ engrammar list --category development/frontend
 ```
 
 **Options:**
+
 - `--offset N` - Skip first N lessons (default: 0)
 - `--limit N` - Show N lessons (default: 20)
 - `--category CATEGORY` - Filter by category
 
 **Output:**
+
 - Lesson ID, category, and text preview
 - Pin status (📌 if pinned)
 - Prerequisites (if set)
@@ -87,6 +96,7 @@ engrammar list --category development/frontend
 ### Add & Update
 
 #### `add`
+
 Add a new lesson.
 
 ```bash
@@ -94,13 +104,16 @@ engrammar add "Never use inline styles in React components" --category developme
 ```
 
 **Options:**
+
 - `--category CATEGORY` - Set lesson category (default: "general")
 
 **Behavior:**
+
 - Automatically rebuilds embedding index
 - Sets source to "manual"
 
 #### `update`
+
 Update a lesson's text, category, or prerequisites.
 
 ```bash
@@ -110,15 +123,18 @@ engrammar update 42 --prereqs '{"repos": ["app-repo"]}'
 ```
 
 **Options:**
+
 - `--text "new text"` - Update lesson text
 - `--category CATEGORY` - Update primary category
 - `--prereqs JSON` - Update prerequisites (JSON string)
 
 **Behavior:**
+
 - Syncs junction table when category changes
 - Rebuilds embedding index if text changed
 
 #### `deprecate`
+
 Soft-delete a lesson (removes from active lessons, keeps in DB).
 
 ```bash
@@ -128,6 +144,7 @@ engrammar deprecate 42
 ### Categories
 
 #### `categorize`
+
 Add or remove categories from a lesson (multi-category support).
 
 ```bash
@@ -136,12 +153,14 @@ engrammar categorize 42 remove tools/figma
 ```
 
 **Usage:**
+
 - `categorize LESSON_ID add CATEGORY` - Add category to lesson
 - `categorize LESSON_ID remove CATEGORY` - Remove category from lesson
 
 ### Pinning
 
 #### `pin`
+
 Pin a lesson (always shown at session start when prerequisites match).
 
 ```bash
@@ -149,6 +168,7 @@ engrammar pin 42
 ```
 
 #### `unpin`
+
 Unpin a lesson.
 
 ```bash
@@ -158,6 +178,7 @@ engrammar unpin 42
 ### Import & Export
 
 #### `import`
+
 Import lessons from a JSON or markdown file.
 
 ```bash
@@ -166,13 +187,16 @@ engrammar import lessons.md
 ```
 
 **Formats:**
+
 - **JSON**: Uses the `.lessons-state.json` format (from legacy system)
 - **Markdown**: Each line starting with `- ` is imported as a lesson
 
 **Behavior:**
+
 - Automatically rebuilds embedding index after import
 
 #### `export`
+
 Export all active lessons to markdown, grouped by category.
 
 ```bash
@@ -180,6 +204,7 @@ engrammar export > lessons.md
 ```
 
 **Output format:**
+
 ```markdown
 ## development/frontend
 
@@ -194,6 +219,7 @@ engrammar export > lessons.md
 ### Maintenance
 
 #### `extract`
+
 Extract lessons from Claude Code session facets (hook friction events).
 
 ```bash
@@ -202,15 +228,18 @@ engrammar extract --dry-run
 ```
 
 **Options:**
+
 - `--dry-run` - Show what would be extracted without saving
 
 **Behavior:**
+
 - Scans `~/.claude/projects/` for session facets
 - Extracts friction events (hook failures, errors, corrections)
 - Deduplicates and merges similar lessons
 - Runs automatically at session start via hook
 
 #### `rebuild`
+
 Rebuild the embedding index from scratch.
 
 ```bash
@@ -218,6 +247,7 @@ engrammar rebuild
 ```
 
 **Use when:**
+
 - After manual database changes
 - After bulk imports
 - If index becomes corrupted

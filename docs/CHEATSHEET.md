@@ -54,10 +54,10 @@ engrammar search "ui component" --tags acme,react,frontend
 engrammar add "Always use TypeScript for new components"
 
 # Add with category
-engrammar add "Use Picasso components" --category development/frontend
+engrammar add "Use Tailwind components" --category development/frontend
 
 # Add with tags
-engrammar add "Follow Acme's React patterns" --tags acme,react,frontend
+engrammar add "Follow acme's React patterns" --tags acme,react,frontend
 
 # Add with category and tags
 engrammar add "Use Rails engines for domain isolation" \
@@ -153,13 +153,13 @@ engrammar_search(query="testing", top_k=10)
 ```python
 # Basic add
 engrammar_add(
-    text="Use Picasso for all UI components",
+    text="Use Tailwind for all UI components",
     category="development/frontend"
 )
 
 # Add with tags
 engrammar_add(
-    text="Follow Acme's React patterns",
+    text="Follow acme's React patterns",
     category="development/frontend",
     tags=["acme", "react", "frontend"]
 )
@@ -194,7 +194,7 @@ engrammar_feedback(
 engrammar_feedback(
     lesson_id=42,
     applicable=False,
-    reason="Only relevant in Acme projects",
+    reason="Only relevant in acme projects",
     add_prerequisites={"tags": ["acme"]}
 )
 ```
@@ -270,39 +270,38 @@ engrammar_deprecate(lesson_id=42, reason="Outdated pattern")
 
 Tags are automatically detected from:
 
-| Source | Examples |
-|--------|----------|
-| **Paths** | `~/work/acme/*` → `acme` |
-| **Git remote** | `github.com/acme` → `github`, `acme` |
-| **File markers** | `tsconfig.json` → `typescript` |
+| Source           | Examples                               |
+| ---------------- | -------------------------------------- |
+| **Paths**        | `~/work/acme/*` → `acme`               |
+| **Git remote**   | `github.com/acme` → `github`, `acme`   |
+| **File markers** | `tsconfig.json` → `typescript`         |
 | **package.json** | `"react": "^18"` → `react`, `frontend` |
-| **Gemfile** | `gem 'rails'` → `rails`, `backend` |
-| **Directories** | `packages/` → `monorepo` |
+| **Gemfile**      | `gem 'rails'` → `rails`, `backend`     |
+| **Directories**  | `packages/` → `monorepo`               |
 
 ### Common Tags
 
 **Languages & Frameworks:**
+
 - `typescript`, `javascript`, `ruby`, `python`, `golang`, `rust`
 - `react`, `vue`, `angular`, `nextjs`, `nuxtjs`
 - `rails`, `nodejs`, `nestjs`
 
 **Tools & Services:**
+
 - `docker`, `jest`, `playwright`, `cypress`, `rspec`
 - `github`, `bitbucket`, `gitlab`
 - `figma`, `jira`, `linear`
 
 **Project Types:**
+
 - `frontend`, `backend`, `fullstack`
 - `monorepo`, `rails-engines`
 
 **Organizations:**
+
 - `acme`, `personal`
 - Custom: add to `tag_patterns.py`
-
-**Acme-Specific:**
-- `picasso` (design system)
-- `davinci` (build tools)
-- `topkit` (shared packages)
 
 ### Manual Tagging
 
@@ -320,7 +319,7 @@ engrammar_add(text="Lesson text", tags=["frontend", "react", "typescript"])
 # Find React-related lessons
 engrammar search "hooks" --tags react
 
-# Find Acme frontend lessons
+# Find acme frontend lessons
 engrammar search "component" --tags acme,frontend
 
 # MCP version
@@ -351,7 +350,7 @@ Example:
 ```json
 {
   "os": ["darwin", "linux"],
-  "repos": ["app-repo", "picasso"],
+  "repos": ["app-repo", "cool-project"],
   "tags": ["frontend", "react"],
   "paths": ["~/work/acme"],
   "mcp_servers": ["figma", "linear"]
@@ -373,12 +372,12 @@ Example:
 prerequisites={"os": ["darwin"]}
 
 # Only in specific repos
-prerequisites={"repos": ["app-repo", "picasso"]}
+prerequisites={"repos": ["app-repo", "cool-project"]}
 
 # Only in React projects
 prerequisites={"tags": ["react"]}
 
-# Only in Acme frontend projects
+# Only in acme frontend projects
 prerequisites={"tags": ["acme", "frontend"]}
 
 # Only when Figma MCP is available
@@ -399,6 +398,7 @@ prerequisites={
 ### Query Strategies
 
 **Keywords:**
+
 ```bash
 # Use specific terms
 engrammar search "useState useEffect"
@@ -406,6 +406,7 @@ engrammar search "Rails engine domain"
 ```
 
 **Natural Language:**
+
 ```bash
 # Ask questions
 engrammar search "how to handle API errors"
@@ -413,6 +414,7 @@ engrammar search "component state management patterns"
 ```
 
 **Tool-Specific:**
+
 ```bash
 # Match tool usage
 engrammar search "Edit file patterns"
@@ -422,21 +424,24 @@ engrammar search "Bash git commands"
 ### Filtering
 
 **By Category:**
+
 ```bash
 engrammar search "patterns" --category development/frontend
 engrammar search "testing" --category development/testing
 ```
 
 **By Tags:**
+
 ```bash
 # Single tag
 engrammar search "component" --tags react
 
 # Multiple tags (AND)
-engrammar search "ui" --tags acme,react,picasso
+engrammar search "ui" --tags acme,react,tailwind
 ```
 
 **Combined:**
+
 ```bash
 engrammar search "patterns" \
   --category development/frontend \
@@ -468,9 +473,9 @@ High matched count = proven useful
 engrammar detect-tags
 
 # Add lesson with detected tags
-engrammar add "Use Picasso table components for data tables" \
+engrammar add "Use Tailwind table components for data tables" \
   --category development/frontend/components \
-  --tags acme,react,picasso,frontend
+  --tags acme,react,tailwind,frontend
 ```
 
 ### 2. Search Before Implementation
@@ -727,14 +732,14 @@ Bad:   development/frontend
 ### 2. Tag Broadly
 
 ```
-Good:  ["acme", "react", "frontend", "picasso"]
+Good:  ["acme", "react", "frontend", "tailwind"]
 Bad:   ["acme"]
 ```
 
 ### 3. Write Actionable Lessons
 
 ```
-Good:  "Use Picasso Table component instead of custom tables"
+Good:  "Use Design System Table component instead of custom tables"
 Bad:   "Tables are important"
 ```
 
@@ -767,7 +772,8 @@ Don't manually pin everything - let the 15-match threshold work naturally.
 ### 7. Use Tags for Context
 
 Tags help the system understand when lessons apply:
-- `["acme", "react"]` - Acme React projects
+
+- `["acme", "react"]` - acme React projects
 - `["personal", "vue"]` - Personal Vue projects
 - `["backend", "rails"]` - Rails backend work
 

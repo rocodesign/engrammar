@@ -31,6 +31,7 @@ Engrammar is a semantic knowledge system that learns from Claude Code sessions a
 ### Key Innovation
 
 The **tag subset algorithm** enables cross-project learning:
+
 - Lesson matches 6× in `['acme', 'frontend', 'typescript']`
 - Lesson matches 5× in `['acme', 'frontend', 'react']`
 - Lesson matches 4× in `['personal', 'frontend', 'typescript']`
@@ -61,6 +62,7 @@ def detect_environment() -> dict:
 Five detection sources:
 
 **A. Path Patterns**
+
 ```python
 PATH_PATTERNS = [
     (re.compile(r"/work/acme/"), "acme"),
@@ -69,6 +71,7 @@ PATH_PATTERNS = [
 ```
 
 **B. Git Remotes**
+
 ```python
 GIT_REMOTE_PATTERNS = [
     (re.compile(r"github\.com"), "github"),
@@ -77,6 +80,7 @@ GIT_REMOTE_PATTERNS = [
 ```
 
 **C. File Markers**
+
 ```python
 FILE_MARKERS = {
     "tsconfig.json": ["typescript"],
@@ -87,15 +91,17 @@ FILE_MARKERS = {
 ```
 
 **D. package.json Dependencies**
+
 ```python
 PACKAGE_DEPENDENCY_TAGS = {
     "react": ["react", "frontend"],
     "next": ["nextjs", "react", "frontend"],
-    "@acme/picasso": ["acme", "picasso", "react", "frontend"],
+    "@acme/library-name": ["acme", "library-name", "react", "frontend"],
 }
 ```
 
 **E. Directory Structure**
+
 ```python
 DIR_STRUCTURE_PATTERNS = {
     "engines/": ["monorepo", "rails-engines"],
@@ -111,6 +117,7 @@ SQLite with WAL mode for concurrent access.
 #### Core Functions
 
 **Lesson Management**
+
 ```python
 add_lesson(text, category, tags=None, source="manual")
 get_all_active_lessons()
@@ -118,6 +125,7 @@ deprecate_lesson(lesson_id)
 ```
 
 **Match Statistics**
+
 ```python
 update_match_stats(lesson_id, repo=None, tags=None)
 # Updates:
@@ -128,6 +136,7 @@ update_match_stats(lesson_id, repo=None, tags=None)
 ```
 
 **Auto-Pin Detection**
+
 ```python
 find_auto_pin_tag_subsets(lesson_id, threshold=15)
 # Returns: minimal common tag subset with threshold+ matches
@@ -178,6 +187,7 @@ def search(query, category_filter=None, tag_filter=None, top_k=5):
 ```
 
 #### Reciprocal Rank Fusion
+
 ```python
 def _reciprocal_rank_fusion(ranked_lists, k=60):
     scores = {}
@@ -225,11 +235,11 @@ Example: `~/work/acme/app-repo`
 Path:     [acme]
 Git:      [github, acme]
 Files:    [typescript, nodejs, docker, jest]
-Deps:     [react, frontend, picasso, davinci, testing]
+Deps:     [react, frontend, tailwind, davinci, testing]
 Struct:   [monorepo, frontend]
 
 → Merged: [davinci, docker, frontend, github, jest, monorepo,
-          nodejs, picasso, react, testing, acme, typescript]
+          nodejs, tailwind, react, testing, acme, typescript]
 ```
 
 ### Prerequisites
@@ -265,8 +275,9 @@ See [evaluation.md](evaluation.md) for how tag relevance scores work.
 ### Problem Statement
 
 Repo-based auto-pin limits cross-project learning:
+
 - Lesson with 15 matches in `app-repo` → pins to `app-repo` only
-- Same lesson valuable in `picasso` but starts from 0 matches
+- Same lesson valuable in `tailwind` but starts from 0 matches
 
 ### Solution: Tag Subset Auto-Pin
 
@@ -326,6 +337,7 @@ def find_auto_pin_tag_subsets(lesson_id, threshold=15):
 ### Example Execution
 
 **Input**: 3 tag sets with matches
+
 ```
 tag_set_1: ['frontend', 'acme', 'typescript'], matches: 6
 tag_set_2: ['frontend', 'acme', 'react'], matches: 5
@@ -333,6 +345,7 @@ tag_set_3: ['frontend', 'personal', 'typescript'], matches: 4
 ```
 
 **Process**:
+
 ```
 all_tags = {frontend, acme, typescript, react, personal}
 
@@ -434,6 +447,7 @@ scores = bm25.get_scores(tokenize(query))
 **Default k**: 60
 
 **Why RRF?**
+
 - Handles score scale differences between vector and BM25
 - Emphasizes top-ranked items
 - Simple and effective for result merging
@@ -536,6 +550,7 @@ def on_session_end(session_data):
 ### Tables
 
 #### `lessons`
+
 ```sql
 CREATE TABLE lessons (
     id INTEGER PRIMARY KEY,
@@ -558,6 +573,7 @@ CREATE TABLE lessons (
 ```
 
 #### `lesson_repo_stats` (Existing)
+
 ```sql
 CREATE TABLE lesson_repo_stats (
     lesson_id INTEGER NOT NULL,
@@ -569,6 +585,7 @@ CREATE TABLE lesson_repo_stats (
 ```
 
 #### `lesson_tag_stats` (NEW)
+
 ```sql
 CREATE TABLE lesson_tag_stats (
     lesson_id INTEGER NOT NULL,
@@ -580,6 +597,7 @@ CREATE TABLE lesson_tag_stats (
 ```
 
 #### `lesson_tag_relevance`
+
 ```sql
 CREATE TABLE lesson_tag_relevance (
     lesson_id INTEGER NOT NULL,
@@ -593,6 +611,7 @@ CREATE TABLE lesson_tag_relevance (
 ```
 
 #### `session_audit`
+
 ```sql
 CREATE TABLE session_audit (
     session_id TEXT PRIMARY KEY,
@@ -605,6 +624,7 @@ CREATE TABLE session_audit (
 ```
 
 #### `processed_relevance_sessions`
+
 ```sql
 CREATE TABLE processed_relevance_sessions (
     session_id TEXT PRIMARY KEY,
@@ -615,6 +635,7 @@ CREATE TABLE processed_relevance_sessions (
 ```
 
 #### `categories`
+
 ```sql
 CREATE TABLE categories (
     path TEXT PRIMARY KEY,  -- e.g., 'development/frontend'
@@ -623,6 +644,7 @@ CREATE TABLE categories (
 ```
 
 #### `lesson_categories` (Junction Table)
+
 ```sql
 CREATE TABLE lesson_categories (
     lesson_id INTEGER NOT NULL,
@@ -663,6 +685,7 @@ CREATE INDEX idx_lessons_deprecated ON lessons(deprecated);
 ### Available Tools
 
 #### `engrammar_search`
+
 ```python
 @mcp.tool()
 def engrammar_search(
@@ -674,6 +697,7 @@ def engrammar_search(
 ```
 
 #### `engrammar_add`
+
 ```python
 @mcp.tool()
 def engrammar_add(
@@ -686,6 +710,7 @@ def engrammar_add(
 ```
 
 #### `engrammar_feedback`
+
 ```python
 @mcp.tool()
 def engrammar_feedback(
@@ -697,6 +722,7 @@ def engrammar_feedback(
 ```
 
 #### `engrammar_update`
+
 ```python
 @mcp.tool()
 def engrammar_update(
@@ -708,6 +734,7 @@ def engrammar_update(
 ```
 
 #### `engrammar_pin` / `engrammar_unpin`
+
 ```python
 @mcp.tool()
 def engrammar_pin(lesson_id: int, prerequisites: dict | str | None = None) -> str
@@ -717,6 +744,7 @@ def engrammar_unpin(lesson_id: int) -> str
 ```
 
 #### `engrammar_list`
+
 ```python
 @mcp.tool()
 def engrammar_list(
@@ -728,6 +756,7 @@ def engrammar_list(
 ```
 
 #### `engrammar_status`
+
 ```python
 @mcp.tool()
 def engrammar_status() -> str
@@ -740,47 +769,51 @@ def engrammar_status() -> str
 
 ### Benchmarks
 
-| Operation | Time | Details |
-|-----------|------|---------|
-| Tag detection | <30ms | 5 sources, ~1000 files scanned |
-| Tag subset algorithm | <20ms | Powerset generation + counting |
-| Vector embedding | ~50ms | API call to Anthropic |
-| Search (hybrid) | ~100ms | Vector + BM25 + RRF |
-| Tag filtering | <5ms | Set intersection operations |
-| Session start hook | ~100ms | Load + filter pinned lessons |
-| Database write | <10ms | WAL mode, concurrent-safe |
+| Operation            | Time   | Details                        |
+| -------------------- | ------ | ------------------------------ |
+| Tag detection        | <30ms  | 5 sources, ~1000 files scanned |
+| Tag subset algorithm | <20ms  | Powerset generation + counting |
+| Vector embedding     | ~50ms  | API call to Anthropic          |
+| Search (hybrid)      | ~100ms | Vector + BM25 + RRF            |
+| Tag filtering        | <5ms   | Set intersection operations    |
+| Session start hook   | ~100ms | Load + filter pinned lessons   |
+| Database write       | <10ms  | WAL mode, concurrent-safe      |
 
 ### Optimizations
 
 **Tag Detection**:
+
 - Cached git remote lookups (subprocess)
 - Lazy file reading (only when markers exist)
 - Set operations for deduplication
 
 **Search**:
+
 - Numpy for vector operations
 - RRF instead of score normalization (faster)
 - Tag relevance filtering after RRF (post-ranking, not pre-filtering)
 
 **Auto-Pin**:
+
 - Powerset limited to size 4 (prevents combinatorial explosion)
 - Minimal subset pruning (avoids redundant checks)
 - Only runs when tags present
 
 **Database**:
+
 - WAL mode for concurrent reads
 - Indexes on common query patterns
 - JSON for flexible prerequisites (no schema migrations)
 
 ### Memory Usage
 
-| Component | Size |
-|-----------|------|
-| Embeddings index (1000 lessons) | ~2MB |
-| Lesson metadata | ~500KB |
-| Tag stats (10 tag sets/lesson) | ~50KB |
-| BM25 index | ~1MB |
-| **Total** | **~3.5MB** |
+| Component                       | Size       |
+| ------------------------------- | ---------- |
+| Embeddings index (1000 lessons) | ~2MB       |
+| Lesson metadata                 | ~500KB     |
+| Tag stats (10 tag sets/lesson)  | ~50KB      |
+| BM25 index                      | ~1MB       |
+| **Total**                       | **~3.5MB** |
 
 ---
 
@@ -846,6 +879,7 @@ Next Session: Scores filter irrelevant lessons, boost relevant ones
 ### No Breaking Changes
 
 All changes are additive:
+
 - ✅ Existing lessons work without tags
 - ✅ Repo-based auto-pin continues to work
 - ✅ Existing hooks unchanged (just pass extra params)
@@ -855,6 +889,7 @@ All changes are additive:
 ### Migration Path
 
 **No migration required**. System adapts:
+
 1. Existing lessons have `prerequisites=NULL` → match in all environments
 2. New matches start tracking tags → gradual tag_stats population
 3. Auto-pin can trigger on repo OR tags → dual system
@@ -867,12 +902,14 @@ All changes are additive:
 ### API Keys
 
 **No API key required for core functionality**:
+
 - Tag detection: filesystem/git only
 - Search: local embeddings + BM25
 - Auto-pin: local algorithm
 - Session end: defaults to fail-open (marks all as useful)
 
 **Optional AI evaluation**:
+
 - Session end hook can evaluate lesson usefulness with Haiku
 - Requires `ANTHROPIC_API_KEY` or `~/.claude.json`
 - Gracefully falls back to simple tracking without AI
@@ -960,11 +997,13 @@ python3 tests/manual_search_test.py
 ### Tag Detection Issues
 
 **Problem**: Tags not detected
+
 - Check `detect-tags` output
 - Verify file markers exist (tsconfig.json, package.json)
 - Check git remote: `git remote -v`
 
 **Problem**: Wrong tags detected
+
 - Review `tag_patterns.py` patterns
 - Add custom patterns if needed
 - Use `--tags` parameter to override
@@ -972,6 +1011,7 @@ python3 tests/manual_search_test.py
 ### Auto-Pin Not Triggering
 
 **Problem**: Lesson not auto-pinning
+
 - Check tag_stats: `SELECT * FROM lesson_tag_stats WHERE lesson_id = X`
 - Verify 15 match threshold reached
 - Ensure common tags exist across tag sets
@@ -979,6 +1019,7 @@ python3 tests/manual_search_test.py
 ### Search Issues
 
 **Problem**: Lessons not appearing
+
 - Check prerequisites match: `engrammar_status` (shows env tags)
 - Verify lesson not deprecated
 - Rebuild index: `engrammar rebuild`
@@ -987,18 +1028,18 @@ python3 tests/manual_search_test.py
 
 ## Glossary
 
-| Term | Definition |
-|------|------------|
-| **Tag** | Environment identifier (e.g., 'frontend', 'acme', 'react') |
-| **Tag Set** | Sorted list of tags for an environment |
-| **Tag Subset** | Smaller set contained within multiple tag sets |
-| **Auto-Pin** | Automatic marking of lessons as always-show when threshold reached |
-| **Prerequisite** | Condition for showing a lesson (repo, os, tags, etc.) |
-| **RRF** | Reciprocal Rank Fusion - algorithm for merging ranked lists |
-| **BM25** | Best Matching 25 - probabilistic relevance ranking |
-| **MCP** | Model Context Protocol - Claude's tool integration system |
-| **Hook** | Event-triggered code injection point |
-| **Fail-open** | Default to permissive behavior on error |
+| Term             | Definition                                                         |
+| ---------------- | ------------------------------------------------------------------ |
+| **Tag**          | Environment identifier (e.g., 'frontend', 'acme', 'react')         |
+| **Tag Set**      | Sorted list of tags for an environment                             |
+| **Tag Subset**   | Smaller set contained within multiple tag sets                     |
+| **Auto-Pin**     | Automatic marking of lessons as always-show when threshold reached |
+| **Prerequisite** | Condition for showing a lesson (repo, os, tags, etc.)              |
+| **RRF**          | Reciprocal Rank Fusion - algorithm for merging ranked lists        |
+| **BM25**         | Best Matching 25 - probabilistic relevance ranking                 |
+| **MCP**          | Model Context Protocol - Claude's tool integration system          |
+| **Hook**         | Event-triggered code injection point                               |
+| **Fail-open**    | Default to permissive behavior on error                            |
 
 ---
 

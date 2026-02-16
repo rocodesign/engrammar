@@ -9,35 +9,12 @@ import pytest
 
 from src.tag_detectors import (
     detect_tags,
-    _detect_from_paths,
     _detect_from_git,
     _detect_from_files,
     _detect_from_package,
     _detect_from_gemfile,
     _detect_from_structure,
 )
-
-
-class TestPathDetection:
-    """Test tag detection from file paths."""
-
-    def test_acme_path_detection(self, monkeypatch):
-        """Should detect 'acme' tag from ~/work/acme/* path."""
-        monkeypatch.setattr(os, "getcwd", lambda: "/Users/test/work/acme/app-repo")
-        tags = _detect_from_paths()
-        assert "acme" in tags
-
-    def test_personal_project_detection(self, monkeypatch):
-        """Should detect 'personal' tag from known personal repos."""
-        monkeypatch.setattr(os, "getcwd", lambda: "/Users/test/work/app.mo.de")
-        tags = _detect_from_paths()
-        assert "personal" in tags
-
-    def test_no_match(self, monkeypatch):
-        """Should return empty set for unknown paths."""
-        monkeypatch.setattr(os, "getcwd", lambda: "/Users/test/random/path")
-        tags = _detect_from_paths()
-        assert len(tags) == 0
 
 
 class TestGitDetection:
@@ -122,21 +99,6 @@ class TestPackageJsonDetection:
         assert "nextjs" in tags
         assert "react" in tags
         assert "frontend" in tags
-
-    def test_acme_packages(self, tmp_path, monkeypatch):
-        """Should detect 'acme' tags from @acme/* packages."""
-        monkeypatch.chdir(tmp_path)
-        package_json = {
-            "dependencies": {
-                "@acme/picasso": "^1.0.0",
-                "@acme/davinci": "^2.0.0"
-            }
-        }
-        (tmp_path / "package.json").write_text(json.dumps(package_json))
-        tags = _detect_from_package()
-        assert "acme" in tags
-        assert "picasso" in tags
-        assert "davinci" in tags
 
     def test_dev_dependencies(self, tmp_path, monkeypatch):
         """Should check devDependencies too."""
@@ -233,7 +195,6 @@ class TestIntegration:
     def test_detect_tags_integration(self, tmp_path, monkeypatch):
         """Should combine all detection sources."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(os, "getcwd", lambda: "/Users/test/work/acme/app-repo")
 
         # Create test files
         (tmp_path / "tsconfig.json").write_text("{}")
@@ -245,7 +206,6 @@ class TestIntegration:
         tags = detect_tags()
 
         # Should have tags from multiple sources
-        assert "acme" in tags  # from path
         assert "typescript" in tags  # from tsconfig.json
         assert "react" in tags  # from package.json
         assert "frontend" in tags  # from package.json + structure
