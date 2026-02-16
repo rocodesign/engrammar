@@ -145,18 +145,18 @@ Enhance `engrammar_feedback` to accept optional `tag_scores` dict:
 
 ### Implementation Steps
 
-- [ ] **1a. Add new tables** — `lesson_tag_relevance`, `session_audit`, `processed_relevance_sessions` in `db.py:init_db`. Keep existing `lesson_tag_stats` during transition.
-- [ ] **1a.1. Fix shown-state race first** — add file locking/atomic writes for `.session-shown.json` (or move shown tracking to DB events) so `session_audit.shown_lesson_ids` is trustworthy.
-- [ ] **1b. Update hook output format** — `[ENGRAMMAR_V1]` block with `EG#ID` markers in `on_prompt.py`, `on_tool_use.py`, `on_session_start.py`. Include behavior instruction line.
-- [ ] **1c. Update MCP server instructions** — add guidance about calling `engrammar_feedback` when lessons don't apply.
-- [ ] **1d. SessionEnd → audit record** — persist `session_audit` row (session_id, shown_lesson_ids, env_tags, repo, timestamp), clear `.session-shown.json`. Remove all evaluation logic.
-- [ ] **1e. Build evaluation runner** — new module that calls `claude -p` with audit record + transcript excerpt, parses structured JSON output. Follow `extractor.py` pattern (remove `CLAUDECODE` env var). Use `processed_relevance_sessions` for tracking with retry support.
-- [ ] **1f. Wire evaluation into SessionStart** — run in background. Process unprocessed audit records. Separate from extraction pipeline.
-- [ ] **1g. Score accumulation function** — `update_tag_relevance(lesson_id, tag_scores)` in `db.py` with EMA, clamping to [-3, 3], positive/negative counters.
-- [ ] **1h. Integrate tag scores into search ranking** — normalized boost/penalty in `search.py`.
-- [ ] **1i. Implement auto-pin/unpin** — score-based with hysteresis (pin >0.6, unpin <0.2) and min-evidence guard (>=5 evals).
-- [ ] **1j. Enhance `engrammar_feedback` MCP tool** — accept optional `tag_scores` dict, weight explicit feedback higher.
-- [ ] **1k. Remove dead evaluation code** — `_evaluate_lesson_usefulness`, Anthropic SDK dependency, old backfill evaluation logic.
+- [x] **1a. Add new tables** — `lesson_tag_relevance`, `session_audit`, `processed_relevance_sessions` in `db.py:init_db`. Keep existing `lesson_tag_stats` during transition.
+- [x] **1a.1. Fix shown-state race first** — add file locking/atomic writes for `.session-shown.json` (or move shown tracking to DB events) so `session_audit.shown_lesson_ids` is trustworthy.
+- [x] **1b. Update hook output format** — `[ENGRAMMAR_V1]` block with `EG#ID` markers in `on_prompt.py`, `on_tool_use.py`, `on_session_start.py`. Include behavior instruction line.
+- [x] **1c. Update MCP server instructions** — add guidance about calling `engrammar_feedback` when lessons don't apply.
+- [x] **1d. SessionEnd → audit record** — persist `session_audit` row (session_id, shown_lesson_ids, env_tags, repo, timestamp), clear `.session-shown.json`. Remove all evaluation logic.
+- [x] **1e. Build evaluation runner** — new module that calls `claude -p` with audit record + transcript excerpt, parses structured JSON output. Follow `extractor.py` pattern (remove `CLAUDECODE` env var). Use `processed_relevance_sessions` for tracking with retry support.
+- [x] **1f. Wire evaluation into SessionStart** — run in background. Process unprocessed audit records. Separate from extraction pipeline.
+- [x] **1g. Score accumulation function** — `update_tag_relevance(lesson_id, tag_scores)` in `db.py` with EMA, clamping to [-3, 3], positive/negative counters.
+- [x] **1h. Integrate tag scores into search ranking** — normalized boost/penalty in `search.py`.
+- [x] **1i. Implement auto-pin/unpin** — score-based with hysteresis (pin >0.6, unpin <0.2) and min-evidence guard (>=5 evals).
+- [x] **1j. Enhance `engrammar_feedback` MCP tool** — accept optional `tag_scores` dict, weight explicit feedback higher.
+- [x] **1k. Remove dead evaluation code** — `_evaluate_lesson_usefulness`, Anthropic SDK dependency, old backfill evaluation logic.
 
 ### Issues resolved by this redesign
 
@@ -169,7 +169,7 @@ Enhance `engrammar_feedback` to accept optional `tag_scores` dict:
 
 - [ ] **5. `sys.path.insert(0, ENGRAMMAR_HOME)` everywhere** — Every file manually inserts into sys.path. No `setup.py`/`pyproject.toml`. Code lives in `src/` during development but hooks import from `engrammar.*`. Installation is manual file copying.
 
-- [ ] **6. Race condition on `.session-shown.json`** — `on_prompt.py`, `on_tool_use.py`, and `on_session_end.py` all read/write the same file without locking. Concurrent hooks can silently lose writes.
+- [x] ~~**6. Race condition on `.session-shown.json`**~~ — Replaced by DB-backed `session_shown_lessons` tracking (`record_shown_lesson` / `get_shown_lesson_ids` / `clear_session_shown`).
 
 - [ ] **7. Daemon is single-threaded** — Processes one request at a time. Slow searches block all other hook calls, potentially adding visible latency to Claude Code.
 
@@ -179,9 +179,9 @@ Enhance `engrammar_feedback` to accept optional `tag_scores` dict:
 
 - [ ] **9. CLI argument parsing is hand-rolled** — Manual `sys.argv` parsing with `while` loops. No help text per command, no validation, no error messages. Only `backfill_stats.py` uses argparse properly.
 
-- [ ] **10. Duplicate utility code across hooks** — `_load_shown`, `_save_shown`, `_log_error` are copy-pasted across 3 hook files with minor variations. No shared utility module.
+- [x] ~~**10. Duplicate utility code across hooks**~~ — Shared logic moved to `src/hook_utils.py` (`log_error`, session-id helpers, formatting helpers).
 
-- [ ] **11. `find_similar_lesson` uses word overlap instead of vectors** — `db.py` uses crude >50% word overlap for dedup. The project has a full vector search system but doesn't use it for semantic similarity detection.
+- [x] ~~**11. `find_similar_lesson` uses word overlap instead of vectors**~~ — `find_similar_lesson` now attempts embedding similarity first and only falls back to word overlap.
 
 - [ ] **12. Full index rebuild on every lesson add** — `cmd_add` and `engrammar_add` call `build_index(get_all_active_lessons())` after adding one lesson. Re-embeds entire corpus every time.
 
@@ -195,16 +195,26 @@ Enhance `engrammar_feedback` to accept optional `tag_scores` dict:
 
 ## Missing / Misleading
 
-- [ ] **17. Test coverage is minimal** — Only narrow regression tests exist. Zero tests for CLI, MCP server, daemon, extractor, or hook integration logic.
+- [ ] **17. Coverage gaps remain in critical entry points** — The suite is much stronger now, but there are still no direct tests for CLI command parsing or MCP tool handlers, and no end-to-end hook integration tests.
 
 - [x] ~~**18. `register_hooks.py` is dead code**~~ — Not dead code. Called by `setup.sh:70` to register hooks in `~/.claude/settings.json` and MCP server in `~/.claude.json`.
 
-- [ ] **19. Errors silently swallowed** — All hooks eat exceptions and log to `.hook-errors.log`. No user-facing feedback when the system breaks. No guided health check. Additionally, `on_session_end.py:119` catches exceptions in `_evaluate_lesson_usefulness` and returns `True` without even calling `_log_error`, unlike every other error path in that file.
+- [ ] **19. Errors remain fail-open and mostly silent to users** — Hooks now log to `.hook-errors.log`, but failures still don't surface in Claude output and there is no built-in health signal/check command for broken hook pipelines.
 
-- [ ] **20. `test_tag_stats.py` is corrupted — blocks entire test suite** — `tests/test_tag_stats.py` has `lesson_id = cursor.lastrowid` stray lines on many lines, causing `IndentationError` on collection. `pytest tests/` can't run the full suite.
+- [x] ~~**20. `test_tag_stats.py` is corrupted — blocks entire test suite**~~ — Fixed. Test collection runs and the suite passes.
 
-- [ ] **21. Backfill uses current environment for historical sessions** — `backfill_stats.py:115` calls `search()` which calls `detect_environment()` at `search.py:62`, filtering historical session lessons against today's repo/tags. Old sessions from different contexts get wrong prerequisite filtering and skewed match stats.
+- [x] ~~**21. Backfill uses current environment for historical sessions**~~ — Backfill now calls `search(..., skip_prerequisites=True)` and writes audit records for evaluator processing.
 
 - [ ] **22. CLI `update --category` doesn't sync level1/level2/level3** — `cli.py:360` updates only the `category` column. The MCP `engrammar_update` does parse and sync `level1`/`level2`/`level3`. Since `get_category_stats()` groups by `level1`, CLI-updated categories drift from stats.
 
 - [ ] **23. Path prerequisite matching false-matches on prefixes** — `environment.py:119` uses `cwd.startswith(path)` which means a prerequisite of `/work/app` would also match `/work/application`. Should use path-boundary-aware comparison (e.g. append `/` before matching).
+
+- [x] ~~**24. Session identity is generated locally and stored in one global file**~~ — Hooks now read `session_id` from Claude's hook stdin payload instead of generating random UUIDs. No more `.current-session-id` file.
+
+- [x] ~~**25. Evaluator transcript lookup is weakly coupled to session IDs**~~ — `session_audit` now stores `transcript_path` from Claude's hook payload. Evaluator reads the transcript directly, falling back to glob search only for old records.
+
+- [ ] **26. Pin/unpin evidence can be overcounted when many tags are scored at once** — `check_and_apply_pin_decisions` sums positive/negative counters across all tags, so one evaluation covering many tags can satisfy the min-evidence threshold early.
+
+- [ ] **27. Tag relevance boost averages only known-tag rows** — `get_avg_tag_relevance` divides by matched DB rows only, ignoring missing env tags as implicit zeroes, which can over-boost sparse matches.
+
+- [ ] **28. Pending evaluation processing has no claim/lock step** — `run_pending_evaluations` reads candidate sessions then processes them without atomically marking ownership; concurrent evaluator runs can process the same session twice.

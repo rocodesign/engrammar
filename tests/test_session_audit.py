@@ -35,6 +35,28 @@ def test_write_and_read_audit(test_db):
     assert unprocessed[0]["repo"] == "app-repo"
 
 
+def test_write_audit_with_transcript_path(test_db):
+    """Should persist transcript_path when provided."""
+    write_session_audit(
+        "sess-tp", [1], ["test"], "repo",
+        transcript_path="/home/user/.claude/projects/proj/abc.jsonl",
+        db_path=test_db,
+    )
+
+    unprocessed = get_unprocessed_audit_sessions(db_path=test_db)
+    assert len(unprocessed) == 1
+    assert unprocessed[0]["transcript_path"] == "/home/user/.claude/projects/proj/abc.jsonl"
+
+
+def test_write_audit_without_transcript_path(test_db):
+    """Should default transcript_path to None when not provided."""
+    write_session_audit("sess-no-tp", [1], ["test"], "repo", db_path=test_db)
+
+    unprocessed = get_unprocessed_audit_sessions(db_path=test_db)
+    assert len(unprocessed) == 1
+    assert unprocessed[0]["transcript_path"] is None
+
+
 def test_completed_sessions_excluded(test_db):
     """Completed sessions should not appear in unprocessed list."""
     write_session_audit("sess-1", [1], ["test"], "repo", db_path=test_db)

@@ -2,7 +2,7 @@
 """SessionEnd hook — writes audit record of what was shown, clears session state.
 
 Evaluation of lesson relevance is deferred to the next session start via
-the evaluator pipeline (Commit C), which has access to the full transcript.
+the evaluator pipeline, which has access to the full transcript.
 """
 
 import json
@@ -15,16 +15,17 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def main():
-    from engrammar.hook_utils import log_error, read_session_id, clear_session_id
+    from engrammar.hook_utils import log_error, parse_hook_input
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
             return
 
-        # Read stdin (session end data) — not used for audit but consumed
-        sys.stdin.read()
+        # Read session_id and transcript_path from Claude's hook payload
+        data = parse_hook_input()
+        session_id = data.get("session_id")
+        transcript_path = data.get("transcript_path")
 
-        session_id = read_session_id()
         if not session_id:
             return
 
@@ -33,7 +34,6 @@ def main():
 
         shown_ids = get_shown_lesson_ids(session_id)
         if not shown_ids:
-            clear_session_id()
             return
 
         # Write audit record
@@ -42,16 +42,13 @@ def main():
         repo = env.get("repo")
         tags = env.get("tags", [])
 
-        write_session_audit(session_id, list(shown_ids), tags, repo)
+        write_session_audit(session_id, list(shown_ids), tags, repo, transcript_path=transcript_path)
 
         # Clear session state
         clear_session_shown(session_id)
-        clear_session_id()
 
     except Exception as e:
         log_error("SessionEnd", "main execution", e)
-        # Clear state anyway to avoid stale data
-        clear_session_id()
 
 
 if __name__ == "__main__":

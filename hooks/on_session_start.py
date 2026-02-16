@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""SessionStart hook — generates session ID, injects pinned lessons, and queues maintenance."""
+"""SessionStart hook — injects pinned lessons and queues maintenance."""
 
 import json
 import sys
 import os
-import uuid
 
 # Add engrammar package to path
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
@@ -12,15 +11,15 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def main():
-    from engrammar.hook_utils import log_error, write_session_id, format_lessons_block, make_hook_output
+    from engrammar.hook_utils import log_error, parse_hook_input, format_lessons_block, make_hook_output
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
             return
 
-        # Generate session ID
-        session_id = str(uuid.uuid4())
-        write_session_id(session_id)
+        # Read session_id from Claude's hook payload
+        data = parse_hook_input()
+        session_id = data.get("session_id")
 
         # Start daemon (if needed) and trigger maintenance jobs with single-flight behavior
         try:
@@ -46,6 +45,12 @@ def main():
 
         if not matching:
             return
+
+        # Record shown pinned lessons to avoid re-showing in prompt/tool hooks
+        if session_id:
+            from engrammar.db import record_shown_lesson
+            for p in matching:
+                record_shown_lesson(session_id, p["id"], "SessionStart")
 
         context = format_lessons_block(matching, show_categories=show_categories)
         output = make_hook_output("SessionStart", context)

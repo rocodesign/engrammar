@@ -2,11 +2,11 @@
 
 import json
 import os
+import sys
 import traceback
 from datetime import datetime
 
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
-SESSION_ID_PATH = os.path.join(ENGRAMMAR_HOME, ".current-session-id")
 ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
 
 
@@ -22,34 +22,19 @@ def log_error(hook_name, context, error):
         pass
 
 
-def read_session_id():
-    """Read current session ID from file, or None if not set."""
+def parse_hook_input():
+    """Read and parse the JSON payload from stdin (provided by Claude's hook system).
+
+    Returns:
+        dict with keys like session_id, transcript_path, etc., or empty dict on failure.
+    """
     try:
-        if os.path.exists(SESSION_ID_PATH):
-            with open(SESSION_ID_PATH, "r") as f:
-                sid = f.read().strip()
-                return sid if sid else None
-    except Exception:
+        raw = sys.stdin.read().strip()
+        if raw:
+            return json.loads(raw)
+    except (json.JSONDecodeError, Exception):
         pass
-    return None
-
-
-def write_session_id(session_id):
-    """Write session ID to file."""
-    try:
-        with open(SESSION_ID_PATH, "w") as f:
-            f.write(session_id)
-    except Exception:
-        pass
-
-
-def clear_session_id():
-    """Remove the session ID file."""
-    try:
-        if os.path.exists(SESSION_ID_PATH):
-            os.remove(SESSION_ID_PATH)
-    except Exception:
-        pass
+    return {}
 
 
 def format_lessons_block(lessons, show_categories=True):

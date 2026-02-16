@@ -37,7 +37,7 @@ def _search_direct(prompt, max_results):
 
 
 def main():
-    from engrammar.hook_utils import log_error, read_session_id, format_lessons_block, make_hook_output
+    from engrammar.hook_utils import log_error, format_lessons_block, make_hook_output
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
@@ -69,7 +69,7 @@ def main():
             return
 
         # Filter out already-shown lessons (DB-based)
-        session_id = read_session_id()
+        session_id = data.get("session_id")
         if session_id:
             from engrammar.db import get_shown_lesson_ids, record_shown_lesson
             shown = get_shown_lesson_ids(session_id)

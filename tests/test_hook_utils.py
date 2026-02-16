@@ -1,14 +1,13 @@
 """Tests for shared hook utilities."""
 
-import os
-import tempfile
+import json
+from io import StringIO
+from unittest.mock import patch
 
 from src.hook_utils import (
     format_lessons_block,
     make_hook_output,
-    read_session_id,
-    write_session_id,
-    clear_session_id,
+    parse_hook_input,
 )
 
 
@@ -46,14 +45,21 @@ def test_make_hook_output():
     assert output["hookSpecificOutput"]["additionalContext"] == "some context"
 
 
-def test_session_id_roundtrip(tmp_path, monkeypatch):
-    sid_path = str(tmp_path / ".current-session-id")
-    monkeypatch.setattr("src.hook_utils.SESSION_ID_PATH", sid_path)
+def test_parse_hook_input_valid_json():
+    payload = {"session_id": "abc-123", "transcript_path": "/tmp/transcript.jsonl"}
+    with patch("sys.stdin", StringIO(json.dumps(payload))):
+        result = parse_hook_input()
+    assert result["session_id"] == "abc-123"
+    assert result["transcript_path"] == "/tmp/transcript.jsonl"
 
-    assert read_session_id() is None
 
-    write_session_id("test-session-123")
-    assert read_session_id() == "test-session-123"
+def test_parse_hook_input_empty_stdin():
+    with patch("sys.stdin", StringIO("")):
+        result = parse_hook_input()
+    assert result == {}
 
-    clear_session_id()
-    assert read_session_id() is None
+
+def test_parse_hook_input_invalid_json():
+    with patch("sys.stdin", StringIO("not json")):
+        result = parse_hook_input()
+    assert result == {}

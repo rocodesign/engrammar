@@ -114,6 +114,49 @@ def _find_transcript_excerpt(session_id, max_chars=4000):
     return result
 
 
+def _read_transcript_file(transcript_path, max_chars=4000):
+    """Read transcript directly from a known file path.
+
+    Returns the tail of the transcript (last max_chars chars of message content).
+    """
+    messages = []
+    try:
+        with open(transcript_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+
+                role = message_obj.get("role", entry.get("type", ""))
+                if content:
+                    messages.append(f"{role}: {content[:500]}")
+    except Exception:
+        return ""
+
+    result = "\n".join(messages)
+    if len(result) > max_chars:
+        result = result[-max_chars:]
+    return result
+
+
 def _call_claude_for_evaluation(session_id, shown_lessons, env_tags, repo, transcript=""):
     """Call claude CLI in headless mode to evaluate lesson relevance.
 
@@ -194,6 +237,7 @@ def run_evaluation_for_session(session_id, db_path=None):
     shown_lesson_ids = json.loads(row["shown_lesson_ids"])
     env_tags = json.loads(row["env_tags"])
     repo = row["repo"]
+    transcript_path = row["transcript_path"] if "transcript_path" in row.keys() else None
 
     if not shown_lesson_ids:
         conn.close()
@@ -212,8 +256,12 @@ def run_evaluation_for_session(session_id, db_path=None):
 
     shown_lessons = [{"id": r["id"], "text": r["text"]} for r in lessons]
 
-    # Find transcript
-    transcript = _find_transcript_excerpt(session_id)
+    # Find transcript — use stored path if available, fall back to glob search
+    transcript = ""
+    if transcript_path and os.path.isfile(transcript_path):
+        transcript = _read_transcript_file(transcript_path)
+    if not transcript:
+        transcript = _find_transcript_excerpt(session_id)
 
     # Call Claude for evaluation
     evaluations = _call_claude_for_evaluation(
