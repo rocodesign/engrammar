@@ -1,29 +1,13 @@
 """Tag pattern definitions for environment detection."""
 
-import os
 import re
 
-# Path-based tag patterns
-PATH_PATTERNS = [
-    # Acme workspace
-    (re.compile(r"/work/acme/"), "acme"),
-    # Personal projects
-    (re.compile(r"/work/app\.mo\.de"), "personal"),
-    (re.compile(r"/work/sema-park-mobile"), "personal"),
-    (re.compile(r"/work/autodivertis-v2"), "personal"),
-    (re.compile(r"/work/via-dacica"), "personal"),
-]
-
-# Git remote patterns
+# Git remote patterns — hosting platforms only
+# Organization-specific patterns are learned dynamically via tag relevance scoring.
 GIT_REMOTE_PATTERNS = [
-    # Hosting platforms
     (re.compile(r"github\.com"), "github"),
     (re.compile(r"bitbucket\.org"), "bitbucket"),
     (re.compile(r"gitlab\.com"), "gitlab"),
-    # Organizations
-    (re.compile(r"github\.com[:/]acme/"), "acme"),
-    (re.compile(r"github\.com[:/]user/"), "personal"),
-    (re.compile(r"bitbucket\.org[:/]codestoryteam/"), "personal"),
 ]
 
 # File marker patterns
@@ -78,9 +62,6 @@ PACKAGE_DEPENDENCY_TAGS = {
     "vitest": ["vitest", "testing"],
     "playwright": ["playwright", "testing"],
     "cypress": ["cypress", "testing"],
-    "@topkit/": ["acme", "topkit"],
-    "@acme/davinci": ["acme", "davinci"],
-    "@acme/picasso": ["acme", "picasso", "react", "frontend"],
 }
 
 # Gemfile dependency patterns

@@ -26,19 +26,12 @@ from .embeddings import build_index
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30
 
-# Keyword → prerequisites mapping for auto-inference
-PROJECT_KEYWORD_PREREQUISITES = {
-    # Acme ecosystem
-    "acme": {"tags": ["acme"]},
-    "taps": {"tags": ["acme"]},
-    "picasso": {"tags": ["acme"]},
-    "davinci": {"tags": ["acme"]},
-    "app-repo": {"tags": ["acme"]},
-    "app repo": {"tags": ["acme"]},
-    # Tool-specific
+# Keyword → structural prerequisites mapping for auto-inference
+# Only structural prerequisites (mcp_servers, os, paths) — tag prerequisites
+# are handled dynamically by the tag relevance scoring system.
+KEYWORD_PREREQUISITES = {
     "figma mcp": {"mcp_servers": ["figma"]},
     "figma server": {"mcp_servers": ["figma"]},
-    "playwright": {"tags": ["playwright"]},
 }
 
 EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE lessons.
@@ -47,8 +40,8 @@ DO NOT produce generic advice like "investigate methodically" or "ask for clarif
 DO produce concrete, reusable knowledge like:
 - "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
 - "Figma MCP server must be connected before starting UI implementation — test with a simple figma tool call first"
-- "Branch naming convention: taps-NUMBER (lowercase), not TAPS-NUMBER or feature/taps-NUMBER"
-- "Never use inline styles in this codebase — use CSS classes or Picasso component props"
+- "Branch naming convention: taps-NUMBER (lowercase), not TEAM-NUMBER or feature/taps-NUMBER"
+- "Never use inline styles in this codebase — use CSS classes or Tailwind component props"
 - "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
 
 Each lesson should be something that saves time if known in advance. Think: "what specific thing did Claude waste time on that could be avoided with this one piece of knowledge?"
@@ -62,7 +55,7 @@ Output a JSON array of objects, each with:
 - "lesson": the specific, concrete lesson (1-2 sentences max)
 - "source_sessions": list of session IDs this was derived from
 - "scope": "general" if the lesson applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
-- "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TAPS", "Picasso", "Figma MCP", "Playwright"]). Empty list when scope is "general".
+- "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TEAM", "Tailwind", "Figma MCP", "Playwright"]). Empty list when scope is "general".
 
 Output ONLY valid JSON, no markdown fences, no explanation."""
 
@@ -81,7 +74,7 @@ def _infer_prerequisites(text, project_signals=None):
     text_lower = text.lower()
 
     # Check keyword map against lesson text
-    for keyword, prereqs in PROJECT_KEYWORD_PREREQUISITES.items():
+    for keyword, prereqs in KEYWORD_PREREQUISITES.items():
         if keyword in text_lower:
             for key, val in prereqs.items():
                 if key in merged:
@@ -96,7 +89,7 @@ def _infer_prerequisites(text, project_signals=None):
     if project_signals:
         for signal in project_signals:
             signal_lower = signal.lower()
-            for keyword, prereqs in PROJECT_KEYWORD_PREREQUISITES.items():
+            for keyword, prereqs in KEYWORD_PREREQUISITES.items():
                 if keyword in signal_lower or signal_lower in keyword:
                     for key, val in prereqs.items():
                         if key in merged:

@@ -20,6 +20,7 @@ Session End
 ### 1. Audit Recording (session end hook)
 
 When a session ends, we record:
+
 - Which lessons were shown (via `session_shown_lessons`)
 - The environment tags at the time
 - The repo name
@@ -47,6 +48,7 @@ new_score = old_score * (1 - ALPHA) + raw_score * ALPHA * weight
 ```
 
 Constants:
+
 - `EMA_ALPHA = 0.3` — how fast scores adapt to new signal
 - `SCORE_CLAMP = (-3.0, 3.0)` — bounds to prevent runaway scores
 - `weight = 1.0` for evaluator, `2.0` for direct MCP feedback
@@ -115,19 +117,20 @@ RELEVANCE_WEIGHT = 0.01          # boost/penalty weight
 ```
 
 For each candidate lesson:
+
 1. Compute `(avg_score, total_evals)` across current env tags
 2. If `total_evals >= 3` AND `avg_score < -0.1` → **filter out**
 3. Otherwise → apply score as boost: `rrf_score += (avg_score / 3.0) * 0.01`
 
 ### What Happens Per Lesson State
 
-| State | avg_score | evals | Result |
-|-------|-----------|-------|--------|
-| New (no data) | 0.0 | 0 | Passes, no boost |
-| Positive signal | >0 | >=3 | Passes, boosted |
-| Weak negative | -0.1 to 0 | >=3 | Passes, slight penalty |
-| Strong negative | <-0.1 | >=3 | **Filtered out** |
-| Strong negative, low evidence | <-0.1 | <3 | Passes (exploration) |
+| State                         | avg_score | evals | Result                 |
+| ----------------------------- | --------- | ----- | ---------------------- |
+| New (no data)                 | 0.0       | 0     | Passes, no boost       |
+| Positive signal               | >0        | >=3   | Passes, boosted        |
+| Weak negative                 | -0.1 to 0 | >=3   | Passes, slight penalty |
+| Strong negative               | <-0.1     | >=3   | **Filtered out**       |
+| Strong negative, low evidence | <-0.1     | <3    | Passes (exploration)   |
 
 ### avg_score Calculation
 
@@ -156,11 +159,13 @@ total_evals = 1 + 0 = 1
 Prerequisites have two roles:
 
 ### Structural Prerequisites (hard gate)
+
 - `os`, `repos`, `paths`, `mcp_servers`
 - Physical constraints — checked by `check_structural_prerequisites()`
 - Always enforced in search, session start, and daemon
 
 ### Tag Prerequisites (soft, score-based)
+
 - `tags` in prerequisites JSON
 - **No longer hard-gated** in search
 - Tag relevance scores handle filtering dynamically
@@ -173,19 +178,22 @@ This means a lesson with `{"tags": ["acme", "react"]}` is no longer locked to on
 Two separate systems can pin lessons:
 
 ### Match-count auto-pin (db.py)
+
 - Threshold: 15 matches for a tag subset
 - Adds `tags` to prerequisites and sets `pinned=1`
-- Based on how often a lesson is *shown*
+- Based on how often a lesson is _shown_
 
 ### Tag-relevance auto-pin (db.py)
+
 - Threshold: `avg_score > 0.6` with `>= 5` evals
 - Sets `auto_pinned: true` in prerequisites
-- Based on evaluator *quality* judgments
+- Based on evaluator _quality_ judgments
 - Can auto-unpin if score drops below 0.2
 
 ### Pinned Lesson Filtering (session start / daemon)
 
 Pinned lessons go through:
+
 1. `check_structural_prerequisites()` — hard gate on os/repo/paths/mcp
 2. Tag relevance check — filter if `total_evals >= 3` and `avg < -0.1`
 

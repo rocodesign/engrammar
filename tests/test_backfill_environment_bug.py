@@ -86,7 +86,7 @@ class TestBackfillEnvironmentBug:
             "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
             (
-                "Use Picasso components",
+                "Use Tailwind components",
                 "development/frontend",
                 json.dumps({"tags": ["acme", "react"]})
             )

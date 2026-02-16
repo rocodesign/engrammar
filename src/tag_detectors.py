@@ -7,7 +7,6 @@ import subprocess
 from typing import Set
 
 from .tag_patterns import (
-    PATH_PATTERNS,
     GIT_REMOTE_PATTERNS,
     FILE_MARKERS,
     DIR_STRUCTURE_PATTERNS,
@@ -23,25 +22,12 @@ def detect_tags() -> list[str]:
         Sorted list of unique tags detected from the environment.
     """
     tags = set()
-    tags.update(_detect_from_paths())
     tags.update(_detect_from_git())
     tags.update(_detect_from_files())
     tags.update(_detect_from_package())
     tags.update(_detect_from_gemfile())
     tags.update(_detect_from_structure())
     return sorted(list(tags))
-
-
-def _detect_from_paths() -> Set[str]:
-    """Detect tags from current working directory path."""
-    tags = set()
-    cwd = os.getcwd()
-
-    for pattern, tag in PATH_PATTERNS:
-        if pattern.search(cwd):
-            tags.add(tag)
-
-    return tags
 
 
 def _detect_from_git() -> Set[str]:

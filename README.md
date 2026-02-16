@@ -20,35 +20,44 @@ Engrammar automatically learns from your Claude Code sessions and surfaces relev
 ~/.engrammar/engrammar-cli search "component patterns"
 
 # Add a lesson
-~/.engrammar/engrammar-cli add "Use Picasso for UI components" --category dev/frontend --tags acme,react
+~/.engrammar/engrammar-cli add "Use Tailwind for UI components" --category dev/frontend --tags acme,react
 ```
 
 ## Features
 
 ### 🎯 Smart Tag-Based Filtering
+
 Lessons automatically adapt to your environment:
+
 - **Auto-detected tags**: Detects context from paths, git, files, dependencies
 - **Cross-project learning**: Lessons valuable in `['acme', 'frontend']` can auto-pin to all `['frontend']` projects
 - **Intelligent matching**: Only shows lessons relevant to your current stack
 
 ### 📍 Auto-Pin System
+
 Lessons automatically become permanent when proven useful:
+
 - **15-match threshold**: After 15 matches, lessons auto-pin to their environment
 - **Tag subset algorithm**: Finds minimal common tags across matches
 - **Smart prerequisites**: Auto-adds repo or tag requirements
 
 ### 🔍 Hybrid Search
+
 Vector similarity + BM25 keyword matching with Reciprocal Rank Fusion for optimal results.
 
 ### 🔗 MCP Integration
+
 Direct access from Claude Code:
+
 - `engrammar_search` - Find relevant lessons
 - `engrammar_add` - Record new learnings
 - `engrammar_feedback` - Refine lesson relevance
 - `engrammar_status` - System health check
 
 ### 🎣 Session Hooks
+
 Automatically surfaces lessons at the right moment:
+
 - **PreToolUse**: Shows lessons before tool execution
 - **SessionStart**: Displays pinned lessons
 - **SessionEnd**: Tracks which lessons were actually useful (no API key required)
@@ -56,6 +65,7 @@ Automatically surfaces lessons at the right moment:
 ## Installation
 
 Engrammar is designed to work with Claude Code. It requires:
+
 - Python 3.12+
 - Claude Code CLI
 
@@ -63,17 +73,17 @@ The system works completely **without API keys** - the AI evaluation in session 
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `setup` | Initialize database and build index |
-| `status` | Show system stats and environment |
-| `detect-tags` | Show detected environment tags |
-| `search "query" [--tags tag1,tag2]` | Search lessons with optional tag filter |
-| `add "text" --category cat [--tags t1,t2]` | Add new lesson |
-| `list [--category cat] [--limit N]` | List all lessons |
-| `update ID --text "new"` | Update lesson |
-| `pin ID` | Pin lesson to always show |
-| `deprecate ID` | Mark lesson as outdated |
+| Command                                    | Description                             |
+| ------------------------------------------ | --------------------------------------- |
+| `setup`                                    | Initialize database and build index     |
+| `status`                                   | Show system stats and environment       |
+| `detect-tags`                              | Show detected environment tags          |
+| `search "query" [--tags tag1,tag2]`        | Search lessons with optional tag filter |
+| `add "text" --category cat [--tags t1,t2]` | Add new lesson                          |
+| `list [--category cat] [--limit N]`        | List all lessons                        |
+| `update ID --text "new"`                   | Update lesson                           |
+| `pin ID`                                   | Pin lesson to always show               |
+| `deprecate ID`                             | Mark lesson as outdated                 |
 
 ## Environment Detection
 
@@ -86,9 +96,10 @@ Engrammar detects tags from 5 sources:
 5. **Structure**: `packages/` directory → `'monorepo'`
 
 Example: In `~/work/acme/app-repo`:
+
 ```
 Tags: davinci, docker, frontend, github, jest, monorepo,
-      nodejs, picasso, react, testing, acme, typescript
+      nodejs, tailwind, react, testing, acme, typescript
 ```
 
 ## Architecture
@@ -98,6 +109,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ## Examples
 
 ### Auto-Pin Scenario
+
 ```bash
 # Lesson matches 6 times in ['acme', 'frontend', 'typescript']
 # Lesson matches 5 times in ['acme', 'frontend', 'react']
@@ -108,9 +120,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ```
 
 ### Manual Tagging
+
 ```bash
 # Add lesson for specific context
-engrammar add "Follow Acme's React patterns" \
+engrammar add "Follow acme's React patterns" \
   --category development/frontend \
   --tags acme,react,frontend
 
@@ -119,12 +132,13 @@ engrammar search "state management" --tags react
 ```
 
 ### MCP Usage
+
 ```python
 # In Claude Code session
 engrammar_add(
-    text="Use Picasso table components for all data tables",
+    text="Use Tailwind table components for all data tables",
     category="development/frontend/components",
-    tags=["acme", "react", "picasso"]
+    tags=["acme", "react", "tailwind"]
 )
 
 engrammar_search(query="table component", tags=["react"])
@@ -173,12 +187,12 @@ Located at `~/.engrammar/config.json`:
 
 ## Performance
 
-| Operation | Time | Memory |
-|-----------|------|--------|
-| Tag detection | <30ms | Negligible |
-| Tag subset algorithm | <20ms | ~50KB |
-| Search with tags | +5ms overhead | Negligible |
-| Session start | <100ms | ~1MB |
+| Operation            | Time          | Memory     |
+| -------------------- | ------------- | ---------- |
+| Tag detection        | <30ms         | Negligible |
+| Tag subset algorithm | <20ms         | ~50KB      |
+| Search with tags     | +5ms overhead | Negligible |
+| Session start        | <100ms        | ~1MB       |
 
 ## Development
 
