@@ -23,9 +23,10 @@ Engrammar is a semantic knowledge system that learns from Claude Code sessions a
 
 1. **Tag-based environment detection** - Automatically understands project context
 2. **Hybrid search** - Combines vector similarity and BM25 keyword matching
-3. **Smart auto-pinning** - Learns which lessons are universally valuable
-4. **Hook integration** - Surfaces lessons at the perfect moment
-5. **MCP server** - Enables direct Claude interaction
+3. **Tag relevance scoring** - EMA-based per-tag scores filter irrelevant lessons dynamically
+4. **Smart auto-pinning** - Learns which lessons are universally valuable
+5. **Hook integration** - Surfaces lessons at the perfect moment
+6. **MCP server** - Enables direct Claude interaction
 
 ### Key Innovation
 
@@ -138,10 +139,9 @@ Hybrid search combining vector similarity and BM25.
 
 ```python
 def search(query, category_filter=None, tag_filter=None, top_k=5):
-    # 1. Load lessons + filter by environment prerequisites
+    # 1. Load ALL active lessons (no prerequisite hard-gating)
     lessons = get_all_active_lessons()
     env = detect_environment()
-    lessons = [l for l in lessons if check_prerequisites(l.get("prerequisites"), env)]
 
     # 2. Vector search (embeddings)
     query_embedding = embed_text(query)
@@ -154,11 +154,23 @@ def search(query, category_filter=None, tag_filter=None, top_k=5):
     # 4. Reciprocal Rank Fusion
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
 
-    # 5. Apply category filter
+    # 5. Tag relevance filter + boost
+    #    - Filter: remove lessons with strong negative signal (avg < -0.1, evals >= 3)
+    #    - Boost: adjust RRF score by tag relevance
+    #    See: docs/evaluation.md for full details
+    if env.get("tags"):
+        for lesson in fused:
+            avg, evals = get_tag_relevance_with_evidence(lesson.id, env["tags"])
+            if evals >= 3 and avg < -0.1:
+                remove(lesson)  # strong negative = filter out
+            else:
+                lesson.score += (avg / 3.0) * 0.01  # boost/penalize
+
+    # 6. Apply category filter
     if category_filter:
         fused = [f for f in fused if matches_category(f, category_filter)]
 
-    # 6. Apply tag filter (NEW)
+    # 7. Apply tag filter (explicit tag_filter parameter, not env-based)
     if tag_filter:
         fused = [f for f in fused if has_all_tags(f, tag_filter)]
 
@@ -220,7 +232,7 @@ Struct:   [monorepo, frontend]
           nodejs, picasso, react, testing, acme, typescript]
 ```
 
-### Tag Prerequisites
+### Prerequisites
 
 Stored in `lessons.prerequisites` as JSON:
 
@@ -232,17 +244,19 @@ Stored in `lessons.prerequisites` as JSON:
 }
 ```
 
-**Matching Logic**: ALL required tags must be present in environment
+**Two types of prerequisites:**
+
+- **Structural** (`os`, `repos`, `paths`, `mcp_servers`) — hard-gated via `check_structural_prerequisites()`. Physical constraints that are always enforced.
+- **Tags** — **not hard-gated**. Tag relevance scoring handles context filtering dynamically. A lesson with `{"tags": ["acme"]}` can appear anywhere; the evaluator learns where it's relevant and accumulates scores that filter it from irrelevant contexts.
 
 ```python
-def check_prerequisites(prerequisites, env):
-    req_tags = prerequisites.get("tags")
-    if req_tags:
-        env_tags = set(env.get("tags", []))
-        if not all(tag in env_tags for tag in req_tags):
-            return False
-    return True
+def check_structural_prerequisites(prerequisites, env):
+    """Checks os, repo, paths, mcp_servers. Ignores tags."""
+    structural = {k: v for k, v in prerequisites.items() if k != "tags"}
+    return check_prerequisites(structural, env)
 ```
+
+See [evaluation.md](evaluation.md) for how tag relevance scores work.
 
 ---
 
@@ -369,15 +383,16 @@ def update_match_stats(lesson_id, repo=None, tags=None):
 ```
 User Query
     ↓
-1. Load Active Lessons
+1. Load ALL Active Lessons
     ↓
-2. Filter by Environment Prerequisites (repo, os, tags)
-    ↓
-3. Parallel Search:
+2. Parallel Search:
    ├─ Vector Search (Voyage embeddings)
    └─ BM25 Keyword Search
     ↓
-4. Reciprocal Rank Fusion (merge results)
+3. Reciprocal Rank Fusion (merge results)
+    ↓
+4. Tag Relevance Filter + Boost
+   (filter strong negatives, boost positives)
     ↓
 5. Apply Category Filter
     ↓
@@ -438,15 +453,24 @@ SessionStart → UserPromptSubmit → PreToolUse → (tool execution) → PostTo
 ```python
 def on_session_start():
     env = detect_environment()
+    env_tags = env.get("tags", [])
 
-    # Get pinned lessons matching environment
     pinned = get_pinned_lessons()
-    relevant = [l for l in pinned if check_prerequisites(l["prerequisites"], env)]
+    matching = []
+    for p in pinned:
+        # Hard-gate on structural prerequisites (os, repo, paths, mcp_servers)
+        if not check_structural_prerequisites(p["prerequisites"], env):
+            continue
+        # Soft-gate on tag relevance
+        if env_tags:
+            avg, evals = get_tag_relevance_with_evidence(p["id"], env_tags)
+            if evals >= 3 and avg < -0.1:
+                continue
+        matching.append(p)
 
-    # Format for prompt injection
-    if relevant:
+    if matching:
         print("Relevant lessons from past sessions:")
-        for lesson in relevant:
+        for lesson in matching:
             print(f"- [{lesson['category']}] {lesson['text']}")
 ```
 
@@ -552,6 +576,41 @@ CREATE TABLE lesson_tag_stats (
     times_matched INTEGER DEFAULT 0,
     last_matched TEXT,
     PRIMARY KEY (lesson_id, tag_set)
+);
+```
+
+#### `lesson_tag_relevance`
+```sql
+CREATE TABLE lesson_tag_relevance (
+    lesson_id INTEGER NOT NULL,
+    tag TEXT NOT NULL,
+    score REAL DEFAULT 0.0,           -- EMA-smoothed relevance score
+    positive_evals INTEGER DEFAULT 0, -- times judged relevant with this tag
+    negative_evals INTEGER DEFAULT 0, -- times judged irrelevant with this tag
+    last_evaluated TEXT,
+    PRIMARY KEY (lesson_id, tag)
+);
+```
+
+#### `session_audit`
+```sql
+CREATE TABLE session_audit (
+    session_id TEXT PRIMARY KEY,
+    shown_lesson_ids TEXT NOT NULL,    -- JSON array
+    env_tags TEXT NOT NULL,            -- JSON array
+    repo TEXT,
+    timestamp TEXT NOT NULL,
+    transcript_path TEXT DEFAULT NULL
+);
+```
+
+#### `processed_relevance_sessions`
+```sql
+CREATE TABLE processed_relevance_sessions (
+    session_id TEXT PRIMARY KEY,
+    processed_at TEXT,
+    retry_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending'      -- 'pending' | 'completed' | 'failed'
 );
 ```
 
@@ -701,7 +760,7 @@ def engrammar_status() -> str
 **Search**:
 - Numpy for vector operations
 - RRF instead of score normalization (faster)
-- Early filtering by prerequisites
+- Tag relevance filtering after RRF (post-ranking, not pre-filtering)
 
 **Auto-Pin**:
 - Powerset limited to size 4 (prevents combinatorial explosion)
@@ -737,16 +796,17 @@ def engrammar_status() -> str
    DB → build_index() → Embeddings → .npy file
 
 3. Matching
-   SessionStart/PreToolUse → search() → check_prerequisites() → Filter by tags
+   SessionStart/PreToolUse → search() → RRF → tag relevance filter/boost → results
 
 4. Tracking
-   SessionEnd → update_match_stats() → lesson_tag_stats + global counter
+   SessionEnd → record audit → evaluator → tag relevance scores (EMA)
 
 5. Auto-Pin
    update_match_stats() → find_auto_pin_tag_subsets() → threshold reached → UPDATE pinned=1
+   OR: tag relevance avg > 0.6 with enough evidence → auto-pin
 
 6. Filtering (next session)
-   search() → check_prerequisites() → Tag prerequisite → Shows in matching envs
+   search() → tag relevance scores filter strong negatives, boost positives
 ```
 
 ### Tag Flow
@@ -762,23 +822,21 @@ Environment: {os, repo, cwd, mcp_servers, tags: [...]}
     ↓
 Hook: PreToolUse
     ↓
-search(query) → filter by env.tags
+search(query) → RRF → tag relevance filter/boost → results
     ↓
-Show relevant lessons
-    ↓
-Track shown lessons
+Show relevant lessons + record in session_shown_lessons
     ↓
 Session End
     ↓
-update_match_stats(lesson_id, tags=env.tags)
+Write session_audit (shown lessons + env tags + transcript path)
     ↓
-lesson_tag_stats: INSERT (lesson_id, tag_set_json, times_matched)
+Evaluator (async, via daemon)
     ↓
-find_auto_pin_tag_subsets(lesson_id)
+Haiku judges relevance per lesson → raw scores
     ↓
-If 15+ matches on common subset → UPDATE lessons SET pinned=1, prerequisites='{tags:[...]}'
+update_tag_relevance(lesson_id, tag_scores) → EMA update per tag
     ↓
-Next Session: Lesson shows in ALL matching tag environments
+Next Session: Scores filter irrelevant lessons, boost relevant ones
 ```
 
 ---
@@ -839,10 +897,8 @@ All changes are additive:
 
 1. **Tag Aliases**: Map related tags (`react` ↔ `reactjs`)
 2. **Tag Hierarchies**: `frontend/react/hooks` structure
-3. **Negative Tags**: `tags: ["!vue"]` to exclude
-4. **Tag Weights**: Prioritize certain tags in matching
-5. **Multi-Environment Testing**: Test across multiple project types
-6. **Web Dashboard**: Visualize lesson networks and tag relationships
+3. **Multi-Environment Testing**: Test across multiple project types
+4. **Web Dashboard**: Visualize lesson networks and tag relationships
 
 ### Considered But Deferred
 
@@ -859,10 +915,15 @@ All changes are additive:
 
 ```
 tests/
-├── test_tag_detection.py    # 35 tests - path, git, files, deps, structure
-├── test_tag_filtering.py     # 18 tests - prerequisites, search filtering
-├── test_tag_stats.py         # 11 tests - database tracking, auto-pin
-└── test_session_end.py       # 5 tests - hook integration, no API key
+├── test_tag_detection.py     # tag detection - path, git, files, deps, structure
+├── test_tag_filtering.py     # prerequisites, structural prereqs, tag relevance filtering
+├── test_tag_relevance.py     # EMA math, clamping, evidence function, auto-pin/unpin
+├── test_tag_stats.py         # database tracking, tag subset algorithm, auto-pin
+├── test_search.py            # RRF fusion, search filtering, edge cases
+├── test_prerequisites.py     # structural prerequisite checking
+├── test_evaluator.py         # evaluation pipeline, retry behavior
+├── test_session_audit.py     # audit recording, pending evaluations
+└── test_session_end.py       # hook integration
 ```
 
 ### Running Tests

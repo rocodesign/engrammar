@@ -30,18 +30,26 @@ def main():
 
         # Get pinned lessons
         from engrammar.config import load_config
-        from engrammar.db import get_pinned_lessons
-        from engrammar.environment import check_prerequisites, detect_environment
+        from engrammar.db import get_pinned_lessons, get_tag_relevance_with_evidence
+        from engrammar.environment import check_structural_prerequisites, detect_environment
 
         config = load_config()
         env = detect_environment()
         pinned = get_pinned_lessons()
+        env_tags = env.get("tags", [])
 
         show_categories = config["display"]["show_categories"]
         matching = []
         for p in pinned:
-            if check_prerequisites(p.get("prerequisites"), env):
-                matching.append(p)
+            # Hard-gate on structural prerequisites (os, repo, paths, mcp_servers)
+            if not check_structural_prerequisites(p.get("prerequisites"), env):
+                continue
+            # Soft-gate on tag relevance: filter if strong negative with enough evidence
+            if env_tags:
+                avg_score, total_evals = get_tag_relevance_with_evidence(p["id"], env_tags)
+                if total_evals >= 3 and avg_score < -0.1:
+                    continue
+            matching.append(p)
 
         if not matching:
             return

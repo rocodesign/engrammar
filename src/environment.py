@@ -64,6 +64,37 @@ def _detect_mcp_servers():
     return list(servers)
 
 
+def check_structural_prerequisites(prerequisites, env=None):
+    """Check only non-tag prerequisites (os, repo, paths, mcp_servers).
+
+    Strips the 'tags' key and delegates to check_prerequisites().
+    Used by session start and daemon for pinned lessons where tag filtering
+    is handled separately via tag relevance scores.
+
+    Args:
+        prerequisites: dict with optional keys: os, repo, repos, mcp_servers, paths, tags
+        env: environment dict (auto-detected if None)
+
+    Returns:
+        True if all structural prerequisites are met
+    """
+    if not prerequisites:
+        return True
+
+    if isinstance(prerequisites, str):
+        try:
+            prerequisites = json.loads(prerequisites)
+        except (json.JSONDecodeError, TypeError):
+            return True
+
+    if not isinstance(prerequisites, dict):
+        return True
+
+    # Strip tags — those are handled by tag relevance scoring
+    structural = {k: v for k, v in prerequisites.items() if k != "tags"}
+    return check_prerequisites(structural, env)
+
+
 def check_prerequisites(prerequisites, env=None):
     """Check if current environment meets lesson prerequisites.
 
