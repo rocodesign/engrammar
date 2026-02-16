@@ -108,7 +108,8 @@ def init_db(db_path=None):
             shown_lesson_ids TEXT NOT NULL,
             env_tags TEXT NOT NULL,
             repo TEXT,
-            timestamp TEXT NOT NULL
+            timestamp TEXT NOT NULL,
+            transcript_path TEXT DEFAULT NULL
         );
 
         -- Evaluation tracking, separate from extraction pipeline
@@ -126,6 +127,11 @@ def init_db(db_path=None):
         conn.execute("ALTER TABLE lessons ADD COLUMN prerequisites TEXT DEFAULT NULL")
     if "pinned" not in columns:
         conn.execute("ALTER TABLE lessons ADD COLUMN pinned INTEGER DEFAULT 0")
+
+    # Migration: add transcript_path to session_audit
+    audit_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_audit)").fetchall()]
+    if audit_columns and "transcript_path" not in audit_columns:
+        conn.execute("ALTER TABLE session_audit ADD COLUMN transcript_path TEXT DEFAULT NULL")
 
     conn.commit()
     conn.close()
@@ -637,14 +643,14 @@ def clear_session_shown(session_id, db_path=None):
     conn.close()
 
 
-def write_session_audit(session_id, shown_lesson_ids, env_tags, repo, db_path=None):
+def write_session_audit(session_id, shown_lesson_ids, env_tags, repo, transcript_path=None, db_path=None):
     """Write audit record of what was shown in a session."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        """INSERT OR REPLACE INTO session_audit (session_id, shown_lesson_ids, env_tags, repo, timestamp)
-           VALUES (?, ?, ?, ?, ?)""",
-        (session_id, json.dumps(sorted(shown_lesson_ids)), json.dumps(sorted(env_tags)), repo, now),
+        """INSERT OR REPLACE INTO session_audit (session_id, shown_lesson_ids, env_tags, repo, timestamp, transcript_path)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (session_id, json.dumps(sorted(shown_lesson_ids)), json.dumps(sorted(env_tags)), repo, now, transcript_path),
     )
     conn.commit()
     conn.close()
@@ -658,7 +664,7 @@ def get_unprocessed_audit_sessions(limit=10, db_path=None):
     """
     conn = get_connection(db_path)
     rows = conn.execute(
-        """SELECT sa.session_id, sa.shown_lesson_ids, sa.env_tags, sa.repo, sa.timestamp
+        """SELECT sa.session_id, sa.shown_lesson_ids, sa.env_tags, sa.repo, sa.timestamp, sa.transcript_path
            FROM session_audit sa
            LEFT JOIN processed_relevance_sessions prs ON sa.session_id = prs.session_id
            WHERE prs.session_id IS NULL

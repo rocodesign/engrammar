@@ -59,9 +59,6 @@ else
     echo "Config already exists, keeping user customizations."
 fi
 
-# 5.5. Clean up stale files from previous versions
-rm -f "$ENGRAMMAR_HOME/.session-shown.json"
-
 # 6. Initialize DB + import existing lessons + build index
 echo ""
 echo "Running setup..."
