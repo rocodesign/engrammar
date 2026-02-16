@@ -72,6 +72,18 @@ def engrammar_add(
         prerequisites: Optional requirements dict or JSON string (e.g. {"repos":["app-repo"],"os":["darwin"]})
         source: How this lesson was discovered ("manual", "auto-extracted", "feedback")
     """
+    # Validate inputs
+    if not text or not text.strip():
+        return "Error: text cannot be empty."
+    text = text.strip()
+
+    if not category or not category.strip():
+        return "Error: category cannot be empty."
+    # Normalize category: strip slashes, collapse empty segments
+    category = "/".join(seg for seg in category.strip("/").split("/") if seg)
+    if not category:
+        return "Error: category must contain at least one segment."
+
     from engrammar.db import add_lesson, get_all_active_lessons
     from engrammar.embeddings import build_index
 
@@ -264,6 +276,14 @@ def engrammar_update(
         category: New category (if changing)
         prerequisites: New prerequisites dict or JSON string (if changing)
     """
+    # Validate inputs
+    if text is not None and not text.strip():
+        return "Error: text cannot be empty."
+    if category is not None:
+        category = "/".join(seg for seg in category.strip("/").split("/") if seg)
+        if not category:
+            return "Error: category must contain at least one segment."
+
     from engrammar.db import get_connection, get_all_active_lessons
     from engrammar.embeddings import build_index
     from datetime import datetime
@@ -279,6 +299,7 @@ def engrammar_update(
     params = []
 
     if text is not None:
+        text = text.strip()
         updates.append("text = ?")
         params.append(text)
 
