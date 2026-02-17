@@ -656,6 +656,39 @@ def write_session_audit(session_id, shown_lesson_ids, env_tags, repo, transcript
     conn.close()
 
 
+def get_env_tags_for_sessions(session_ids, db_path=None):
+    """Look up env_tags from session_audit for given session IDs.
+
+    Args:
+        session_ids: list of session ID strings
+        db_path: optional database path
+
+    Returns:
+        sorted deduplicated list of tags, or []
+    """
+    if not session_ids:
+        return []
+
+    conn = get_connection(db_path)
+    placeholders = ",".join("?" * len(session_ids))
+    rows = conn.execute(
+        f"SELECT env_tags FROM session_audit WHERE session_id IN ({placeholders})",
+        session_ids,
+    ).fetchall()
+    conn.close()
+
+    tags = set()
+    for row in rows:
+        try:
+            parsed = json.loads(row["env_tags"])
+            if isinstance(parsed, list):
+                tags.update(parsed)
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    return sorted(tags)
+
+
 def get_unprocessed_audit_sessions(limit=10, db_path=None):
     """Get audit sessions that haven't been evaluated yet.
 

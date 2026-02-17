@@ -546,10 +546,10 @@ def cmd_evaluate(args):
 
 
 def cmd_backfill_prereqs(args):
-    """Retroactively set prerequisites on existing lessons using keyword inference."""
+    """Retroactively set prerequisites on existing lessons using keyword inference + session audit tags."""
     dry_run = "--dry-run" in args
 
-    from engrammar.db import get_all_active_lessons, get_connection
+    from engrammar.db import get_all_active_lessons, get_connection, get_env_tags_for_sessions
     from engrammar.extractor import _infer_prerequisites
 
     lessons = get_all_active_lessons()
@@ -560,17 +560,45 @@ def cmd_backfill_prereqs(args):
     updated = 0
     skipped = 0
     for lesson in lessons:
-        # Skip lessons that already have prerequisites
+        existing_prereqs = None
         if lesson.get("prerequisites"):
+            try:
+                existing_prereqs = json.loads(lesson["prerequisites"]) if isinstance(lesson["prerequisites"], str) else lesson["prerequisites"]
+            except (json.JSONDecodeError, TypeError):
+                existing_prereqs = None
+
+        # Always look up session audit tags
+        source_sessions = json.loads(lesson.get("source_sessions") or "[]")
+        audit_tags = get_env_tags_for_sessions(source_sessions) if source_sessions else []
+
+        # Only run keyword inference if no existing prerequisites
+        keyword_prereqs = None
+        if not existing_prereqs:
+            keyword_prereqs = _infer_prerequisites(lesson["text"])
+
+        # Merge audit tags into prerequisites
+        merged = existing_prereqs or keyword_prereqs or {}
+        if audit_tags:
+            existing_tags = set(merged.get("tags", []))
+            existing_tags.update(audit_tags)
+            merged["tags"] = sorted(existing_tags)
+
+        if not merged:
             skipped += 1
             continue
 
-        prerequisites = _infer_prerequisites(lesson["text"])
-        if not prerequisites:
+        # Check if anything actually changed
+        old_json = lesson.get("prerequisites") or "{}"
+        try:
+            old_parsed = json.loads(old_json) if isinstance(old_json, str) else old_json
+        except (json.JSONDecodeError, TypeError):
+            old_parsed = {}
+        if merged == old_parsed:
+            skipped += 1
             continue
 
         if dry_run:
-            print(f"  Would set lesson #{lesson['id']}: {json.dumps(prerequisites)}")
+            print(f"  Would set lesson #{lesson['id']}: {json.dumps(merged)}")
             print(f"    Text: {lesson['text'][:80]}...")
             updated += 1
         else:
@@ -579,15 +607,15 @@ def cmd_backfill_prereqs(args):
             now = datetime.utcnow().isoformat()
             conn.execute(
                 "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(prerequisites), now, lesson["id"]),
+                (json.dumps(merged), now, lesson["id"]),
             )
             conn.commit()
             conn.close()
-            print(f"  Set lesson #{lesson['id']}: {json.dumps(prerequisites)}")
+            print(f"  Set lesson #{lesson['id']}: {json.dumps(merged)}")
             updated += 1
 
     mode = "Would update" if dry_run else "Updated"
-    print(f"\n{mode} {updated} lessons, skipped {skipped} (already have prerequisites).")
+    print(f"\n{mode} {updated} lessons, skipped {skipped}.")
 
 
 def cmd_log(args):

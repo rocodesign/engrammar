@@ -17,6 +17,7 @@ from .db import (
     add_lesson,
     find_similar_lesson,
     get_all_active_lessons,
+    get_env_tags_for_sessions,
     get_processed_session_ids,
     increment_lesson_occurrence,
     mark_sessions_processed,
@@ -27,8 +28,6 @@ FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30
 
 # Keyword → structural prerequisites mapping for auto-inference
-# Only structural prerequisites (mcp_servers, os, paths) — tag prerequisites
-# are handled dynamically by the tag relevance scoring system.
 KEYWORD_PREREQUISITES = {
     "figma mcp": {"mcp_servers": ["figma"]},
     "figma server": {"mcp_servers": ["figma"]},
@@ -131,6 +130,31 @@ def _infer_prerequisites(text, project_signals=None):
                             merged[key] = list(val) if isinstance(val, list) else val
 
     return merged if merged else None
+
+
+def _enrich_with_session_tags(prerequisites, source_sessions, db_path=None):
+    """Merge env_tags from session_audit into prerequisites.
+
+    Args:
+        prerequisites: existing prerequisites dict (or None)
+        source_sessions: list of session ID strings
+        db_path: optional database path
+
+    Returns:
+        updated prerequisites dict, or None if no tags found and input was None
+    """
+    tags = get_env_tags_for_sessions(source_sessions, db_path=db_path)
+    if not tags:
+        return prerequisites
+
+    if prerequisites is None:
+        prerequisites = {}
+
+    existing_tags = set(prerequisites.get("tags", []))
+    existing_tags.update(tags)
+    prerequisites["tags"] = sorted(existing_tags)
+
+    return prerequisites
 
 
 def _maybe_backfill_prerequisites(lesson_id, prerequisites, db_path=None):
@@ -313,6 +337,7 @@ def extract_from_sessions(dry_run=False):
 
         # Infer prerequisites from text + Haiku signals
         prerequisites = _infer_prerequisites(text, project_signals)
+        prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
 
         # Check for similar existing lesson
         existing = find_similar_lesson(text)
@@ -531,6 +556,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
                 continue
 
             prerequisites = _infer_prerequisites(text, project_signals)
+            prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
 
             existing = find_similar_lesson(text)
             if existing:
