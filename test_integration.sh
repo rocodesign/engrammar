@@ -54,72 +54,33 @@ with open('$REPORT_DIR/02-pinned.json', 'w') as f:
 "
 echo ""
 
-# ── Step 3: Run backfill ───────────────────────────────────────────
-echo "── Step 3: Running backfill (creates audit records for new sessions) ──"
-"$VENV" "$(dirname "$0")/backfill_stats.py" --verbose 2>&1 | tee "$REPORT_DIR/03-backfill.log"
+# ── Step 3: Extract lessons from transcripts ─────────────────────
+echo "── Step 3: Extracting lessons from conversation transcripts ──"
+"$VENV" "$(dirname "$0")/cli.py" extract --limit 10 2>&1 | tee "$REPORT_DIR/03-extract.log"
 echo ""
 
-# ── Step 4: Run evaluator ─────────────────────────────────────────
-echo "── Step 4: Running evaluator (scoring lesson relevance via Haiku) ──"
-echo "Checking for pending evaluations..."
-PENDING=$("$VENV" -c "
-import sys; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_unprocessed_audit_sessions
-sessions = get_unprocessed_audit_sessions(limit=50)
-print(len(sessions))
-")
-echo "Pending evaluations: $PENDING"
-
-if [ "$PENDING" -gt 0 ]; then
-    echo "Running evaluator for up to 10 sessions..."
-    "$VENV" -c "
-import sys; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_unprocessed_audit_sessions
-from engrammar.evaluator import run_evaluation_for_session
-
-sessions = get_unprocessed_audit_sessions(limit=10)
-completed = 0
-failed = 0
-
-for i, session in enumerate(sessions, 1):
-    sid = session['session_id']
-    tp = session.get('transcript_path', '(none)')
-    print(f'  [{i}/{len(sessions)}] Evaluating {sid[:12]}... (transcript: {tp})', flush=True)
-    success = run_evaluation_for_session(sid)
-    if success:
-        completed += 1
-        print(f'    -> completed', flush=True)
-    else:
-        failed += 1
-        print(f'    -> FAILED', flush=True)
-
-print(f'  ---')
-print(f'  Completed: {completed}')
-print(f'  Failed:    {failed}')
-print(f'  Total:     {len(sessions)}')
-" 2>&1 | tee "$REPORT_DIR/04-evaluator.log"
-else
-    echo "No pending evaluations."
-fi
+# ── Step 3b: Backfill prerequisites ──────────────────────────────
+echo "── Step 3b: Backfilling prerequisites on lessons ──"
+"$VENV" "$(dirname "$0")/cli.py" backfill-prereqs 2>&1 | tee "$REPORT_DIR/03b-prereqs.log"
 echo ""
 
-# ── Step 5: Post-eval state ────────────────────────────────────────
-echo "── Step 5: Post-eval state ──"
+# ── Step 4: Post-extraction state ─────────────────────────────────
+echo "── Step 4: Post-extraction state ──"
 "$VENV" -c "
 import sys, json; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_pinned_lessons, get_connection
+from engrammar.db import get_lesson_count, get_pinned_lessons, get_all_active_lessons, get_connection
 
+count = get_lesson_count()
 pinned = get_pinned_lessons()
-conn = get_connection()
-evals = conn.execute(\"SELECT COUNT(*) FROM processed_relevance_sessions WHERE status='completed'\").fetchone()[0]
+lessons = get_all_active_lessons()
 
-# Get tag relevance scores
-scores = conn.execute('SELECT lesson_id, tag, score, positive_evals, negative_evals FROM lesson_tag_relevance ORDER BY lesson_id, tag').fetchall()
+conn = get_connection()
+processed = conn.execute('SELECT COUNT(*) FROM processed_sessions').fetchone()[0]
 conn.close()
 
-print(f'Pinned after eval:    {len(pinned)}')
-print(f'Completed evals:      {evals}')
-print(f'Tag relevance entries: {len(scores)}')
+print(f'Active lessons:       {count}')
+print(f'Pinned lessons:       {len(pinned)}')
+print(f'Processed sessions:   {processed}')
 
 if pinned:
     print()
@@ -127,22 +88,22 @@ if pinned:
     for p in pinned:
         print(f'  #{p[\"id\"]}: {p[\"text\"][:80]}')
 
-# Write tag relevance
-with open('$REPORT_DIR/05-tag-relevance.json', 'w') as f:
-    json.dump([dict(r) for r in scores], f, indent=2)
-print(f'Wrote tag relevance to $REPORT_DIR/05-tag-relevance.json')
+# Write updated lesson summary
+with open('$REPORT_DIR/04-lessons-after.json', 'w') as f:
+    json.dump([{'id': l['id'], 'text': l['text'][:100], 'category': l['category'], 'source': l.get('source', 'unknown')} for l in lessons], f, indent=2)
+print(f'Wrote post-extraction lessons to $REPORT_DIR/04-lessons-after.json')
 "
 echo ""
 
-# ── Step 6: Probe hook injections with claude ──────────────────────
-echo "── Step 6: Probing hook injections ──"
+# ── Step 5: Probe hook injections with claude ──────────────────────
+echo "── Step 5: Probing hook injections ──"
 echo ""
 
 # Unset CLAUDECODE to allow nested claude invocations
 unset CLAUDECODE
 
-# 6a. SessionStart + UserPromptSubmit probe
-echo "  6a. SessionStart + prompt injection probe..."
+# 5a. SessionStart + UserPromptSubmit probe
+echo "  5a. SessionStart + prompt injection probe..."
 claude -p "You are being tested. Your ONLY job is to report what [ENGRAMMAR_V1] blocks appear in your context.
 
 Instructions:
@@ -157,13 +118,13 @@ Output format:
 - EG#<id>: <full lesson text>
 
 Do NOT fabricate lessons. Only report what you actually see." \
-  --no-session-persistence --output-format text 2>"$REPORT_DIR/06a-stderr.txt" > "$REPORT_DIR/06a-session-prompt.txt" || true
-echo "  Wrote to $REPORT_DIR/06a-session-prompt.txt"
-cat "$REPORT_DIR/06a-session-prompt.txt"
+  --no-session-persistence --output-format text 2>"$REPORT_DIR/05a-stderr.txt" > "$REPORT_DIR/05a-session-prompt.txt" || true
+echo "  Wrote to $REPORT_DIR/05a-session-prompt.txt"
+cat "$REPORT_DIR/05a-session-prompt.txt"
 echo ""
 
-# 6b. Prompt with coding context to trigger relevant lessons
-echo "  6b. Coding-context prompt probe..."
+# 5b. Prompt with coding context to trigger relevant lessons
+echo "  5b. Coding-context prompt probe..."
 claude -p "You are being tested. Your ONLY job is to report what [ENGRAMMAR_V1] blocks appear in your context.
 
 First, report ALL [ENGRAMMAR_V1] blocks you see (from SessionStart and UserPromptSubmit hooks).
@@ -177,13 +138,13 @@ Instructions:
 Output format:
 ## Hook: <event name>
 - EG#<id>: <full lesson text>" \
-  --no-session-persistence --output-format text 2>"$REPORT_DIR/06b-stderr.txt" > "$REPORT_DIR/06b-coding-prompt.txt" || true
-echo "  Wrote to $REPORT_DIR/06b-coding-prompt.txt"
-cat "$REPORT_DIR/06b-coding-prompt.txt"
+  --no-session-persistence --output-format text 2>"$REPORT_DIR/05b-stderr.txt" > "$REPORT_DIR/05b-coding-prompt.txt" || true
+echo "  Wrote to $REPORT_DIR/05b-coding-prompt.txt"
+cat "$REPORT_DIR/05b-coding-prompt.txt"
 echo ""
 
-# 6c. Tool use probe — ask Claude to read a file, which triggers PreToolUse
-echo "  6c. Tool-use probe (triggers PreToolUse hook)..."
+# 5c. Tool use probe — ask Claude to read a file, which triggers PreToolUse
+echo "  5c. Tool-use probe (triggers PreToolUse hook)..."
 claude -p "You are being tested. Do these two things IN ORDER:
 
 STEP 1: Read the file /Users/user/work/ai-tools/engrammar/README.md using the Read tool.
@@ -199,9 +160,9 @@ If no blocks at all, say 'NO ENGRAMMAR LESSONS INJECTED'
 Output format:
 ## Hook: <event name>
 - EG#<id>: <full lesson text>" \
-  --no-session-persistence --output-format text 2>"$REPORT_DIR/06c-stderr.txt" > "$REPORT_DIR/06c-tool-use.txt" || true
-echo "  Wrote to $REPORT_DIR/06c-tool-use.txt"
-cat "$REPORT_DIR/06c-tool-use.txt"
+  --no-session-persistence --output-format text 2>"$REPORT_DIR/05c-stderr.txt" > "$REPORT_DIR/05c-tool-use.txt" || true
+echo "  Wrote to $REPORT_DIR/05c-tool-use.txt"
+cat "$REPORT_DIR/05c-tool-use.txt"
 echo ""
 
 # ── Summary ────────────────────────────────────────────────────────
@@ -210,6 +171,6 @@ echo "=== Integration Test Complete ==="
 echo "Reports:  $REPORT_DIR"
 echo "DB backup: $BACKUP"
 echo ""
-echo "To restore DB: cp '$BACKUP' '$DB'"
+echo "To restore DB, run: engrammar restore"
 echo ""
 ls -la "$REPORT_DIR"/

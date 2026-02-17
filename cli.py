@@ -215,17 +215,38 @@ def cmd_export(args):
 
 
 def cmd_extract(args):
-    """Extract lessons from Claude Code session facets."""
+    """Extract lessons from conversation transcripts (or facets with --facets)."""
     dry_run = "--dry-run" in args
+    use_facets = "--facets" in args
 
-    from engrammar.extractor import extract_from_sessions
+    if use_facets:
+        from engrammar.extractor import extract_from_sessions
 
-    summary = extract_from_sessions(dry_run=dry_run)
+        summary = extract_from_sessions(dry_run=dry_run)
 
-    if not dry_run:
-        print(f"\nSummary: {summary['new_sessions']} new sessions, "
-              f"{summary['with_friction']} with friction, "
-              f"{summary['extracted']} added, {summary['merged']} merged")
+        if not dry_run:
+            print(f"\nSummary: {summary['new_sessions']} new sessions, "
+                  f"{summary['with_friction']} with friction, "
+                  f"{summary['extracted']} added, {summary['merged']} merged")
+    else:
+        from engrammar.extractor import extract_from_transcripts
+
+        # Parse --limit N
+        limit = None
+        if "--limit" in args:
+            idx = args.index("--limit")
+            if idx + 1 < len(args):
+                try:
+                    limit = int(args[idx + 1])
+                except ValueError:
+                    pass
+
+        summary = extract_from_transcripts(limit=limit, dry_run=dry_run)
+
+        if not dry_run:
+            print(f"\nSummary: {summary['processed']} processed, "
+                  f"{summary['extracted']} added, {summary['merged']} merged, "
+                  f"{summary['skipped']} skipped")
 
 
 def cmd_rebuild(args):
@@ -704,6 +725,67 @@ def cmd_detect_tags(args):
     print(f"Repository: {env.get('repo', 'unknown')}")
 
 
+def cmd_restore_db(args):
+    """List DB backups and restore a selected one."""
+    import glob
+    import shutil
+
+    from engrammar.config import DB_PATH, ENGRAMMAR_HOME
+
+    pattern = os.path.join(ENGRAMMAR_HOME, "lessons.db.backup-*")
+    backups = sorted(glob.glob(pattern))
+
+    if not backups:
+        print("No backups found.")
+        return
+
+    if args and args[0] == "--list":
+        print(f"Found {len(backups)} backup(s):\n")
+        for i, b in enumerate(backups, 1):
+            size_kb = os.path.getsize(b) / 1024
+            name = os.path.basename(b)
+            print(f"  {i}. {name}  ({size_kb:.0f} KB)")
+        return
+
+    # Show backups with index
+    print(f"Found {len(backups)} backup(s):\n")
+    for i, b in enumerate(backups, 1):
+        size_kb = os.path.getsize(b) / 1024
+        name = os.path.basename(b)
+        print(f"  {i}. {name}  ({size_kb:.0f} KB)")
+
+    print()
+
+    # Accept index from args or prompt
+    choice = None
+    if args:
+        choice = args[0]
+    else:
+        try:
+            choice = input("Enter backup number to restore (or 'q' to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return
+
+    if not choice or choice.lower() == "q":
+        print("Cancelled.")
+        return
+
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(backups):
+            print(f"Invalid selection. Choose 1-{len(backups)}.")
+            return
+    except ValueError:
+        print(f"Invalid input: {choice}")
+        return
+
+    selected = backups[idx]
+    print(f"\nRestoring from: {os.path.basename(selected)}")
+    shutil.copy2(selected, DB_PATH)
+    print(f"Done. Database restored.")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -723,11 +805,12 @@ def main():
         print("  backfill     Create audit records from past sessions: backfill [--dry-run] [--limit N] [--evaluate]")
         print("  import       Import from file: import FILE")
         print("  export       Export all lessons to markdown")
-        print("  extract      Extract lessons from session facets")
+        print("  extract      Extract lessons from transcripts: extract [--limit N] [--dry-run] [--facets]")
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
         print("  backfill-prereqs  Retroactively set prerequisites on existing lessons [--dry-run]")
+        print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
         return
 
     command = sys.argv[1]
@@ -754,6 +837,7 @@ def main():
         "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
         "backfill-prereqs": cmd_backfill_prereqs,
+        "restore": cmd_restore_db,
     }
 
     if command in commands:

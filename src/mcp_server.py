@@ -17,7 +17,36 @@ mcp = FastMCP(
         "add new learnings, mark lessons as not applicable, and check system status. "
         "Lessons from hooks appear in [ENGRAMMAR_V1] blocks with EG#ID markers "
         "(e.g. [EG#42]). When you notice a lesson from hook context doesn't apply "
-        "to the current environment, use engrammar_feedback to record why."
+        "to the current environment, use engrammar_feedback to record why.\n\n"
+
+        "## Proactive Lesson Extraction\n\n"
+        "You should actively extract lessons during sessions. Call engrammar_add "
+        "(with source=\"self-extracted\") when any of these occur:\n"
+        "- **User correction**: The user steers you away from an approach, tool, or pattern. "
+        "Capture what was wrong AND the preferred alternative.\n"
+        "- **Significant effort**: You spent multiple turns debugging, investigating, or "
+        "iterating on something. Capture the root cause and fix so future sessions skip the struggle.\n"
+        "- **Discovered convention**: You learn a project-specific pattern, naming convention, "
+        "architecture rule, or workflow preference. Capture it as a reusable rule.\n"
+        "- **Environment/tooling quirk**: A tool, API, or library behaves unexpectedly. "
+        "Capture the gotcha and workaround.\n\n"
+
+        "## Deduplication\n\n"
+        "Before adding a lesson, scan [ENGRAMMAR_V1] blocks already in your context — "
+        "if a matching or partial lesson exists, call engrammar_update to improve it instead "
+        "of adding a duplicate. Do NOT call engrammar_search just to deduplicate; batch "
+        "dedup runs separately.\n\n"
+
+        "## Quality Criteria\n\n"
+        "Only add lessons that are:\n"
+        "- **Specific**: Contains concrete details (file paths, tool names, exact patterns), not vague advice.\n"
+        "- **Actionable**: A future session can act on it without further context.\n"
+        "- **Reusable**: Applies beyond this single session — would help in similar future situations.\n\n"
+
+        "## Updating Injected Lessons\n\n"
+        "When you see a lesson in [ENGRAMMAR_V1] context that is incomplete, vague, or could be "
+        "improved based on what you now know, call engrammar_update to refine it. "
+        "Use the EG#ID to find the lesson_id."
     ),
 )
 
@@ -65,12 +94,28 @@ def engrammar_add(
 
     Use this when you learn something that should be remembered across sessions.
 
+    **Proactive usage — call this tool when you notice:**
+    - A user correction (they steer you to a different approach, tool, or pattern)
+    - Significant debugging effort (you spent multiple turns on something that had a non-obvious fix)
+    - A project convention or preference that future sessions should know
+    - A tooling/environment gotcha with a workaround
+
+    **Before calling**, scan [ENGRAMMAR_V1] blocks in your context for duplicates.
+    If a partial match exists, use engrammar_update to improve it instead.
+
+    **Examples:**
+    - User says "don't use relative imports here, use absolute" → add lesson about import convention
+    - You discover a test must run with specific env vars → add lesson about test requirements
+    - A library API changed and the old pattern fails → add lesson about the new pattern
+
     Args:
-        text: The lesson text — what was learned
+        text: The lesson text — what was learned. Be specific and actionable.
         category: Hierarchical category (e.g. "development/frontend/styling")
         tags: Optional list of environment tags (e.g. ["acme", "react", "frontend"])
         prerequisites: Optional requirements dict or JSON string (e.g. {"repos":["app-repo"],"os":["darwin"]})
-        source: How this lesson was discovered ("manual", "auto-extracted", "feedback")
+        source: How this lesson was discovered. Use "self-extracted" for lessons you
+            proactively identify during a session. Other values: "manual" (user explicitly
+            asked to save), "auto-extracted" (from facet pipeline), "feedback" (from feedback loop).
     """
     # Validate inputs
     if not text or not text.strip():
@@ -270,8 +315,21 @@ def engrammar_update(
 ) -> str:
     """Update an existing lesson's text, category, or prerequisites.
 
+    **When to use this instead of engrammar_add:**
+    - You see a lesson in [ENGRAMMAR_V1] context (marked as EG#ID) that is vague,
+      incomplete, or could be improved with details you now have.
+    - You found a near-duplicate via engrammar_search and want to enrich it rather
+      than create a new lesson.
+    - A lesson's category or prerequisites need correction based on current context.
+
+    **Examples:**
+    - An injected lesson says "use absolute imports" but doesn't specify which project →
+      update to add the repo prerequisite and more specific guidance.
+    - A lesson about a CLI flag is correct but missing the version where it changed →
+      update the text to include the version.
+
     Args:
-        lesson_id: The lesson ID to update
+        lesson_id: The lesson ID to update (use EG#ID from [ENGRAMMAR_V1] blocks)
         text: New lesson text (if changing)
         category: New category (if changing)
         prerequisites: New prerequisites dict or JSON string (if changing)
