@@ -11,24 +11,18 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def cmd_setup(args):
-    """Initialize database + import existing lessons + build index."""
+    """Initialize database + build index."""
     from engrammar.config import DB_PATH, ENGRAMMAR_HOME
-    from engrammar.db import init_db, import_from_state_file, get_lesson_count
+    from engrammar.db import init_db, get_lesson_count
 
     print("Initializing database...")
     init_db()
 
-    # Import existing lessons if DB is empty
     count = get_lesson_count()
     if count == 0:
-        state_file = os.path.expanduser("~/.shared-cli-agents/.lessons-state.json")
-        if os.path.exists(state_file):
-            imported = import_from_state_file(state_file)
-            print(f"Imported {imported} lessons from {state_file}")
-        else:
-            print("No existing lessons file found, starting fresh.")
+        print("Empty database. Run 'engrammar-cli extract' to populate from transcripts.")
     else:
-        print(f"Database already has {count} lessons, skipping import.")
+        print(f"Database has {count} lessons.")
 
     # Build embedding index
     print("Building embedding index...")

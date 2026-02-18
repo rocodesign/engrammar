@@ -495,7 +495,7 @@ def get_category_stats(db_path=None):
     return [(r["level1"], r["count"]) for r in rows]
 
 
-# Topic-to-category mapping for importing from .lessons-state.json
+# Topic-to-category mapping for extraction and JSON imports
 TOPIC_CATEGORY_MAP = {
     "tool-usage": "tools/figma",
     "git-workflow": "development/git",
@@ -924,7 +924,7 @@ def check_and_apply_pin_decisions(lesson_id, db_path=None):
 
 
 def import_from_state_file(path, db_path=None):
-    """Import lessons from .lessons-state.json."""
+    """Import lessons from a JSON state file."""
     if not os.path.exists(path):
         return 0
 
