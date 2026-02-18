@@ -29,6 +29,49 @@ def test_add_basic(test_db):
     assert lessons[0]["text"] == "new lesson"
 
 
+def test_add_captures_session_id(test_db, monkeypatch):
+    """engrammar_add auto-reads session_id from file and stores it in source_sessions."""
+    real_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: real_uuid)
+
+    result = engrammar_add(text="self-extracted lesson", category="dev", source="self-extracted")
+    assert "Added lesson" in result
+
+    conn = get_connection(test_db)
+    row = conn.execute("SELECT source_sessions FROM lessons WHERE id = 1").fetchone()
+    conn.close()
+    sessions = json.loads(row["source_sessions"])
+    assert sessions == [real_uuid]
+
+
+def test_add_ignores_fake_session_id(test_db, monkeypatch):
+    """engrammar_add rejects non-UUID session IDs (e.g. 'current-sess')."""
+    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: "current-sess")
+
+    result = engrammar_add(text="lesson", category="dev")
+    assert "Added lesson" in result
+
+    conn = get_connection(test_db)
+    row = conn.execute("SELECT source_sessions FROM lessons WHERE id = 1").fetchone()
+    conn.close()
+    sessions = json.loads(row["source_sessions"])
+    assert sessions == []
+
+
+def test_add_no_session_file(test_db, monkeypatch):
+    """engrammar_add works when no session file exists."""
+    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: None)
+
+    result = engrammar_add(text="lesson", category="dev")
+    assert "Added lesson" in result
+
+    conn = get_connection(test_db)
+    row = conn.execute("SELECT source_sessions FROM lessons WHERE id = 1").fetchone()
+    conn.close()
+    sessions = json.loads(row["source_sessions"])
+    assert sessions == []
+
+
 def test_add_empty_text(test_db):
     result = engrammar_add(text="", category="general")
     assert "Error" in result

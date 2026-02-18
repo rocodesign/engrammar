@@ -2,11 +2,14 @@
 
 import json
 import os
+import re
 import sys
 
 # Ensure engrammar package is importable
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
 from mcp.server.fastmcp import FastMCP
 
@@ -132,6 +135,13 @@ def engrammar_add(
     from engrammar.db import add_lesson, get_all_active_lessons
     from engrammar.embeddings import build_index
 
+    # Auto-capture session_id from file written by SessionStart hook
+    from engrammar.hook_utils import read_session_id
+    session_id = read_session_id()
+    source_sessions = []
+    if session_id and _UUID_RE.match(session_id):
+        source_sessions = [session_id]
+
     # Normalize prerequisites to dict
     prereqs_dict = {}
 
@@ -154,6 +164,7 @@ def engrammar_add(
         text=text,
         category=category,
         source=source,
+        source_sessions=source_sessions,
         prerequisites=prereqs_dict if prereqs_dict else None,
     )
 

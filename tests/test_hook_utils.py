@@ -8,6 +8,8 @@ from src.hook_utils import (
     format_lessons_block,
     make_hook_output,
     parse_hook_input,
+    read_session_id,
+    write_session_id,
 )
 
 
@@ -63,3 +65,22 @@ def test_parse_hook_input_invalid_json():
     with patch("sys.stdin", StringIO("not json")):
         result = parse_hook_input()
     assert result == {}
+
+
+def test_write_and_read_session_id(monkeypatch, tmp_path):
+    monkeypatch.setattr("src.hook_utils.ENGRAMMAR_HOME", str(tmp_path))
+    session_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    write_session_id(session_id)
+    assert read_session_id() == session_id
+
+
+def test_read_session_id_no_file(monkeypatch, tmp_path):
+    monkeypatch.setattr("src.hook_utils.ENGRAMMAR_HOME", str(tmp_path))
+    assert read_session_id() is None
+
+
+def test_read_session_id_empty_file(monkeypatch, tmp_path):
+    monkeypatch.setattr("src.hook_utils.ENGRAMMAR_HOME", str(tmp_path))
+    (tmp_path / ".current_session_id").write_text("")
+    assert read_session_id() is None
