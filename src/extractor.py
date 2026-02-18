@@ -21,6 +21,7 @@ from .db import (
     get_processed_session_ids,
     increment_lesson_occurrence,
     mark_sessions_processed,
+    update_tag_relevance,
 )
 from .embeddings import build_index
 
@@ -624,6 +625,10 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             if existing:
                 increment_lesson_occurrence(existing["id"], source_sessions)
                 _maybe_backfill_prerequisites(existing["id"], prerequisites)
+                # Reinforce tag relevance for merged lesson
+                if env_tags:
+                    tag_scores = {tag: 0.5 for tag in env_tags}
+                    update_tag_relevance(existing["id"], tag_scores, weight=1.0)
                 merged += 1
                 print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
             else:
@@ -636,6 +641,10 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
                     occurrence_count=1,
                     prerequisites=prerequisites,
                 )
+                # Initialize tag relevance scores from detected env tags
+                if env_tags:
+                    tag_scores = {tag: 0.5 for tag in env_tags}
+                    update_tag_relevance(lesson_id, tag_scores, weight=1.0)
                 added += 1
                 prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
                 print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
