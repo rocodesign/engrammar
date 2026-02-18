@@ -27,7 +27,7 @@ This file is the index. Detailed task writeups live in `tasks/[priority]-NNN-slu
 
 ### High
 
-- [ ] **#001 Fix self-extraction fake session IDs** `C1`
+- [x] **#001 Fix self-extraction fake session IDs** `C1`
   - `tasks/[1]-001-self-extraction-fake-session-ids/task.md`
 - [ ] **#006 Deduplicate lesson injection globally per session** `C1`
   - `tasks/[1]-006-dedup-lessons-per-session/task.md`

@@ -21,6 +21,11 @@ def main():
         data = parse_hook_input()
         session_id = data.get("session_id")
 
+        # Persist session_id so MCP server can auto-capture it for self-extracted lessons
+        if session_id:
+            from engrammar.hook_utils import write_session_id
+            write_session_id(session_id)
+
         # Start daemon (if needed) and trigger maintenance jobs with single-flight behavior
         try:
             from engrammar.client import send_request

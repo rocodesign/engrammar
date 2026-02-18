@@ -3,7 +3,7 @@
 - Priority: High
 - Complexity: C1 (low-hanging)
 - Related issue: `issues/open/[2]-031-self-extraction-fake-session-ids/issue.md`
-- Status: Open
+- Status: Done
 
 ## Problem
 
