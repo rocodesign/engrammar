@@ -385,6 +385,55 @@ def extract_from_sessions(dry_run=False):
     return summary
 
 
+def _read_transcript_metadata(jsonl_path):
+    """Extract cwd and repo from a transcript JSONL's metadata entries.
+
+    Returns:
+        dict with 'cwd' and 'repo' (or None for each if not found)
+    """
+    cwd = None
+    repo = None
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not cwd and "cwd" in entry:
+                    cwd = entry["cwd"]
+                    if "/work/" in cwd:
+                        parts = cwd.split("/work/")[-1].split("/")
+                        if parts:
+                            repo = parts[0]
+                if cwd:
+                    break
+    except Exception:
+        pass
+    return {"cwd": cwd, "repo": repo}
+
+
+def _detect_tags_for_cwd(cwd):
+    """Detect environment tags by temporarily switching to the given cwd.
+
+    Returns:
+        list of tag strings, or empty list if cwd doesn't exist
+    """
+    if not cwd or not os.path.isdir(cwd):
+        return []
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        from .tag_detectors import detect_tags
+        return detect_tags()
+    except Exception:
+        return []
+    finally:
+        os.chdir(original_cwd)
+
+
 def _read_transcript_messages(jsonl_path, max_chars=8000):
     """Read a transcript JSONL and return formatted message text."""
     messages = []
@@ -529,10 +578,22 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
                 ])
             continue
 
+        # Detect env tags from the transcript's working directory
+        metadata = _read_transcript_metadata(fpath)
+        env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
+
         if dry_run:
             print(f"  Would analyze {len(transcript_text)} chars of transcript")
+            if env_tags:
+                print(f"  Tags: {', '.join(env_tags)}")
             summary["processed"] += 1
             continue
+
+        # Write session_audit so _enrich_with_session_tags can look up tags
+        if env_tags:
+            from .db import write_session_audit
+            write_session_audit(session_id, [], env_tags, metadata.get("repo", ""),
+                                transcript_path=fpath)
 
         extracted = _call_claude_for_transcript_extraction(transcript_text, session_id)
 
@@ -549,7 +610,8 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         for lesson_data in extracted:
             text = lesson_data.get("lesson", "")
             topic = lesson_data.get("topic", "general")
-            source_sessions = lesson_data.get("source_sessions", [session_id])
+            # Always use the real session_id — don't trust LLM to echo it correctly
+            source_sessions = [session_id]
             project_signals = lesson_data.get("project_signals", [])
 
             if not text:
