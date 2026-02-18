@@ -33,7 +33,6 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-026-pin-evidence-overcount/issue.md`
 - [ ] **#28 Pending evaluation processing has no claim/lock step** `[C3]`
   - `issues/open/[2]-028-evaluator-no-claim-lock/issue.md`
-
 ### Medium
 - [ ] **#7 Daemon is single-threaded** `[C3]`
   - `issues/open/[3]-007-single-threaded-daemon/issue.md`
