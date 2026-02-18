@@ -9,7 +9,8 @@ Don't let ideas stay only in conversation — if it's worth discussing, it's wor
 | Type | Location | Naming | Index |
 |------|----------|--------|-------|
 | Bugs, design flaws | `issues/open/` | `[severity]-NNN-slug/issue.md` | `issues/ISSUES.md` |
-| Features, planned work | `tasks/` | `[priority]-NNN-slug/task.md` | `tasks/tasks.md` |
+| Features, planned work | `tasks/open/` | `[priority]-NNN-slug/task.md` | `tasks/tasks.md` |
+| Completed tasks | `tasks/completed/` | `[priority]-NNN-slug/task.md` | `tasks/tasks.md` |
 | Loose ideas | `tasks/ideas/` | `descriptive-name.md` | listed in `tasks/tasks.md` |
 
 - **Issues** use severity: `[1]` Critical, `[2]` High, `[3]` Medium, `[4]` Low
@@ -29,4 +30,4 @@ Don't let ideas stay only in conversation — if it's worth discussing, it's wor
 2. Create the folder + markdown file in the right location.
 3. Update the corresponding index file (`ISSUES.md` or `tasks.md`).
 4. When starting work on a task/issue, note it in the file.
-5. When done, move issues to `issues/resolved/` and check off in the index.
+5. When done, move issues to `issues/resolved/` and move tasks to `tasks/completed/`, then check off/update status in the index.
