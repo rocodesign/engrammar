@@ -188,7 +188,7 @@ engrammar import lessons.md
 
 **Formats:**
 
-- **JSON**: Uses the `.lessons-state.json` format (from legacy system)
+- **JSON**: Array of objects with `lesson`, `topic`, `source_sessions` fields
 - **Markdown**: Each line starting with `- ` is imported as a lesson
 
 **Behavior:**
