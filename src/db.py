@@ -495,22 +495,6 @@ def get_category_stats(db_path=None):
     return [(r["level1"], r["count"]) for r in rows]
 
 
-# Topic-to-category mapping for extraction and JSON imports
-TOPIC_CATEGORY_MAP = {
-    "tool-usage": "tools/figma",
-    "git-workflow": "development/git",
-    "styling": "development/frontend/styling",
-    "project-structure": "development/architecture",
-    "code-patterns": "development/frontend/components",
-    "jira-integration": "tools/jira",
-    "pr-creation": "development/git/pr",
-    "debugging": "development/debugging",
-    "permissions": "tools/claude-code",
-    "request-clarification": "workflow/communication",
-    "instructions": "workflow/setup",
-}
-
-
 def get_processed_session_ids(db_path=None):
     """Get set of already-processed session IDs."""
     conn = get_connection(db_path)
@@ -935,8 +919,9 @@ def import_from_state_file(path, db_path=None):
     imported = 0
 
     for lesson in lessons:
-        topic = lesson.get("topic", "general")
-        category = TOPIC_CATEGORY_MAP.get(topic, "general/" + topic)
+        category = lesson.get("category") or lesson.get("topic", "general")
+        if "/" not in category:
+            category = "general/" + category
         text = lesson.get("lesson", "")
         source_sessions = lesson.get("source_sessions", [])
         occurrence_count = lesson.get("occurrence_count", 1)

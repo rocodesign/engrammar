@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .db import (
-    TOPIC_CATEGORY_MAP,
     add_lesson,
     find_similar_lesson,
     get_all_active_lessons,
@@ -54,7 +53,16 @@ Session transcript:
 {transcript}
 
 Output a JSON array of objects, each with:
-- "topic": short category (e.g. "browser-testing", "git-workflow", "styling", "project-structure", "tool-usage", "pr-creation")
+- "category": hierarchical category path using these prefixes:
+    - "development/frontend" (styling, components, react, etc.)
+    - "development/backend" (APIs, databases, etc.)
+    - "development/git" (branching, PRs, commits)
+    - "development/testing" (test patterns, frameworks)
+    - "development/architecture" (project structure, patterns)
+    - "tools/<tool-name>" (figma, jira, playwright, claude-code, etc.)
+    - "workflow/<area>" (communication, setup, debugging)
+    - "general/<topic>" (catch-all for anything else)
+  Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
 - "lesson": the specific, concrete lesson (1-2 sentences max)
 - "source_sessions": ["{session_id}"]
 - "scope": "general" if the lesson applies broadly, or "project-specific" if it only applies to a particular project/tool
@@ -81,7 +89,16 @@ Here are the session summaries and friction details:
 {sessions}
 
 Output a JSON array of objects, each with:
-- "topic": short category (e.g. "browser-testing", "figma", "git-workflow", "styling", "project-structure", "tool-usage", "pr-creation")
+- "category": hierarchical category path using these prefixes:
+    - "development/frontend" (styling, components, react, etc.)
+    - "development/backend" (APIs, databases, etc.)
+    - "development/git" (branching, PRs, commits)
+    - "development/testing" (test patterns, frameworks)
+    - "development/architecture" (project structure, patterns)
+    - "tools/<tool-name>" (figma, jira, playwright, claude-code, etc.)
+    - "workflow/<area>" (communication, setup, debugging)
+    - "general/<topic>" (catch-all for anything else)
+  Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
 - "lesson": the specific, concrete lesson (1-2 sentences max)
 - "source_sessions": list of session IDs this was derived from
 - "scope": "general" if the lesson applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
@@ -329,7 +346,9 @@ def extract_from_sessions(dry_run=False):
     merged = 0
     for lesson_data in all_extracted:
         text = lesson_data.get("lesson", "")
-        topic = lesson_data.get("topic", "general")
+        category = lesson_data.get("category") or lesson_data.get("topic", "general")
+        if "/" not in category:
+            category = "general/" + category
         source_sessions = lesson_data.get("source_sessions", [])
         project_signals = lesson_data.get("project_signals", [])
 
@@ -349,7 +368,6 @@ def extract_from_sessions(dry_run=False):
             merged += 1
             print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
         else:
-            category = TOPIC_CATEGORY_MAP.get(topic, "general/" + topic)
             lesson_id = add_lesson(
                 text=text,
                 category=category,
@@ -610,7 +628,10 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         merged = 0
         for lesson_data in extracted:
             text = lesson_data.get("lesson", "")
-            topic = lesson_data.get("topic", "general")
+            # Use category directly from LLM; fall back to topic for legacy format
+            category = lesson_data.get("category") or lesson_data.get("topic", "general")
+            if "/" not in category:
+                category = "general/" + category
             # Always use the real session_id — don't trust LLM to echo it correctly
             source_sessions = [session_id]
             project_signals = lesson_data.get("project_signals", [])
@@ -632,7 +653,6 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
                 merged += 1
                 print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
             else:
-                category = TOPIC_CATEGORY_MAP.get(topic, "general/" + topic)
                 lesson_id = add_lesson(
                     text=text,
                     category=category,
