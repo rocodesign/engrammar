@@ -41,13 +41,17 @@ Look for these signals in the conversation:
 - **Discovered conventions**: A project-specific pattern, naming convention, architecture rule, or workflow preference was established. Capture it as a reusable rule.
 - **Environment/tooling quirks**: A tool, API, or library behaved unexpectedly. Capture the gotcha and workaround.
 
-DO NOT produce generic advice like "investigate methodically" or "ask for clarification."
-DO produce concrete, reusable knowledge like:
+DO NOT extract:
+- Generic advice like "investigate methodically" or "ask for clarification"
+- Implementation details about specific functions/code internals (e.g. "function X has a gap" or "module Y does Z internally")
+- Bug descriptions or one-time fixes that won't recur
+
+DO extract concrete, reusable knowledge like:
 - "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
 - "Branch naming convention: taps-NUMBER (lowercase), not TEAM-NUMBER or feature/taps-NUMBER"
 - "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
 
-Each lesson should be something that saves time if known in advance.
+Each lesson should be a rule or pattern that saves time if known in advance — not a description of what happened.
 
 Session transcript:
 {transcript}
@@ -74,15 +78,19 @@ Output ONLY valid JSON, no markdown fences, no explanation."""
 
 EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE lessons.
 
-DO NOT produce generic advice like "investigate methodically" or "ask for clarification."
-DO produce concrete, reusable knowledge like:
+DO NOT extract:
+- Generic advice like "investigate methodically" or "ask for clarification"
+- Implementation details about specific functions/code internals (e.g. "function X has a gap" or "module Y does Z internally")
+- Bug descriptions or one-time fixes that won't recur
+
+DO extract concrete, reusable knowledge like:
 - "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
 - "Figma MCP server must be connected before starting UI implementation — test with a simple figma tool call first"
 - "Branch naming convention: taps-NUMBER (lowercase), not TEAM-NUMBER or feature/taps-NUMBER"
 - "Never use inline styles in this codebase — use CSS classes or Tailwind component props"
 - "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
 
-Each lesson should be something that saves time if known in advance. Think: "what specific thing did Claude waste time on that could be avoided with this one piece of knowledge?"
+Each lesson should be a rule or pattern that saves time if known in advance — not a description of what happened.
 
 Here are the session summaries and friction details:
 
