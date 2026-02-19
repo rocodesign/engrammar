@@ -7,20 +7,28 @@ to Claude haiku for analysis, and imports extracted lessons into the Engrammar D
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Pattern to strip engrammar injection blocks from transcripts
+_ENGRAMMAR_BLOCK_RE = re.compile(
+    r"\[ENGRAMMAR_V1\].*?\[/ENGRAMMAR_V1\]", re.DOTALL
+)
+
 from .db import (
     add_lesson,
     find_similar_lesson,
     get_all_active_lessons,
+    get_connection,
     get_env_tags_for_sessions,
     get_processed_session_ids,
     increment_lesson_occurrence,
     mark_sessions_processed,
     update_tag_relevance,
+    write_session_audit,
 )
 from .embeddings import build_index
 
@@ -113,6 +121,89 @@ Output a JSON array of objects, each with:
 - "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TEAM", "Tailwind", "Figma MCP", "Playwright"]). Empty list when scope is "general".
 
 Output ONLY valid JSON, no markdown fences, no explanation."""
+
+
+def _parse_json_array(raw):
+    """Robustly parse a JSON array of lesson objects from LLM output.
+
+    Handles common issues: extra text after the array, markdown fences,
+    multiple JSON objects on separate lines.
+
+    Returns:
+        list of dicts (parsed lesson array) or None if parsing fails
+    """
+    text = raw.strip()
+
+    # Strip markdown fences
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0] if "\n" in text else text[:-3]
+        text = text.strip()
+
+    # Try direct parse first
+    try:
+        result = json.loads(text)
+        if isinstance(result, list) and _is_lesson_array(result):
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    # Find complete JSON arrays by bracket matching; skip non-lesson arrays like [1]
+    search_from = 0
+    while True:
+        start = text.find("[", search_from)
+        if start == -1:
+            return None
+
+        depth = 0
+        in_string = False
+        escape = False
+        end = None
+        for i, ch in enumerate(text[start:], start):
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+
+        if end is None:
+            return None
+
+        try:
+            candidate = json.loads(text[start:end + 1])
+            if isinstance(candidate, list) and _is_lesson_array(candidate):
+                return candidate
+        except json.JSONDecodeError:
+            pass
+
+        search_from = end + 1
+
+    return None
+
+
+def _is_lesson_array(arr):
+    """Check if a parsed JSON array looks like lesson objects.
+
+    Returns True for empty arrays (no lessons extracted) or arrays
+    where every element is a dict with a 'lesson' key.
+    """
+    if not arr:
+        return True
+    return all(isinstance(item, dict) and "lesson" in item for item in arr)
 
 
 def _infer_prerequisites(text, project_signals=None):
@@ -262,18 +353,13 @@ def _call_claude_for_extraction(sessions):
             return []
 
         output = result.stdout.strip()
-        # Strip markdown fences if present
-        if output.startswith("```"):
-            output = output.split("\n", 1)[1]
-            if output.endswith("```"):
-                output = output.rsplit("\n", 1)[0]
-
-        return json.loads(output)
+        parsed = _parse_json_array(output)
+        if parsed is None:
+            print(f"Failed to parse Claude output as JSON array", file=sys.stderr)
+            return []
+        return parsed
     except subprocess.TimeoutExpired:
         print("Claude extraction timed out", file=sys.stderr)
-        return []
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse Claude output: {e}", file=sys.stderr)
         return []
     except FileNotFoundError:
         print("claude CLI not found — skipping extraction", file=sys.stderr)
@@ -501,6 +587,34 @@ def _read_existing_instructions(cwd):
     return "\n\n".join(parts)
 
 
+def _read_user_prompts(jsonl_path):
+    """Read user prompts from a transcript JSONL for shown-lesson matching."""
+    prompts = []
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("type") != "user":
+                    continue
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+                if isinstance(content, list):
+                    text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+                if content and len(content) > 5:
+                    prompts.append(content[:500])
+    except Exception:
+        pass
+    return prompts
+
+
 def _read_transcript_messages(jsonl_path, max_chars=8000):
     """Read a transcript JSONL and return formatted message text."""
     messages = []
@@ -528,6 +642,9 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
                     content = " ".join(text_parts)
                 elif not isinstance(content, str):
                     continue
+
+                # Strip engrammar injection blocks to avoid re-learning injected lessons
+                content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
 
                 role = message_obj.get("role", entry.get("type", ""))
                 if content:
@@ -570,17 +687,13 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
             return []
 
         output = result.stdout.strip()
-        if output.startswith("```"):
-            output = output.split("\n", 1)[1]
-            if output.endswith("```"):
-                output = output.rsplit("\n", 1)[0]
-
-        return json.loads(output)
+        parsed = _parse_json_array(output)
+        if parsed is None:
+            print(f"Failed to parse Claude output as JSON array", file=sys.stderr)
+            return []
+        return parsed
     except subprocess.TimeoutExpired:
         print("Claude extraction timed out", file=sys.stderr)
-        return []
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse Claude output: {e}", file=sys.stderr)
         return []
     except FileNotFoundError:
         print("claude CLI not found — skipping extraction", file=sys.stderr)
@@ -662,7 +775,6 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
 
         # Write session_audit so _enrich_with_session_tags can look up tags
         if env_tags:
-            from .db import write_session_audit
             write_session_audit(session_id, [], env_tags, metadata.get("repo", ""),
                                 transcript_path=fpath)
 
@@ -742,8 +854,76 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         summary["total_active"] = len(lessons)
         print(f"Indexed {len(lessons)} lessons.")
 
+    # Backfill shown_lesson_ids in session_audit records for the evaluator
+    if not dry_run:
+        _backfill_shown_lessons(projects_dir)
+
     print(f"\nDone. Processed: {summary['processed']}, "
           f"Added: {summary['extracted']}, Merged: {summary['merged']}, "
           f"Skipped: {summary['skipped']}")
 
     return summary
+
+
+def _backfill_shown_lessons(projects_dir=None):
+    """Populate shown_lesson_ids in session_audit records.
+
+    For each audit record with empty shown_lesson_ids, searches user prompts
+    from the transcript against the lesson DB to find which lessons would have
+    been shown. Updates the audit record in place.
+    """
+    from .search import search
+
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT session_id, env_tags, repo, transcript_path FROM session_audit WHERE shown_lesson_ids = '[]'"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return
+
+    print(f"\nBackfilling shown lessons for {len(rows)} session(s)...")
+    updated = 0
+
+    for row in rows:
+        session_id = row["session_id"]
+        transcript_path = row["transcript_path"]
+
+        if not transcript_path or not os.path.exists(transcript_path):
+            # Try to find transcript by session_id
+            if projects_dir is None:
+                projects_dir = os.path.expanduser("~/.claude/projects")
+            pattern = os.path.join(projects_dir, "*", f"{session_id}.jsonl")
+            matches = glob.glob(pattern)
+            if matches:
+                transcript_path = matches[0]
+            else:
+                continue
+
+        # Read user prompts from transcript
+        user_prompts = _read_user_prompts(transcript_path)
+        if not user_prompts:
+            continue
+
+        # Search for matching lessons
+        all_lesson_ids = set()
+        for prompt in user_prompts:
+            if len(prompt) < 5:
+                continue
+            try:
+                results = search(prompt, top_k=5, skip_prerequisites=True)
+                for lesson in results:
+                    all_lesson_ids.add(lesson["id"])
+            except Exception:
+                continue
+
+        if all_lesson_ids:
+            env_tags = json.loads(row["env_tags"])
+            write_session_audit(
+                session_id, sorted(all_lesson_ids), env_tags,
+                row["repo"], transcript_path=transcript_path,
+            )
+            updated += 1
+
+    print(f"  Updated {updated} audit record(s) with shown lessons.")

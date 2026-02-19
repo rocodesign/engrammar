@@ -519,24 +519,32 @@ def cmd_backfill(args):
 
 
 def cmd_evaluate(args):
-    """Run pending relevance evaluations for past sessions."""
+    """Run relevance evaluations for a specific session or pending sessions."""
     limit = 5
+    session_id = None
     i = 0
     while i < len(args):
         if args[i] == "--limit" and i + 1 < len(args):
             limit = int(args[i + 1])
             i += 2
+        elif args[i] == "--session" and i + 1 < len(args):
+            session_id = args[i + 1]
+            i += 2
         else:
             i += 1
 
-    from engrammar.evaluator import run_pending_evaluations
+    from engrammar.evaluator import run_evaluation_for_session, run_pending_evaluations
 
-    print(f"Running pending evaluations (limit: {limit})...")
-    results = run_pending_evaluations(limit=limit)
-
-    print(f"  Completed: {results['completed']}")
-    print(f"  Failed:    {results['failed']}")
-    print(f"  Total:     {results['total']}")
+    if session_id:
+        print(f"Evaluating session {session_id[:12]}...")
+        success = run_evaluation_for_session(session_id)
+        print(f"  {'Completed' if success else 'Failed'}")
+    else:
+        print(f"Running pending evaluations (limit: {limit})...")
+        results = run_pending_evaluations(limit=limit)
+        print(f"  Completed: {results['completed']}")
+        print(f"  Failed:    {results['failed']}")
+        print(f"  Total:     {results['total']}")
 
 
 def cmd_backfill_prereqs(args):

@@ -33,6 +33,10 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-026-pin-evidence-overcount/issue.md`
 - [ ] **#28 Pending evaluation processing has no claim/lock step** `[C3]`
   - `issues/open/[2]-028-evaluator-no-claim-lock/issue.md`
+- [ ] **#29 Shown-lesson backfill uses present-day lesson set** `[C2]`
+  - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
+- [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
+  - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
 ### Medium
 - [ ] **#7 Daemon is single-threaded** `[C3]`
   - `issues/open/[3]-007-single-threaded-daemon/issue.md`
@@ -48,6 +52,8 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-022-cli-update-category-level-drift/issue.md`
 - [ ] **#27 Tag relevance boost averages only known-tag rows** `[C1] low-hanging`
   - `issues/open/[3]-027-tag-relevance-average-sparse/issue.md`
+- [ ] **#31 Session-end tests can spawn real CLI jobs** `[C1] low-hanging`
+  - `issues/open/[3]-031-session-end-tests-spawn-real-cli/issue.md`
 
 ### Low
 - [ ] **#5 `sys.path.insert(0, ENGRAMMAR_HOME)` everywhere** `[C3]`
