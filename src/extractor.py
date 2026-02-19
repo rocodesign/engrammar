@@ -52,7 +52,7 @@ DO extract concrete, reusable knowledge like:
 - "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
 
 Each lesson should be a rule or pattern that saves time if known in advance — not a description of what happened.
-
+{existing_instructions}
 Session transcript:
 {transcript}
 
@@ -461,6 +461,46 @@ def _detect_tags_for_cwd(cwd):
         os.chdir(original_cwd)
 
 
+def _read_existing_instructions(cwd):
+    """Read instruction files from project and user-level directories.
+
+    Reads CLAUDE.md and AGENTS.md from:
+    1. The project directory (cwd)
+    2. User-level locations (~/.claude/CLAUDE.md, ~/.shared-cli-agents/AGENTS.md)
+
+    Returns:
+        str with combined instruction content, or empty string if none found.
+    """
+    parts = []
+    home = os.path.expanduser("~")
+
+    # User-level instruction file (standard Claude Code location)
+    user_claude_md = os.path.join(home, ".claude", "CLAUDE.md")
+    if os.path.exists(user_claude_md):
+        try:
+            with open(user_claude_md, "r") as f:
+                content = f.read(4000)
+            if content.strip():
+                parts.append(f"--- CLAUDE.md (user) ---\n{content.strip()}")
+        except Exception:
+            pass
+
+    # Project-level instruction files
+    if cwd and os.path.isdir(cwd):
+        for filename in ("CLAUDE.md", "AGENTS.md"):
+            filepath = os.path.join(cwd, filename)
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, "r") as f:
+                        content = f.read(4000)
+                    if content.strip():
+                        parts.append(f"--- {filename} (project) ---\n{content.strip()}")
+                except Exception:
+                    pass
+
+    return "\n\n".join(parts)
+
+
 def _read_transcript_messages(jsonl_path, max_chars=8000):
     """Read a transcript JSONL and return formatted message text."""
     messages = []
@@ -501,11 +541,15 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
     return result
 
 
-def _call_claude_for_transcript_extraction(transcript_text, session_id):
+def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions=""):
     """Call claude CLI to extract lessons from a conversation transcript."""
+    instructions_block = ""
+    if existing_instructions:
+        instructions_block = f"\nThe project already has these instructions documented — DO NOT extract lessons that restate this information:\n{existing_instructions}\n"
     prompt = TRANSCRIPT_EXTRACTION_PROMPT.format(
         transcript=transcript_text,
         session_id=session_id,
+        existing_instructions=instructions_block,
     )
 
     try:
@@ -622,7 +666,12 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             write_session_audit(session_id, [], env_tags, metadata.get("repo", ""),
                                 transcript_path=fpath)
 
-        extracted = _call_claude_for_transcript_extraction(transcript_text, session_id)
+        # Read existing project instructions to avoid duplicating documented knowledge
+        existing_instructions = _read_existing_instructions(metadata.get("cwd"))
+
+        extracted = _call_claude_for_transcript_extraction(
+            transcript_text, session_id, existing_instructions=existing_instructions
+        )
 
         if not extracted:
             print("  No lessons extracted.")
