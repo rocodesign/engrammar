@@ -31,7 +31,7 @@ def detect_tags() -> list[str]:
 
 
 def _detect_from_git() -> Set[str]:
-    """Detect tags from git remote URL."""
+    """Detect tags from git remote URL, including repo name."""
     tags = set()
 
     try:
@@ -46,6 +46,12 @@ def _detect_from_git() -> Set[str]:
             for pattern, tag in GIT_REMOTE_PATTERNS:
                 if pattern.search(url):
                     tags.add(tag)
+            # Extract repo name as a tag (e.g. "repo:engrammar")
+            repo_match = re.search(r"[/:]([^/]+?)(?:\.git)?$", url)
+            if repo_match:
+                repo_name = repo_match.group(1).lower()
+                if repo_name:
+                    tags.add(f"repo:{repo_name}")
     except Exception:
         pass
 
