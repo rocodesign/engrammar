@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""SessionEnd hook — writes audit record of what was shown, clears session state.
-
-Evaluation of lesson relevance is deferred to the next session start via
-the evaluator pipeline, which has access to the full transcript.
-"""
+"""SessionEnd hook — writes audit record and triggers background evaluation."""
 
 import json
+import subprocess
 import sys
 import os
 
@@ -46,6 +43,15 @@ def main():
 
         # Clear session state
         clear_session_shown(session_id)
+
+        # Trigger background evaluation for this session
+        cli_path = os.path.join(ENGRAMMAR_HOME, "engrammar-cli")
+        subprocess.Popen(
+            [cli_path, "evaluate", "--session", session_id],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
     except Exception as e:
         log_error("SessionEnd", "main execution", e)
