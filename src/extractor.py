@@ -41,25 +41,32 @@ KEYWORD_PREREQUISITES = {
     "figma server": {"mcp_servers": ["figma"]},
 }
 
-TRANSCRIPT_EXTRACTION_PROMPT = """You are analyzing a Claude Code conversation transcript to extract SPECIFIC, ACTIONABLE lessons.
+TRANSCRIPT_EXTRACTION_PROMPT = """You are analyzing a Claude Code conversation transcript to extract lessons from FRICTION — moments where the assistant got something wrong and the user had to intervene.
 
-Look for these signals in the conversation:
-- **User corrections**: The user steered the assistant away from an approach, tool, or pattern. Capture what was wrong AND the preferred alternative.
-- **Significant effort**: The assistant spent multiple turns debugging, investigating, or iterating. Capture the root cause and fix so future sessions skip the struggle.
-- **Discovered conventions**: A project-specific pattern, naming convention, architecture rule, or workflow preference was established. Capture it as a reusable rule.
-- **Environment/tooling quirks**: A tool, API, or library behaved unexpectedly. Capture the gotcha and workaround.
+ONLY extract from these patterns:
+1. **User corrections**: The assistant tried approach A, then the user said "no, do B instead" or "that's wrong, use X". Capture the rule: "Do B, not A" or "Use X because Y".
+2. **Repeated struggle**: The assistant spent multiple turns on something that could have been avoided. Capture the shortcut or root cause.
+3. **Discovered conventions**: The user revealed a project rule the assistant didn't know (naming, architecture, workflow). Capture the rule.
+4. **Tooling gotchas**: A tool or API behaved unexpectedly and required a workaround. Capture the gotcha.
 
-DO NOT extract:
-- Generic advice like "investigate methodically" or "ask for clarification"
-- Implementation details about specific functions/code internals (e.g. "function X has a gap" or "module Y does Z internally")
-- Bug descriptions or one-time fixes that won't recur
+CRITICAL — DO NOT extract:
+- User instructions or requests ("do X", "build Y", "add Z") — these are TASKS, not lessons
+- Summaries of what was built or discussed
+- Generic programming advice (validate inputs, write tests, use types)
+- Implementation details about specific functions
+- Anything that reads like a design decision rather than a correction
 
-DO extract concrete, reusable knowledge like:
-- "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
-- "Branch naming convention: taps-NUMBER (lowercase), not TEAM-NUMBER or feature/taps-NUMBER"
-- "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
+The test: if the lesson is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a lesson.
 
-Each lesson should be a rule or pattern that saves time if known in advance — not a description of what happened.
+Good examples (notice the correction pattern):
+- "Use cy.contains('button', 'Text') not cy.get('button').contains('Text') — the latter yields the deepest element, not the button"
+- "In this monorepo, run codegen scoped to the app (nx run app:codegen), not workspace-wide"
+- "PR descriptions: max 50 words, no co-authored-by lines — the assistant kept adding verbose descriptions"
+
+Bad examples (these are just task summaries):
+- "Rebuild similarity index after each batch" (user instruction, not a correction)
+- "Validate input at system boundaries" (generic advice)
+- "Session IDs are provided by Claude infrastructure" (factual description, no friction)
 {existing_instructions}
 Session transcript:
 {transcript}
@@ -724,7 +731,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
 
     # Find all transcript files
     pattern = os.path.join(projects_dir, "*", "*.jsonl")
-    session_files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
+    session_files = sorted(glob.glob(pattern), key=os.path.getmtime)
 
     if limit:
         session_files = session_files[:limit]
