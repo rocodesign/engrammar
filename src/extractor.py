@@ -842,17 +842,17 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             {"session_id": session_id, "had_friction": 1, "lessons_extracted": added + merged}
         ])
 
+        # Rebuild index after each transcript so the next one can dedup against fresh embeddings
+        if added > 0:
+            lessons = get_all_active_lessons()
+            build_index(lessons)
+
         summary["processed"] += 1
         summary["extracted"] += added
         summary["merged"] += merged
 
-    # Rebuild index if new lessons were added
     if summary["extracted"] > 0 and not dry_run:
-        print("\nRebuilding embedding index...")
-        lessons = get_all_active_lessons()
-        build_index(lessons)
-        summary["total_active"] = len(lessons)
-        print(f"Indexed {len(lessons)} lessons.")
+        summary["total_active"] = len(get_all_active_lessons())
 
     # Backfill shown_lesson_ids in session_audit records for the evaluator
     if not dry_run:
