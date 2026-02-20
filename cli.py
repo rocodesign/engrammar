@@ -666,8 +666,6 @@ def cmd_log(args):
     for r in rows:
         repo_stats.setdefault(r["lesson_id"], []).append(dict(r))
 
-    conn.close()
-
     # Sort
     if sort_by == "score":
         def best_score(l):
@@ -684,6 +682,22 @@ def cmd_log(args):
         print(f"\033[33mlesson {lid}\033[0m{pinned}")
         print(f"Category: {l.get('category', 'general')}")
         print(f"Source:   {l.get('source', 'manual')}")
+
+        # Show transcript paths from source sessions
+        source_sessions = l.get("source_sessions")
+        if source_sessions:
+            if isinstance(source_sessions, str):
+                source_sessions = json.loads(source_sessions)
+            if source_sessions:
+                audit_rows = conn.execute(
+                    f"SELECT transcript_path FROM session_audit WHERE session_id IN ({','.join('?' for _ in source_sessions)})",
+                    source_sessions,
+                ).fetchall()
+                paths = [r["transcript_path"] for r in audit_rows if r["transcript_path"]]
+                if paths:
+                    for p in paths:
+                        print(f"Transcript: {p}")
+
         print(f"Created:  {l.get('created_at', 'unknown')}")
         if l.get("updated_at"):
             print(f"Updated:  {l['updated_at']}")
@@ -734,6 +748,7 @@ def cmd_log(args):
         print(f"    {l['text']}")
         print()
 
+    conn.close()
     print(f"--- {len(lessons)} lessons ---")
 
 
