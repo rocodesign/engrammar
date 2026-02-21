@@ -27,12 +27,14 @@ def cmd_setup(args):
     # Build embedding index
     print("Building embedding index...")
     from engrammar.db import get_all_active_lessons
-    from engrammar.embeddings import build_index
+    from engrammar.embeddings import build_index, build_tag_index
 
     lessons = get_all_active_lessons()
     if lessons:
         n = build_index(lessons)
         print(f"Indexed {n} lessons.")
+        nt = build_tag_index(lessons)
+        print(f"Cached {nt} tag embeddings.")
     else:
         print("No lessons to index.")
 
@@ -41,7 +43,7 @@ def cmd_setup(args):
 
 def cmd_status(args):
     """Show database stats, index health, hook config."""
-    from engrammar.config import DB_PATH, INDEX_PATH, IDS_PATH, CONFIG_PATH, load_config
+    from engrammar.config import DB_PATH, INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, CONFIG_PATH, load_config
     from engrammar.db import get_lesson_count, get_category_stats
 
     config = load_config()
@@ -71,6 +73,16 @@ def cmd_status(args):
         print(f"Embeddings: {emb.shape[0]} vectors" + (f" x {emb.shape[1]} dims" if emb.ndim == 2 else ""))
     else:
         print(f"Index:      NOT FOUND ({INDEX_PATH})")
+
+    # Tag index
+    if os.path.exists(TAG_INDEX_PATH):
+        tag_emb = np.load(TAG_INDEX_PATH, mmap_mode="r")
+        if tag_emb.size > 0:
+            print(f"Tag index:  {tag_emb.shape[0]} cached tag embeddings")
+        else:
+            print(f"Tag index:  empty (no lessons with tags)")
+    else:
+        print(f"Tag index:  NOT BUILT (run 'rebuild' to create)")
 
     # Config
     print()
@@ -133,7 +145,7 @@ def cmd_add(args):
             tags = args[idx + 1].split(",")
 
     from engrammar.db import add_lesson, get_all_active_lessons
-    from engrammar.embeddings import build_index
+    from engrammar.embeddings import build_index, build_tag_index
 
     prereqs = {"tags": sorted(tags)} if tags else None
     lesson_id = add_lesson(text=text, category=category, source="manual", prerequisites=prereqs)
@@ -147,6 +159,7 @@ def cmd_add(args):
     print("Rebuilding index...")
     lessons = get_all_active_lessons()
     build_index(lessons)
+    build_tag_index(lessons)
     print("Done.")
 
 
@@ -162,7 +175,7 @@ def cmd_import(args):
         return
 
     from engrammar.db import import_from_state_file, add_lesson, get_all_active_lessons
-    from engrammar.embeddings import build_index
+    from engrammar.embeddings import build_index, build_tag_index
 
     if filepath.endswith(".json"):
         imported = import_from_state_file(filepath)
@@ -184,6 +197,7 @@ def cmd_import(args):
     print("Rebuilding index...")
     lessons = get_all_active_lessons()
     build_index(lessons)
+    build_tag_index(lessons)
     print("Done.")
 
 
@@ -261,7 +275,7 @@ def cmd_extract(args):
 def cmd_rebuild(args):
     """Rebuild the embedding index."""
     from engrammar.db import get_all_active_lessons
-    from engrammar.embeddings import build_index
+    from engrammar.embeddings import build_index, build_tag_index
 
     print("Loading lessons...")
     lessons = get_all_active_lessons()
@@ -272,7 +286,8 @@ def cmd_rebuild(args):
 
     print(f"Building index for {len(lessons)} lessons...")
     n = build_index(lessons)
-    print(f"Done. Indexed {n} lessons.")
+    nt = build_tag_index(lessons)
+    print(f"Done. Indexed {n} lessons, cached {nt} tag embeddings.")
 
 
 def cmd_list(args):
@@ -480,7 +495,7 @@ def cmd_update(args):
             i += 1
 
     from engrammar.db import get_connection, get_all_active_lessons, remove_lesson_category, add_lesson_category
-    from engrammar.embeddings import build_index
+    from engrammar.embeddings import build_index, build_tag_index
 
     conn = get_connection()
 
@@ -531,6 +546,14 @@ def cmd_update(args):
         print("Rebuilding index...")
         lessons = get_all_active_lessons()
         build_index(lessons)
+        build_tag_index(lessons)
+        print("Done.")
+
+    # Rebuild tag index if prerequisites changed
+    if prereqs is not None and text is None:
+        print("Rebuilding tag index...")
+        lessons = get_all_active_lessons()
+        build_tag_index(lessons)
         print("Done.")
 
 
@@ -759,6 +782,14 @@ def cmd_backfill_prereqs(args):
 
     mode = "Would update" if dry_run else "Updated"
     print(f"\n{mode} {updated} lessons, skipped {skipped}.")
+
+    # Rebuild tag index after prerequisite changes
+    if not dry_run and updated > 0:
+        from engrammar.embeddings import build_tag_index
+        print("Rebuilding tag index...")
+        lessons = get_all_active_lessons()
+        nt = build_tag_index(lessons)
+        print(f"Cached {nt} tag embeddings.")
 
 
 def cmd_log(args):

@@ -7,6 +7,8 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 DB_PATH = os.path.join(ENGRAMMAR_HOME, "lessons.db")
 INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "embeddings.npy")
 IDS_PATH = os.path.join(ENGRAMMAR_HOME, "embedding_ids.npy")
+TAG_INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "tag_embeddings.npy")
+TAG_IDS_PATH = os.path.join(ENGRAMMAR_HOME, "tag_embedding_ids.npy")
 CONFIG_PATH = os.path.join(ENGRAMMAR_HOME, "config.json")
 LAST_SEARCH_PATH = os.path.join(ENGRAMMAR_HOME, ".last-search.json")
 

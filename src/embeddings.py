@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-from .config import INDEX_PATH, IDS_PATH
+from .config import INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, TAG_IDS_PATH
 
 _model = None
 
@@ -59,6 +59,70 @@ def build_index(lessons, index_path=None, ids_path=None):
     np.save(id_path, np.array(ids, dtype=np.int64))
 
     return len(lessons)
+
+
+def build_tag_index(lessons, index_path=None, ids_path=None):
+    """Embed lesson prerequisite tags and save to .npy files.
+
+    Only lessons with non-empty prerequisite tags are included.
+
+    Args:
+        lessons: list of dicts with 'id' and 'prerequisites' keys
+        index_path: path for tag embeddings .npy file
+        ids_path: path for lesson IDs .npy file
+
+    Returns:
+        number of lessons with tag embeddings
+    """
+    import json
+
+    idx_path = index_path or TAG_INDEX_PATH
+    id_path = ids_path or TAG_IDS_PATH
+
+    # Collect lessons that have prerequisite tags
+    tag_texts = []
+    tag_ids = []
+    for lesson in lessons:
+        prereqs = lesson.get("prerequisites")
+        if not prereqs:
+            continue
+        prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
+        tags = prereq_dict.get("tags", [])
+        if tags:
+            tag_texts.append(" ".join(tags))
+            tag_ids.append(lesson["id"])
+
+    if not tag_texts:
+        np.save(idx_path, np.array([], dtype=np.float32).reshape(0, 0))
+        np.save(id_path, np.array([], dtype=np.int64))
+        return 0
+
+    embeddings = embed_batch(tag_texts)
+    np.save(idx_path, embeddings)
+    np.save(id_path, np.array(tag_ids, dtype=np.int64))
+
+    return len(tag_ids)
+
+
+def load_tag_index(index_path=None, ids_path=None):
+    """Load precomputed tag embeddings.
+
+    Returns:
+        (embeddings, ids) tuple or (None, None) if files don't exist
+    """
+    idx_path = index_path or TAG_INDEX_PATH
+    id_path = ids_path or TAG_IDS_PATH
+
+    if not os.path.exists(idx_path) or not os.path.exists(id_path):
+        return None, None
+
+    embeddings = np.load(idx_path, mmap_mode="r")
+    ids = np.load(id_path, mmap_mode="r")
+
+    if embeddings.size == 0:
+        return None, None
+
+    return embeddings, ids
 
 
 def load_index(index_path=None, ids_path=None):

@@ -55,9 +55,13 @@ This file is the index. Detailed task writeups live under `tasks/`.
 - [x] **#002 Fix extraction prompt wrong categories** `C1`
   - `tasks/completed/[2]-002-extraction-wrong-categories/task.md`
 
+### Low
+
+- [x] **#008 Precompute and cache tag embeddings** `C1`
+  - `tasks/completed/[3]-008-precompute-tag-embeddings/task.md`
+
 ## Ideas
 
 - `tasks/ideas/session-end-reflection.md`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
-- `tasks/ideas/precompute-tag-embeddings.md` — Cache lesson tag embeddings to avoid per-search recomputation at scale
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
