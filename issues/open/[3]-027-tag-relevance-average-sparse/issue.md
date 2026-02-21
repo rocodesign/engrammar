@@ -8,7 +8,7 @@
 Average relevance divides by matched DB rows, ignoring missing environment tags as implicit zero.
 
 ## Why It Matters
-Can over-boost lessons with one known positive tag in a multi-tag environment.
+Can over-boost engrams with one known positive tag in a multi-tag environment.
 
 ## Suggested High-Level Solution
 1. Compute average over full `env_tags` set (missing tag score = 0).

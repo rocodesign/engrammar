@@ -1,16 +1,16 @@
 # Idea: Minimum Similarity Floor for Search Results
 
-Add minimum quality thresholds to vector search and BM25 before feeding into RRF, so completely irrelevant lessons never enter the ranking pipeline.
+Add minimum quality thresholds to vector search and BM25 before feeding into RRF, so completely irrelevant engrams never enter the ranking pipeline.
 
 ## Problem
 
-Currently RRF always returns top_k results regardless of actual relevance. For vague queries like "how do I deploy this", all results are noise (vector sim ~0.62, no lesson is actually relevant) but they still get injected.
+Currently RRF always returns top_k results regardless of actual relevance. For vague queries like "how do I deploy this", all results are noise (vector sim ~0.62, no engram is actually relevant) but they still get injected.
 
 ## Evidence from testing
 
 - **Vector similarity range**: 0.58-0.74 across all queries. Relevant matches tend to be 0.65+, noise sits at 0.58-0.63. Tight spread makes a clean cutoff hard.
 - **BM25 scores**: much more spread (0.99-5.77 for one query). Top results cluster, then sharp drop-off.
-- Query "how do I deploy this" returned Jira and CameraTag lessons at sim=0.63 — total noise but scores look similar to relevant matches.
+- Query "how do I deploy this" returned Jira and CameraTag engrams at sim=0.63 — total noise but scores look similar to relevant matches.
 
 ## Proposed approach
 
@@ -26,7 +26,7 @@ if bm25_ranked:
     bm25_ranked = [(lid, sc) for lid, sc in bm25_ranked if sc >= bm25_max * BM25_RATIO]
 ```
 
-Lesson weak in both lists never enters RRF. Strong in one but weak in the other still gets through with a lower RRF score (appears in fewer lists).
+Engram weak in both lists never enters RRF. Strong in one but weak in the other still gets through with a lower RRF score (appears in fewer lists).
 
 ## Open questions
 

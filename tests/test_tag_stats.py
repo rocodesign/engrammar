@@ -28,43 +28,43 @@ def test_db():
     Path(db_path).unlink(missing_ok=True)
 
 
-def _create_lesson(test_db, text="Test lesson", pinned=False):
-    """Helper to create a lesson and return its ID."""
+def _create_engram(test_db, text="Test engram", pinned=False):
+    """Helper to create a engram and return its ID."""
     conn = get_connection(test_db)
     cursor = conn.execute(
-        "INSERT INTO lessons (text, category, pinned, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+        "INSERT INTO engrams (text, category, pinned, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
         (text, "test", 1 if pinned else 0),
     )
-    lesson_id = cursor.lastrowid
+    engram_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return lesson_id
+    return engram_id
 
 
 class TestTagStatsTracking:
-    """Test lesson_tag_stats table and tracking."""
+    """Test engram_tag_stats table and tracking."""
 
     def test_table_exists(self, test_db):
-        """Should create lesson_tag_stats table."""
+        """Should create engram_tag_stats table."""
         conn = get_connection(test_db)
         cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='lesson_tag_stats'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='engram_tag_stats'"
         )
         assert cursor.fetchone() is not None
         conn.close()
 
     def test_track_single_tag_set(self, test_db):
         """Should track matches for a single tag set."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tags = ["frontend", "react", "acme"]
         for _ in range(3):
-            update_match_stats(lesson_id, tags=tags, db_path=test_db)
+            update_match_stats(engram_id, tags=tags, db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT tag_set, times_matched FROM lesson_tag_stats WHERE lesson_id = ?",
-            (lesson_id,),
+            "SELECT tag_set, times_matched FROM engram_tag_stats WHERE engram_id = ?",
+            (engram_id,),
         ).fetchone()
         conn.close()
 
@@ -74,7 +74,7 @@ class TestTagStatsTracking:
 
     def test_track_multiple_tag_sets(self, test_db):
         """Should track different tag sets separately."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             ["frontend", "react", "acme"],
@@ -84,12 +84,12 @@ class TestTagStatsTracking:
 
         for tags in tag_sets:
             for _ in range(2):
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
         conn = get_connection(test_db)
         rows = conn.execute(
-            "SELECT tag_set, times_matched FROM lesson_tag_stats WHERE lesson_id = ? ORDER BY tag_set",
-            (lesson_id,),
+            "SELECT tag_set, times_matched FROM engram_tag_stats WHERE engram_id = ? ORDER BY tag_set",
+            (engram_id,),
         ).fetchall()
         conn.close()
 
@@ -99,15 +99,15 @@ class TestTagStatsTracking:
 
     def test_global_counter_still_works(self, test_db):
         """Should still increment global times_matched counter."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         for _ in range(5):
-            update_match_stats(lesson_id, tags=["test"], db_path=test_db)
+            update_match_stats(engram_id, tags=["test"], db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT times_matched FROM lessons WHERE id = ?",
-            (lesson_id,),
+            "SELECT times_matched FROM engrams WHERE id = ?",
+            (engram_id,),
         ).fetchone()
         conn.close()
 
@@ -118,14 +118,14 @@ class TestTagSubsetAlgorithm:
     """Test tag subset auto-pin algorithm."""
 
     def test_no_tags_returns_none(self, test_db):
-        """Should return None when lesson has no tag stats."""
-        lesson_id = _create_lesson(test_db)
-        result = find_auto_pin_tag_subsets(lesson_id, db_path=test_db)
+        """Should return None when engram has no tag stats."""
+        engram_id = _create_engram(test_db)
+        result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
         assert result is None
 
     def test_below_threshold_returns_none(self, test_db):
         """Should return None when no subset meets threshold."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             ["frontend", "react"],
@@ -134,14 +134,14 @@ class TestTagSubsetAlgorithm:
         ]
         for tags in tag_sets:
             for _ in range(3):  # Only 9 total, below 15 threshold
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
-        result = find_auto_pin_tag_subsets(lesson_id, db_path=test_db)
+        result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
         assert result is None
 
     def test_finds_minimal_common_subset(self, test_db):
         """Should find minimal common subset with 15+ matches."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             (["frontend", "acme", "typescript"], 6),
@@ -151,14 +151,14 @@ class TestTagSubsetAlgorithm:
 
         for tags, count in tag_sets:
             for _ in range(count):
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
-        result = find_auto_pin_tag_subsets(lesson_id, db_path=test_db)
+        result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
         assert result == ["frontend"]
 
     def test_finds_smallest_minimal_subset(self, test_db):
         """Should return smallest minimal subset when multiple exist."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             (["frontend", "acme", "react"], 8),
@@ -167,14 +167,14 @@ class TestTagSubsetAlgorithm:
 
         for tags, count in tag_sets:
             for _ in range(count):
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
-        result = find_auto_pin_tag_subsets(lesson_id, db_path=test_db)
+        result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
         assert len(result) <= 2
 
     def test_multiple_disjoint_contexts(self, test_db):
         """Should handle scenarios where no common subset exists."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             (["frontend", "react"], 8),
@@ -183,9 +183,9 @@ class TestTagSubsetAlgorithm:
 
         for tags, count in tag_sets:
             for _ in range(count):
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
-        result = find_auto_pin_tag_subsets(lesson_id, db_path=test_db)
+        result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
         assert result is None
 
 
@@ -193,8 +193,8 @@ class TestAutoPin:
     """Test automatic pinning based on tag thresholds."""
 
     def test_auto_pin_on_threshold(self, test_db):
-        """Should auto-pin lesson when tag subset reaches threshold."""
-        lesson_id = _create_lesson(test_db)
+        """Should auto-pin engram when tag subset reaches threshold."""
+        engram_id = _create_engram(test_db)
 
         tag_sets = [
             (["frontend", "react", "acme"], 6),
@@ -204,12 +204,12 @@ class TestAutoPin:
 
         for tags, count in tag_sets:
             for _ in range(count):
-                update_match_stats(lesson_id, tags=tags, db_path=test_db)
+                update_match_stats(engram_id, tags=tags, db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT pinned, prerequisites FROM lessons WHERE id = ?",
-            (lesson_id,),
+            "SELECT pinned, prerequisites FROM engrams WHERE id = ?",
+            (engram_id,),
         ).fetchone()
         conn.close()
 
@@ -219,16 +219,16 @@ class TestAutoPin:
         assert prereqs["tags"] == ["frontend"]
 
     def test_no_auto_pin_when_already_pinned(self, test_db):
-        """Should not modify already pinned lessons."""
-        lesson_id = _create_lesson(test_db, pinned=True)
+        """Should not modify already pinned engrams."""
+        engram_id = _create_engram(test_db, pinned=True)
 
         for _ in range(15):
-            update_match_stats(lesson_id, tags=["test"], db_path=test_db)
+            update_match_stats(engram_id, tags=["test"], db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT prerequisites FROM lessons WHERE id = ?",
-            (lesson_id,),
+            "SELECT prerequisites FROM engrams WHERE id = ?",
+            (engram_id,),
         ).fetchone()
         conn.close()
 
@@ -236,15 +236,15 @@ class TestAutoPin:
 
     def test_repo_based_auto_pin_still_works(self, test_db):
         """Should still support repo-based auto-pin."""
-        lesson_id = _create_lesson(test_db)
+        engram_id = _create_engram(test_db)
 
         for _ in range(AUTO_PIN_THRESHOLD):
-            update_match_stats(lesson_id, repo="app-repo", db_path=test_db)
+            update_match_stats(engram_id, repo="app-repo", db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT pinned, prerequisites FROM lessons WHERE id = ?",
-            (lesson_id,),
+            "SELECT pinned, prerequisites FROM engrams WHERE id = ?",
+            (engram_id,),
         ).fetchone()
         conn.close()
 

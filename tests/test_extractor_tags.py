@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.db import (
-    add_lesson,
+    add_engram,
     get_connection,
     get_env_tags_for_sessions,
     init_db,
@@ -103,15 +103,15 @@ def test_enrich_no_audit_none_stays_none(test_db):
 
 
 def test_backfill_prereqs_adds_audit_tags(test_db, monkeypatch, capsys):
-    """Backfill command picks up session audit tags for lessons."""
+    """Backfill command picks up session audit tags for engrams."""
     import src.config as config
     import src.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
 
-    # Create a lesson with source_sessions
-    lesson_id = add_lesson(
+    # Create a engram with source_sessions
+    engram_id = add_engram(
         text="Use react hooks for state management",
         category="general",
         source="auto-extracted",
@@ -120,7 +120,7 @@ def test_backfill_prereqs_adds_audit_tags(test_db, monkeypatch, capsys):
     )
 
     # Create audit record with env_tags
-    write_session_audit("sess-abc", [lesson_id], ["react", "frontend"], "app-repo", db_path=test_db)
+    write_session_audit("sess-abc", [engram_id], ["react", "frontend"], "app-repo", db_path=test_db)
 
     # Run backfill-prereqs
     sys_path_backup = __import__("sys").path[:]
@@ -131,21 +131,21 @@ def test_backfill_prereqs_adds_audit_tags(test_db, monkeypatch, capsys):
         __import__("sys").path[:] = sys_path_backup
 
     output = capsys.readouterr().out
-    assert "Would set lesson" in output
+    assert "Would set engram" in output
     assert "react" in output
     assert "frontend" in output
 
 
 def test_backfill_prereqs_merges_into_existing(test_db, monkeypatch, capsys):
-    """Backfill merges audit tags into lessons that already have prerequisites."""
+    """Backfill merges audit tags into engrams that already have prerequisites."""
     import src.config as config
     import src.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
 
-    # Create a lesson with existing prerequisites
-    lesson_id = add_lesson(
+    # Create a engram with existing prerequisites
+    engram_id = add_engram(
         text="Use figma mcp for design tokens",
         category="general",
         source="auto-extracted",
@@ -155,15 +155,15 @@ def test_backfill_prereqs_merges_into_existing(test_db, monkeypatch, capsys):
     )
 
     # Create audit record with additional tags
-    write_session_audit("sess-xyz", [lesson_id], ["design", "frontend"], "app-repo", db_path=test_db)
+    write_session_audit("sess-xyz", [engram_id], ["design", "frontend"], "app-repo", db_path=test_db)
 
     # Run backfill-prereqs (not dry-run)
     import cli
     cli.cmd_backfill_prereqs([])
 
-    # Verify lesson was updated with merged tags
+    # Verify engram was updated with merged tags
     conn = get_connection(test_db)
-    row = conn.execute("SELECT prerequisites FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    row = conn.execute("SELECT prerequisites FROM engrams WHERE id = ?", (engram_id,)).fetchone()
     conn.close()
 
     prereqs = json.loads(row["prerequisites"])
@@ -173,15 +173,15 @@ def test_backfill_prereqs_merges_into_existing(test_db, monkeypatch, capsys):
 
 
 def test_backfill_prereqs_no_change_skips(test_db, monkeypatch, capsys):
-    """Backfill skips lessons where audit tags are already present."""
+    """Backfill skips engrams where audit tags are already present."""
     import src.config as config
     import src.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
 
-    # Create a lesson with tags that match the audit
-    lesson_id = add_lesson(
+    # Create a engram with tags that match the audit
+    engram_id = add_engram(
         text="Use react hooks",
         category="general",
         source="auto-extracted",
@@ -190,10 +190,10 @@ def test_backfill_prereqs_no_change_skips(test_db, monkeypatch, capsys):
         db_path=test_db,
     )
 
-    write_session_audit("sess-same", [lesson_id], ["frontend", "react"], "repo", db_path=test_db)
+    write_session_audit("sess-same", [engram_id], ["frontend", "react"], "repo", db_path=test_db)
 
     import cli
     cli.cmd_backfill_prereqs(["--dry-run"])
 
     output = capsys.readouterr().out
-    assert "Would set lesson" not in output
+    assert "Would set engram" not in output

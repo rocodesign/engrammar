@@ -1,7 +1,7 @@
-"""Evaluate lesson relevance per session — runs via `cli.py evaluate`.
+"""Evaluate engram relevance per session — runs via `cli.py evaluate`.
 
 Reads session_audit records, finds the transcript excerpt, sends to Haiku
-for per-lesson tag scoring, and accumulates results into lesson_tag_relevance.
+for per-engram tag scoring, and accumulates results into engram_tag_relevance.
 Follows the same pattern as extractor.py (claude -p, no API key needed).
 """
 
@@ -14,24 +14,24 @@ from datetime import datetime
 
 from .db import get_connection, get_unprocessed_audit_sessions
 
-EVALUATION_PROMPT = """You are evaluating which lessons were relevant during a Claude Code session.
+EVALUATION_PROMPT = """You are evaluating which engrams were relevant during a Claude Code session.
 
-Each lesson was shown to the assistant during the session. Based on the transcript,
-determine how relevant each lesson was to the actual work done, broken down by
+Each engram was shown to the assistant during the session. Based on the transcript,
+determine how relevant each engram was to the actual work done, broken down by
 environment tag.
 
 Session info:
 - Repository: {repo}
 - Environment tags: {env_tags}
 
-Lessons shown (ID and text):
-{lessons_block}
+Engrams shown (ID and text):
+{engrams_block}
 
 Session transcript excerpt:
 {transcript}
 
-For each lesson, output a JSON object with:
-- "lesson_id": the lesson ID number
+For each engram, output a JSON object with:
+- "engram_id": the engram ID number
 - "tag_scores": dict mapping each relevant env tag to a score from -1.0 to 1.0
   (-1.0 = actively wrong/misleading in this context, 0 = irrelevant, 1.0 = very helpful)
 - "reason": optional brief explanation (only for negative scores)
@@ -39,8 +39,8 @@ For each lesson, output a JSON object with:
 Output ONLY a valid JSON array. No markdown fences, no explanation.
 
 Example output:
-[{{"lesson_id": 42, "tag_scores": {{"typescript": 0.9, "frontend": 0.6}}}},
- {{"lesson_id": 17, "tag_scores": {{"typescript": -0.5}}, "reason": "wrong context"}}]"""
+[{{"engram_id": 42, "tag_scores": {{"typescript": 0.9, "frontend": 0.6}}}},
+ {{"engram_id": 17, "tag_scores": {{"typescript": -0.5}}, "reason": "wrong context"}}]"""
 
 
 def _find_transcript_excerpt(session_id, max_chars=4000):
@@ -157,27 +157,27 @@ def _read_transcript_file(transcript_path, max_chars=4000):
     return result
 
 
-def _call_claude_for_evaluation(session_id, shown_lessons, env_tags, repo, transcript=""):
-    """Call claude CLI in headless mode to evaluate lesson relevance.
+def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, transcript=""):
+    """Call claude CLI in headless mode to evaluate engram relevance.
 
     Args:
         session_id: for logging
-        shown_lessons: list of dicts with 'id' and 'text' keys
+        shown_engrams: list of dicts with 'id' and 'text' keys
         env_tags: list of environment tag strings
         repo: repository name
         transcript: session transcript excerpt
 
     Returns:
-        list of dicts with lesson_id, tag_scores, and optional reason
+        list of dicts with engram_id, tag_scores, and optional reason
     """
-    lessons_block = "\n".join(
-        f"- ID {l['id']}: {l['text']}" for l in shown_lessons
+    engrams_block = "\n".join(
+        f"- ID {l['id']}: {l['text']}" for l in shown_engrams
     )
 
     prompt = EVALUATION_PROMPT.format(
         repo=repo or "unknown",
         env_tags=json.dumps(env_tags),
-        lessons_block=lessons_block,
+        engrams_block=engrams_block,
         transcript=transcript or "(transcript not available)",
     )
 
@@ -218,7 +218,7 @@ def _call_claude_for_evaluation(session_id, shown_lessons, env_tags, repo, trans
 
 
 def run_evaluation_for_session(session_id, db_path=None):
-    """Evaluate a single session's lesson relevance.
+    """Evaluate a single session's engram relevance.
 
     Returns:
         True if evaluation completed successfully, False otherwise
@@ -234,27 +234,27 @@ def run_evaluation_for_session(session_id, db_path=None):
         conn.close()
         return False
 
-    shown_lesson_ids = json.loads(row["shown_lesson_ids"])
+    shown_engram_ids = json.loads(row["shown_engram_ids"])
     env_tags = json.loads(row["env_tags"])
     repo = row["repo"]
     transcript_path = row["transcript_path"] if "transcript_path" in row.keys() else None
 
-    if not shown_lesson_ids:
+    if not shown_engram_ids:
         conn.close()
         return True  # Nothing to evaluate
 
-    # Load lesson texts
-    placeholders = ",".join("?" * len(shown_lesson_ids))
-    lessons = conn.execute(
-        f"SELECT id, text FROM lessons WHERE id IN ({placeholders})",
-        tuple(shown_lesson_ids),
+    # Load engram texts
+    placeholders = ",".join("?" * len(shown_engram_ids))
+    engrams = conn.execute(
+        f"SELECT id, text FROM engrams WHERE id IN ({placeholders})",
+        tuple(shown_engram_ids),
     ).fetchall()
     conn.close()
 
-    if not lessons:
-        return True  # Lessons may have been deleted
+    if not engrams:
+        return True  # Engrams may have been deleted
 
-    shown_lessons = [{"id": r["id"], "text": r["text"]} for r in lessons]
+    shown_engrams = [{"id": r["id"], "text": r["text"]} for r in engrams]
 
     # Find transcript — use stored path if available, fall back to glob search
     transcript = ""
@@ -265,7 +265,7 @@ def run_evaluation_for_session(session_id, db_path=None):
 
     # Call Claude for evaluation
     evaluations = _call_claude_for_evaluation(
-        session_id, shown_lessons, env_tags, repo, transcript
+        session_id, shown_engrams, env_tags, repo, transcript
     )
 
     if not evaluations:
@@ -277,10 +277,10 @@ def run_evaluation_for_session(session_id, db_path=None):
     try:
         from .db import update_tag_relevance
         for ev in evaluations:
-            lesson_id = ev.get("lesson_id")
+            engram_id = ev.get("engram_id")
             tag_scores = ev.get("tag_scores", {})
-            if lesson_id and tag_scores:
-                update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=db_path)
+            if engram_id and tag_scores:
+                update_tag_relevance(engram_id, tag_scores, weight=1.0, db_path=db_path)
     except ImportError:
         # update_tag_relevance not yet available (added in Commit D)
         pass

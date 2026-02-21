@@ -40,7 +40,7 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
   - EMA scoring math and convergence
   - Tag relevance filtering in search
   - Structural vs tag prerequisites
-  - Debugging lesson visibility
+  - Debugging engram visibility
 
 ## What Should I Read?
 
@@ -82,10 +82,10 @@ Comprehensive documentation for the Engrammar semantic knowledge system.
 
 | Task                | Reference                                                     |
 | ------------------- | ------------------------------------------------------------- |
-| Add a lesson        | [Cheatsheet - Add](CHEATSHEET.md#add-lessons)                 |
-| Search lessons      | [Cheatsheet - Search](CHEATSHEET.md#search)                   |
+| Add a engram        | [Cheatsheet - Add](CHEATSHEET.md#add-engrams)                 |
+| Search engrams      | [Cheatsheet - Search](CHEATSHEET.md#search)                   |
 | Use tags            | [Cheatsheet - Tag System](CHEATSHEET.md#tag-system)           |
-| Pin lessons         | [Cheatsheet - Pin Management](CHEATSHEET.md#pin-management)   |
+| Pin engrams         | [Cheatsheet - Pin Management](CHEATSHEET.md#pin-management)   |
 | Understand auto-pin | [Architecture - Auto-Pin](ARCHITECTURE.md#auto-pin-algorithm) |
 
 ### Key Concepts
@@ -116,7 +116,7 @@ Automatically detects project context from:
 
 ### 🎯 Auto-Pin Algorithm
 
-Learns which lessons are valuable across projects:
+Learns which engrams are valuable across projects:
 
 - Tracks matches per tag set
 - Finds minimal common tags with 15+ matches
@@ -145,9 +145,9 @@ Combines vector similarity and BM25 keyword matching:
 
 ### 🎣 Smart Hooks
 
-Surfaces lessons at the perfect moment:
+Surfaces engrams at the perfect moment:
 
-- **SessionStart**: Shows pinned lessons
+- **SessionStart**: Shows pinned engrams
 - **PreToolUse**: Contextual suggestions before tool execution
 - **SessionEnd**: Tracks usefulness (no API key required)
 
@@ -181,7 +181,7 @@ engrammar_add(
 ### 3. Working Across Projects
 
 ```bash
-# Lesson auto-detects context
+# Engram auto-detects context
 cd ~/work/acme/app-repo
 engrammar search "table component"  # Shows acme-specific
 
@@ -204,7 +204,7 @@ Location: `~/.engrammar/config.json`
     "top_k": 5
   },
   "display": {
-    "max_lessons_per_tool": 2
+    "max_engrams_per_tool": 2
   }
 }
 ```
@@ -225,7 +225,7 @@ Location: `~/.engrammar/config.json`
 │   └── mcp_server.py      # MCP integration
 ├── hooks/                  # Session hooks
 ├── tests/                  # Test suite
-├── lessons.db             # SQLite database
+├── engrams.db             # SQLite database
 ├── embeddings.npy         # Search index
 └── config.json            # Configuration
 ```

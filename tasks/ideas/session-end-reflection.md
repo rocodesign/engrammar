@@ -1,6 +1,6 @@
 # Idea: SessionEnd Reflection
 
-Prompt the model (or user) with structured questions at session end to capture lessons that weren't extracted in real-time:
+Prompt the model (or user) with structured questions at session end to capture engrams that weren't extracted in real-time:
 
 - "What did you learn in this session that future sessions should know?"
 - "Were there any corrections or surprises worth remembering?"

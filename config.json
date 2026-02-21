@@ -8,8 +8,8 @@
     "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
   },
   "display": {
-    "max_lessons_per_prompt": 3,
-    "max_lessons_per_tool": 2,
+    "max_engrams_per_prompt": 3,
+    "max_engrams_per_tool": 2,
     "show_scores": false,
     "show_categories": true
   }

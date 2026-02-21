@@ -1,4 +1,4 @@
-"""Environment detection for filtering lessons by prerequisites."""
+"""Environment detection for filtering engrams by prerequisites."""
 
 import json
 import os
@@ -68,7 +68,7 @@ def check_structural_prerequisites(prerequisites, env=None):
     """Check only non-tag prerequisites (os, repo, paths, mcp_servers).
 
     Strips the 'tags' key and delegates to check_prerequisites().
-    Used by session start and daemon for pinned lessons where tag filtering
+    Used by session start and daemon for pinned engrams where tag filtering
     is handled separately via tag relevance scores.
 
     Args:
@@ -96,7 +96,7 @@ def check_structural_prerequisites(prerequisites, env=None):
 
 
 def check_prerequisites(prerequisites, env=None):
-    """Check if current environment meets lesson prerequisites.
+    """Check if current environment meets engram prerequisites.
 
     Args:
         prerequisites: dict with optional keys: os, repo, repos, mcp_servers, requires
@@ -128,7 +128,7 @@ def check_prerequisites(prerequisites, env=None):
         if env["os"] not in req_os:
             return False
 
-    # Check repo (fail-closed: reject if lesson requires repos but we don't know which repo we're in)
+    # Check repo (fail-closed: reject if engram requires repos but we don't know which repo we're in)
     req_repos = prerequisites.get("repos") or prerequisites.get("repo")
     if req_repos:
         if isinstance(req_repos, str):
@@ -159,7 +159,7 @@ def check_prerequisites(prerequisites, env=None):
         if not all(s in available for s in req_mcp):
             return False
 
-    # Check tags (lesson tags must be subset of environment tags)
+    # Check tags (engram tags must be subset of environment tags)
     req_tags = prerequisites.get("tags")
     if req_tags:
         if isinstance(req_tags, str):

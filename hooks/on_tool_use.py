@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""PreToolUse hook — searches lessons relevant to the tool being called.
+"""PreToolUse hook — searches engrams relevant to the tool being called.
 
 Uses the daemon for fast search (~20ms). Falls back to direct search if daemon unavailable.
-Tracks shown lessons in DB (keyed by session ID) to avoid repeats.
+Tracks shown engrams in DB (keyed by session ID) to avoid repeats.
 """
 
 import json
@@ -41,7 +41,7 @@ def _search_direct(tool_name, tool_input):
 
 
 def main():
-    from engrammar.hook_utils import log_error, format_lessons_block, make_hook_output
+    from engrammar.hook_utils import log_error, format_engrams_block, make_hook_output
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
@@ -77,11 +77,11 @@ def main():
         if not results:
             return
 
-        # Filter out already-shown lessons (DB-based)
+        # Filter out already-shown engrams (DB-based)
         session_id = data.get("session_id")
         if session_id:
-            from engrammar.db import get_shown_lesson_ids, record_shown_lesson
-            shown = get_shown_lesson_ids(session_id)
+            from engrammar.db import get_shown_engram_ids, record_shown_engram
+            shown = get_shown_engram_ids(session_id)
             new_results = [r for r in results if r["id"] not in shown]
         else:
             new_results = results
@@ -89,10 +89,10 @@ def main():
         if not new_results:
             return
 
-        # Record shown lessons in DB
+        # Record shown engrams in DB
         if session_id:
             for r in new_results:
-                record_shown_lesson(session_id, r["id"], "PreToolUse")
+                record_shown_engram(session_id, r["id"], "PreToolUse")
 
         # Log event
         try:
@@ -101,7 +101,7 @@ def main():
         except Exception:
             pass
 
-        context = format_lessons_block(new_results, show_categories=show_categories)
+        context = format_engrams_block(new_results, show_categories=show_categories)
         output = make_hook_output("PreToolUse", context)
         print(json.dumps(output))
 

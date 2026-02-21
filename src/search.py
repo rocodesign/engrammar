@@ -7,7 +7,7 @@ import re
 from rank_bm25 import BM25Okapi
 
 from .config import LAST_SEARCH_PATH, load_config
-from .db import get_all_active_lessons
+from .db import get_all_active_engrams
 from .embeddings import embed_text, load_index, load_tag_index, vector_search
 from .environment import detect_environment
 
@@ -43,20 +43,20 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     Args:
         query: search query string
         category_filter: optional category prefix to filter results (e.g. "development/frontend")
-        tag_filter: optional list of required tags (lessons must have ALL specified tags)
+        tag_filter: optional list of required tags (engrams must have ALL specified tags)
         top_k: number of results (defaults to config value)
         db_path: optional database path override
         skip_prerequisites: if True, skip environment prerequisite filtering (used by backfill)
 
     Returns:
-        list of dicts with lesson data + score
+        list of dicts with engram data + score
     """
     config = load_config()
     if top_k is None:
         top_k = config["search"]["top_k"]
 
-    all_lessons = get_all_active_lessons(db_path=db_path)
-    if not all_lessons:
+    all_engrams = get_all_active_engrams(db_path=db_path)
+    if not all_engrams:
         return []
 
     # Detect environment (skip_prerequisites sets env={} which naturally skips tag filtering)
@@ -65,10 +65,10 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     else:
         env = detect_environment()
 
-    lessons = all_lessons
+    engrams = all_engrams
 
-    # Build lesson lookup
-    lesson_map = {l["id"]: l for l in lessons}
+    # Build engram lookup
+    engram_map = {l["id"]: l for l in engrams}
 
     # 1. Vector search
     vector_results = []
@@ -81,29 +81,29 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         pass  # Fall back to BM25 only
 
     # 2. BM25 keyword search
-    corpus = [_tokenize(l["text"] + " " + l.get("category", "")) for l in lessons]
+    corpus = [_tokenize(l["text"] + " " + l.get("category", "")) for l in engrams]
     bm25 = BM25Okapi(corpus)
     query_tokens = _tokenize(query)
     bm25_scores = bm25.get_scores(query_tokens)
 
     bm25_ranked = sorted(
-        [(lessons[i]["id"], float(bm25_scores[i])) for i in range(len(lessons))],
+        [(engrams[i]["id"], float(bm25_scores[i])) for i in range(len(engrams))],
         key=lambda x: x[1],
         reverse=True,
     )[:10]
 
     # 3. Reciprocal Rank Fusion
-    # Scale k with lesson count so rank position carries real weight.
-    # k=60 (the default from web search) compresses 50 lessons into a
+    # Scale k with engram count so rank position carries real weight.
+    # k=60 (the default from web search) compresses 50 engrams into a
     # ~15% spread; k=N/5 gives ~2x spread between rank 0 and rank 9.
-    rrf_k = max(1, len(lessons) // 5)
+    rrf_k = max(1, len(engrams) // 5)
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
     # 3.1. Environment tag affinity boost
     # Use precomputed tag embeddings for a vectorized cosine similarity
-    # instead of per-lesson embed calls. Falls back to per-lesson embedding
+    # instead of per-engram embed calls. Falls back to per-engram embedding
     # if the tag index is unavailable.
-    # Lessons without prerequisite tags are treated as generic (neutral).
+    # Engrams without prerequisite tags are treated as generic (neutral).
     env_tags = env.get("tags", [])
     if env_tags:
         try:
@@ -133,25 +133,25 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
                     multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
                     boosted.append((lid, score * multiplier))
             else:
-                # Fallback: per-lesson embedding (no tag index built yet)
+                # Fallback: per-engram embedding (no tag index built yet)
                 boosted = []
                 for lid, score in fused:
-                    lesson = lesson_map.get(lid)
-                    if not lesson:
+                    engram = engram_map.get(lid)
+                    if not engram:
                         boosted.append((lid, score))
                         continue
-                    prereqs = lesson.get("prerequisites")
+                    prereqs = engram.get("prerequisites")
                     if not prereqs:
                         boosted.append((lid, score))
                         continue
                     prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-                    lesson_tags = prereq_dict.get("tags", [])
-                    if not lesson_tags:
+                    engram_tags = prereq_dict.get("tags", [])
+                    if not engram_tags:
                         boosted.append((lid, score))
                         continue
-                    lesson_tag_emb = embed_text(" ".join(lesson_tags))
-                    sim = float(np.dot(env_tag_emb, lesson_tag_emb) / (
-                        np.linalg.norm(env_tag_emb) * np.linalg.norm(lesson_tag_emb)
+                    engram_tag_emb = embed_text(" ".join(engram_tags))
+                    sim = float(np.dot(env_tag_emb, engram_tag_emb) / (
+                        np.linalg.norm(env_tag_emb) * np.linalg.norm(engram_tag_emb)
                     ))
                     multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
                     boosted.append((lid, score * multiplier))
@@ -185,18 +185,18 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         from .db import get_connection
         conn = get_connection(db_path)
         rows = conn.execute(
-            "SELECT lesson_id, category_path FROM lesson_categories WHERE category_path LIKE ?",
+            "SELECT engram_id, category_path FROM engram_categories WHERE category_path LIKE ?",
             (category_filter + "%",),
         ).fetchall()
         conn.close()
-        junction_ids = {r["lesson_id"] for r in rows}
+        junction_ids = {r["engram_id"] for r in rows}
 
         fused = [
             (lid, score)
             for lid, score in fused
-            if lid in lesson_map
+            if lid in engram_map
             and (
-                lesson_map[lid].get("category", "").startswith(category_filter)
+                engram_map[lid].get("category", "").startswith(category_filter)
                 or lid in junction_ids
             )
         ]
@@ -206,14 +206,14 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         required_tags = set(tag_filter if isinstance(tag_filter, list) else [tag_filter])
         fused = [
             (lid, score) for lid, score in fused
-            if lid in lesson_map and _lesson_has_all_tags(lesson_map[lid], required_tags)
+            if lid in engram_map and _engram_has_all_tags(engram_map[lid], required_tags)
         ]
 
     # 5. Take top_k results (no threshold for RRF - it's rank-based, not similarity-based)
     results = []
-    for lesson_id, score in fused[:top_k]:
-        if lesson_id in lesson_map:
-            result = dict(lesson_map[lesson_id])
+    for engram_id, score in fused[:top_k]:
+        if engram_id in engram_map:
+            result = dict(engram_map[engram_id])
             result["score"] = round(score, 4)
             results.append(result)
 
@@ -223,23 +223,23 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     return results
 
 
-def _lesson_has_all_tags(lesson, required_tags):
-    """Check if lesson has all required tags in prerequisites.
+def _engram_has_all_tags(engram, required_tags):
+    """Check if engram has all required tags in prerequisites.
 
     Args:
-        lesson: lesson dict with prerequisites field
+        engram: engram dict with prerequisites field
         required_tags: set of tags that must all be present
 
     Returns:
-        True if lesson has all required tags, False otherwise
+        True if engram has all required tags, False otherwise
     """
-    prereqs = lesson.get("prerequisites")
+    prereqs = engram.get("prerequisites")
     if not prereqs:
         return False
 
     prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-    lesson_tags = set(prereq_dict.get("tags", []))
-    return required_tags.issubset(lesson_tags)
+    engram_tags = set(prereq_dict.get("tags", []))
+    return required_tags.issubset(engram_tags)
 
 
 def search_for_tool_context(tool_name, tool_input, db_path=None):
@@ -252,10 +252,10 @@ def search_for_tool_context(tool_name, tool_input, db_path=None):
         tool_input: dict of tool parameters
 
     Returns:
-        list of matching lessons (top 2)
+        list of matching engrams (top 2)
     """
     config = load_config()
-    max_results = config["display"]["max_lessons_per_tool"]
+    max_results = config["display"]["max_engrams_per_tool"]
 
     # Extract relevant keywords
     keywords = [tool_name]

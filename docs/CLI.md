@@ -1,6 +1,6 @@
 # Engrammar CLI
 
-The Engrammar CLI provides command-line access to all lesson management operations, matching the functionality available through MCP tools.
+The Engrammar CLI provides command-line access to all engram management operations, matching the functionality available through MCP tools.
 
 ## Installation
 
@@ -29,7 +29,7 @@ Now you can use: `engrammar status` instead of the full path.
 
 #### `setup`
 
-Initialize database, import existing lessons, and build embedding index.
+Initialize database, import existing engrams, and build embedding index.
 
 ```bash
 engrammar setup
@@ -45,7 +45,7 @@ engrammar status
 
 **Output:**
 
-- Database path and lesson count
+- Database path and engram count
 - Category breakdown
 - Embedding index status
 - Hook configuration (enabled/disabled, skip tools)
@@ -54,7 +54,7 @@ engrammar status
 
 #### `search`
 
-Search lessons using hybrid search (vector + BM25).
+Search engrams using hybrid search (vector + BM25).
 
 ```bash
 engrammar search "inline styles"
@@ -68,11 +68,11 @@ engrammar search "figma" --category tools
 **Output:**
 
 - Ranked results with scores
-- Match count and occurrence count per lesson
+- Match count and occurrence count per engram
 
 #### `list`
 
-List all active lessons with pagination.
+List all active engrams with pagination.
 
 ```bash
 engrammar list
@@ -82,13 +82,13 @@ engrammar list --category development/frontend
 
 **Options:**
 
-- `--offset N` - Skip first N lessons (default: 0)
-- `--limit N` - Show N lessons (default: 20)
+- `--offset N` - Skip first N engrams (default: 0)
+- `--limit N` - Show N engrams (default: 20)
 - `--category CATEGORY` - Filter by category
 
 **Output:**
 
-- Lesson ID, category, and text preview
+- Engram ID, category, and text preview
 - Pin status (📌 if pinned)
 - Prerequisites (if set)
 - Match stats
@@ -97,7 +97,7 @@ engrammar list --category development/frontend
 
 #### `add`
 
-Add a new lesson.
+Add a new engram.
 
 ```bash
 engrammar add "Never use inline styles in React components" --category development/frontend/styling
@@ -105,7 +105,7 @@ engrammar add "Never use inline styles in React components" --category developme
 
 **Options:**
 
-- `--category CATEGORY` - Set lesson category (default: "general")
+- `--category CATEGORY` - Set engram category (default: "general")
 
 **Behavior:**
 
@@ -114,17 +114,17 @@ engrammar add "Never use inline styles in React components" --category developme
 
 #### `update`
 
-Update a lesson's text, category, or prerequisites.
+Update a engram's text, category, or prerequisites.
 
 ```bash
-engrammar update 42 --text "Updated lesson text"
+engrammar update 42 --text "Updated engram text"
 engrammar update 42 --category tools/figma
 engrammar update 42 --prereqs '{"repos": ["app-repo"]}'
 ```
 
 **Options:**
 
-- `--text "new text"` - Update lesson text
+- `--text "new text"` - Update engram text
 - `--category CATEGORY` - Update primary category
 - `--prereqs JSON` - Update prerequisites (JSON string)
 
@@ -135,7 +135,7 @@ engrammar update 42 --prereqs '{"repos": ["app-repo"]}'
 
 #### `deprecate`
 
-Soft-delete a lesson (removes from active lessons, keeps in DB).
+Soft-delete a engram (removes from active engrams, keeps in DB).
 
 ```bash
 engrammar deprecate 42
@@ -145,7 +145,7 @@ engrammar deprecate 42
 
 #### `categorize`
 
-Add or remove categories from a lesson (multi-category support).
+Add or remove categories from a engram (multi-category support).
 
 ```bash
 engrammar categorize 42 add development/frontend
@@ -154,14 +154,14 @@ engrammar categorize 42 remove tools/figma
 
 **Usage:**
 
-- `categorize LESSON_ID add CATEGORY` - Add category to lesson
-- `categorize LESSON_ID remove CATEGORY` - Remove category from lesson
+- `categorize LESSON_ID add CATEGORY` - Add category to engram
+- `categorize LESSON_ID remove CATEGORY` - Remove category from engram
 
 ### Pinning
 
 #### `pin`
 
-Pin a lesson (always shown at session start when prerequisites match).
+Pin a engram (always shown at session start when prerequisites match).
 
 ```bash
 engrammar pin 42
@@ -169,7 +169,7 @@ engrammar pin 42
 
 #### `unpin`
 
-Unpin a lesson.
+Unpin a engram.
 
 ```bash
 engrammar unpin 42
@@ -179,17 +179,17 @@ engrammar unpin 42
 
 #### `import`
 
-Import lessons from a JSON or markdown file.
+Import engrams from a JSON or markdown file.
 
 ```bash
-engrammar import lessons.json
-engrammar import lessons.md
+engrammar import engrams.json
+engrammar import engrams.md
 ```
 
 **Formats:**
 
-- **JSON**: Array of objects with `lesson`, `topic`, `source_sessions` fields
-- **Markdown**: Each line starting with `- ` is imported as a lesson
+- **JSON**: Array of objects with `engram`, `topic`, `source_sessions` fields
+- **Markdown**: Each line starting with `- ` is imported as a engram
 
 **Behavior:**
 
@@ -197,10 +197,10 @@ engrammar import lessons.md
 
 #### `export`
 
-Export all active lessons to markdown, grouped by category.
+Export all active engrams to markdown, grouped by category.
 
 ```bash
-engrammar export > lessons.md
+engrammar export > engrams.md
 ```
 
 **Output format:**
@@ -220,7 +220,7 @@ engrammar export > lessons.md
 
 #### `extract`
 
-Extract lessons from Claude Code session facets (hook friction events).
+Extract engrams from Claude Code session facets (hook friction events).
 
 ```bash
 engrammar extract
@@ -235,7 +235,7 @@ engrammar extract --dry-run
 
 - Scans `~/.claude/projects/` for session facets
 - Extracts friction events (hook failures, errors, corrections)
-- Deduplicates and merges similar lessons
+- Deduplicates and merges similar engrams
 - Runs automatically at session start via hook
 
 #### `rebuild`
@@ -260,49 +260,49 @@ engrammar rebuild
 # Check system status
 engrammar status
 
-# Search for lessons about a topic
+# Search for engrams about a topic
 engrammar search "react hooks"
 
-# Browse recent lessons
+# Browse recent engrams
 engrammar list --limit 10
 
-# Add a new lesson from experience
+# Add a new engram from experience
 engrammar add "Always use useCallback for event handlers in memoized components" --category development/frontend/react
 
-# Pin a critical lesson
+# Pin a critical engram
 engrammar pin 15
 
-# Update prerequisites for a repo-specific lesson
+# Update prerequisites for a repo-specific engram
 engrammar update 23 --prereqs '{"repos": ["app-repo"], "mcp_servers": ["figma"]}'
 ```
 
 ### Maintenance
 
 ```bash
-# Export lessons for backup
+# Export engrams for backup
 engrammar export > backup-$(date +%Y%m%d).md
 
-# Import lessons from another system
-engrammar import external-lessons.json
+# Import engrams from another system
+engrammar import external-engrams.json
 
 # Rebuild index after manual DB work
 engrammar rebuild
 
-# Extract lessons from recent sessions
+# Extract engrams from recent sessions
 engrammar extract
 ```
 
 ### Multi-Category Management
 
 ```bash
-# Add lesson with primary category
+# Add engram with primary category
 engrammar add "Use Figma tokens for spacing" --category design
 
 # Add additional categories
 engrammar categorize 50 add development/frontend
 engrammar categorize 50 add tools/figma
 
-# List lessons in a category
+# List engrams in a category
 engrammar list --category tools/figma
 ```
 

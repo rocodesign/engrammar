@@ -3,7 +3,7 @@
 import pytest
 import tempfile
 import os
-from src.db import init_db, add_lesson
+from src.db import init_db, add_engram
 from src.search import search, _reciprocal_rank_fusion
 
 
@@ -35,10 +35,10 @@ def test_rrf_returns_all_top_k_results():
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
-        # Add 5 lessons
+        # Add 5 engrams
         for i in range(5):
-            add_lesson(
-                text=f"Lesson {i} about testing",
+            add_engram(
+                text=f"Engram {i} about testing",
                 category="test",
                 db_path=db_path
             )
@@ -67,10 +67,10 @@ def test_search_respects_top_k():
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
-        # Add 10 lessons
+        # Add 10 engrams
         for i in range(10):
-            add_lesson(
-                text=f"Test lesson {i}",
+            add_engram(
+                text=f"Test engram {i}",
                 category="test",
                 db_path=db_path
             )
@@ -80,16 +80,16 @@ def test_search_respects_top_k():
 
 
 def test_search_filters_by_tag_relevance():
-    """Search should filter lessons with strong negative tag relevance."""
+    """Search should filter engrams with strong negative tag relevance."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
         from src.db import get_connection, update_tag_relevance
 
-        # Add two lessons about the same topic
-        good_id = add_lesson(text="Good testing lesson", category="test", db_path=db_path)
-        bad_id = add_lesson(text="Bad testing lesson", category="test", db_path=db_path)
+        # Add two engrams about the same topic
+        good_id = add_engram(text="Good testing engram", category="test", db_path=db_path)
+        bad_id = add_engram(text="Bad testing engram", category="test", db_path=db_path)
 
         # Give bad_id strong negative signal for tag "frontend" (enough evidence to filter)
         for _ in range(5):
@@ -115,12 +115,12 @@ def test_search_handles_empty_database():
 
 
 def test_search_handles_no_matches():
-    """Search should return empty list when no lessons match."""
+    """Search should return empty list when no engrams match."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
-        add_lesson(text="Python lesson", category="test", db_path=db_path)
+        add_engram(text="Python engram", category="test", db_path=db_path)
 
         # Search for something completely different
         # (Without embeddings, BM25 might still match, so this is a weak test)

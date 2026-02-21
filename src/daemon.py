@@ -103,12 +103,12 @@ class EngrammarDaemon:
             return {"results": _serialize(results)}
 
         elif req_type == "pinned":
-            from engrammar.db import get_pinned_lessons, get_tag_relevance_with_evidence
+            from engrammar.db import get_pinned_engrams, get_tag_relevance_with_evidence
             from engrammar.environment import check_structural_prerequisites, detect_environment
 
             env = detect_environment()
             env_tags = env.get("tags", [])
-            pinned = get_pinned_lessons()
+            pinned = get_pinned_engrams()
             matching = []
             for p in pinned:
                 if not check_structural_prerequisites(p.get("prerequisites"), env):

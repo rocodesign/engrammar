@@ -20,24 +20,24 @@ Comprehensive technical documentation for the Engrammar semantic knowledge syste
 
 ## Overview
 
-Engrammar is a semantic knowledge system that learns from Claude Code sessions and intelligently surfaces relevant lessons. The system uses:
+Engrammar is a semantic knowledge system that learns from Claude Code sessions and intelligently surfaces relevant engrams. The system uses:
 
 1. **Tag-based environment detection** - Automatically understands project context
 2. **Hybrid search** - Combines vector similarity and BM25 keyword matching
-3. **Tag relevance scoring** - EMA-based per-tag scores filter irrelevant lessons dynamically
-4. **Smart auto-pinning** - Learns which lessons are universally valuable
-5. **Hook integration** - Surfaces lessons at the perfect moment
+3. **Tag relevance scoring** - EMA-based per-tag scores filter irrelevant engrams dynamically
+4. **Smart auto-pinning** - Learns which engrams are universally valuable
+5. **Hook integration** - Surfaces engrams at the perfect moment
 6. **MCP server** - Enables direct Claude interaction
 
 ### Key Innovation
 
 The **tag subset algorithm** enables cross-project learning:
 
-- Lesson matches 6× in `['acme', 'frontend', 'typescript']`
-- Lesson matches 5× in `['acme', 'frontend', 'react']`
-- Lesson matches 4× in `['personal', 'frontend', 'typescript']`
+- Engram matches 6× in `['acme', 'frontend', 'typescript']`
+- Engram matches 5× in `['acme', 'frontend', 'react']`
+- Engram matches 4× in `['personal', 'frontend', 'typescript']`
 - **Algorithm finds**: `['frontend']` has 15 total matches → auto-pin
-- **Result**: Lesson now shows in ALL frontend projects, not just specific repos
+- **Result**: Engram now shows in ALL frontend projects, not just specific repos
 
 ---
 
@@ -117,29 +117,29 @@ SQLite with WAL mode for concurrent access.
 
 #### Core Functions
 
-**Lesson Management**
+**Engram Management**
 
 ```python
-add_lesson(text, category, tags=None, source="manual")
-get_all_active_lessons()
-deprecate_lesson(lesson_id)
+add_engram(text, category, tags=None, source="manual")
+get_all_active_engrams()
+deprecate_engram(engram_id)
 ```
 
 **Match Statistics**
 
 ```python
-update_match_stats(lesson_id, repo=None, tags=None)
+update_match_stats(engram_id, repo=None, tags=None)
 # Updates:
-# - Global counter: lessons.times_matched
-# - Per-repo stats: lesson_repo_stats
-# - Per-tag-set stats: lesson_tag_stats (NEW)
+# - Global counter: engrams.times_matched
+# - Per-repo stats: engram_repo_stats
+# - Per-tag-set stats: engram_tag_stats (NEW)
 # - Checks auto-pin threshold
 ```
 
 **Auto-Pin Detection**
 
 ```python
-find_auto_pin_tag_subsets(lesson_id, threshold=15)
+find_auto_pin_tag_subsets(engram_id, threshold=15)
 # Returns: minimal common tag subset with threshold+ matches
 ```
 
@@ -149,8 +149,8 @@ Hybrid search combining vector similarity and BM25.
 
 ```python
 def search(query, category_filter=None, tag_filter=None, top_k=5):
-    # 1. Load ALL active lessons (no prerequisite hard-gating)
-    lessons = get_all_active_lessons()
+    # 1. Load ALL active engrams (no prerequisite hard-gating)
+    engrams = get_all_active_engrams()
     env = detect_environment()
 
     # 2. Vector search (embeddings)
@@ -165,16 +165,16 @@ def search(query, category_filter=None, tag_filter=None, top_k=5):
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
 
     # 5. Tag relevance filter + boost
-    #    - Filter: remove lessons with strong negative signal (avg < -0.1, evals >= 3)
+    #    - Filter: remove engrams with strong negative signal (avg < -0.1, evals >= 3)
     #    - Boost: adjust RRF score by tag relevance
     #    See: docs/evaluation.md for full details
     if env.get("tags"):
-        for lesson in fused:
-            avg, evals = get_tag_relevance_with_evidence(lesson.id, env["tags"])
+        for engram in fused:
+            avg, evals = get_tag_relevance_with_evidence(engram.id, env["tags"])
             if evals >= 3 and avg < -0.1:
-                remove(lesson)  # strong negative = filter out
+                remove(engram)  # strong negative = filter out
             else:
-                lesson.score += (avg / 3.0) * 0.01  # boost/penalize
+                engram.score += (avg / 3.0) * 0.01  # boost/penalize
 
     # 6. Apply category filter
     if category_filter:
@@ -211,13 +211,13 @@ def embed_text(text: str) -> list[float]:
     )
     return response.embeddings[0]
 
-def build_index(lessons: list[dict]) -> int:
-    """Build numpy array of embeddings for all lessons."""
-    embeddings = np.array([embed_text(l["text"]) for l in lessons])
+def build_index(engrams: list[dict]) -> int:
+    """Build numpy array of embeddings for all engrams."""
+    embeddings = np.array([embed_text(l["text"]) for l in engrams])
     np.save(INDEX_PATH, embeddings)
     with open(IDS_PATH, "w") as f:
-        json.dump([l["id"] for l in lessons], f)
-    return len(lessons)
+        json.dump([l["id"] for l in engrams], f)
+    return len(engrams)
 ```
 
 ---
@@ -245,7 +245,7 @@ Struct:   [monorepo, frontend]
 
 ### Prerequisites
 
-Stored in `lessons.prerequisites` as JSON:
+Stored in `engrams.prerequisites` as JSON:
 
 ```json
 {
@@ -258,7 +258,7 @@ Stored in `lessons.prerequisites` as JSON:
 **Two types of prerequisites:**
 
 - **Structural** (`os`, `repos`, `paths`, `mcp_servers`) — hard-gated via `check_structural_prerequisites()`. Physical constraints that are always enforced.
-- **Tags** — **not hard-gated**. Tag relevance scoring handles context filtering dynamically. A lesson with `{"tags": ["acme"]}` can appear anywhere; the evaluator learns where it's relevant and accumulates scores that filter it from irrelevant contexts.
+- **Tags** — **not hard-gated**. Tag relevance scoring handles context filtering dynamically. A engram with `{"tags": ["acme"]}` can appear anywhere; the evaluator learns where it's relevant and accumulates scores that filter it from irrelevant contexts.
 
 ```python
 def check_structural_prerequisites(prerequisites, env):
@@ -277,8 +277,8 @@ See [evaluation.md](evaluation.md) for how tag relevance scores work.
 
 Repo-based auto-pin limits cross-project learning:
 
-- Lesson with 15 matches in `app-repo` → pins to `app-repo` only
-- Same lesson valuable in `tailwind` but starts from 0 matches
+- Engram with 15 matches in `app-repo` → pins to `app-repo` only
+- Same engram valuable in `tailwind` but starts from 0 matches
 
 ### Solution: Tag Subset Auto-Pin
 
@@ -287,11 +287,11 @@ Find minimal common tags across different tag sets.
 ### Algorithm
 
 ```python
-def find_auto_pin_tag_subsets(lesson_id, threshold=15):
+def find_auto_pin_tag_subsets(engram_id, threshold=15):
     """Find minimal common tag subset with threshold+ matches.
 
     Steps:
-    1. Get all tag_sets where lesson matched
+    1. Get all tag_sets where engram matched
     2. Generate powerset of all unique tags (limit size=4 for performance)
     3. Count matches for each subset across all tag_sets
     4. Find minimal subsets (no proper subset also meets threshold)
@@ -301,9 +301,9 @@ def find_auto_pin_tag_subsets(lesson_id, threshold=15):
     # 1. Get all tag sets
     rows = db.execute("""
         SELECT tag_set, times_matched
-        FROM lesson_tag_stats
-        WHERE lesson_id = ?
-    """, (lesson_id,))
+        FROM engram_tag_stats
+        WHERE engram_id = ?
+    """, (engram_id,))
 
     tag_sets = [(set(json.loads(r["tag_set"])), r["times_matched"]) for r in rows]
     all_tags = set().union(*[ts for ts, _ in tag_sets])
@@ -369,23 +369,23 @@ Minimal subsets: [{frontend}]
 ### Auto-Pin Trigger
 
 ```python
-def update_match_stats(lesson_id, repo=None, tags=None):
+def update_match_stats(engram_id, repo=None, tags=None):
     # ... update counters ...
 
     if tags:
         # After updating tag_set stats
-        auto_pin_tags = find_auto_pin_tag_subsets(lesson_id)
+        auto_pin_tags = find_auto_pin_tag_subsets(engram_id)
         if auto_pin_tags:
-            lesson = get_lesson(lesson_id)
-            if not lesson["pinned"]:
+            engram = get_engram(engram_id)
+            if not engram["pinned"]:
                 # Auto-pin with tag prerequisite
-                prereqs = json.loads(lesson["prerequisites"] or "{}")
+                prereqs = json.loads(engram["prerequisites"] or "{}")
                 prereqs["tags"] = auto_pin_tags
                 db.execute("""
-                    UPDATE lessons
+                    UPDATE engrams
                     SET pinned = 1, prerequisites = ?
                     WHERE id = ?
-                """, (json.dumps(prereqs), lesson_id))
+                """, (json.dumps(prereqs), engram_id))
 ```
 
 ---
@@ -397,7 +397,7 @@ def update_match_stats(lesson_id, repo=None, tags=None):
 ```
 User Query
     ↓
-1. Load ALL Active Lessons
+1. Load ALL Active Engrams
     ↓
 2. Parallel Search:
    ├─ Vector Search (Voyage embeddings)
@@ -437,7 +437,7 @@ def vector_search(query_embedding, embeddings, ids, top_k=10):
 def _tokenize(text):
     return re.findall(r"\w+", text.lower())
 
-corpus = [tokenize(l["text"] + " " + l["category"]) for l in lessons]
+corpus = [tokenize(l["text"] + " " + l["category"]) for l in engrams]
 bm25 = BM25Okapi(corpus)
 scores = bm25.get_scores(tokenize(query))
 ```
@@ -470,7 +470,7 @@ def on_session_start():
     env = detect_environment()
     env_tags = env.get("tags", [])
 
-    pinned = get_pinned_lessons()
+    pinned = get_pinned_engrams()
     matching = []
     for p in pinned:
         # Hard-gate on structural prerequisites (os, repo, paths, mcp_servers)
@@ -484,9 +484,9 @@ def on_session_start():
         matching.append(p)
 
     if matching:
-        print("Relevant lessons from past sessions:")
-        for lesson in matching:
-            print(f"- [{lesson['category']}] {lesson['text']}")
+        print("Relevant engrams from past sessions:")
+        for engram in matching:
+            print(f"- [{engram['category']}] {engram['text']}")
 ```
 
 ### PreToolUse Hook
@@ -500,49 +500,49 @@ def on_tool_use(tool_name, tool_input):
             if val := tool_input.get(key):
                 keywords.append(val)
 
-    # Search for relevant lessons
+    # Search for relevant engrams
     query = " ".join(keywords)
     results = search(query, top_k=2)
 
-    # Track shown lessons (for session end)
+    # Track shown engrams (for session end)
     track_shown(results)
 
     # Format output
     if results:
-        print(f"\nRelevant lessons for {tool_name}:")
-        for lesson in results:
-            print(f"- {lesson['text']}")
+        print(f"\nRelevant engrams for {tool_name}:")
+        for engram in results:
+            print(f"- {engram['text']}")
 ```
 
 ### SessionEnd Hook
 
-**Purpose**: Track which lessons were actually useful
+**Purpose**: Track which engrams were actually useful
 
 ```python
 def on_session_end(session_data):
-    # Get lessons shown during session
+    # Get engrams shown during session
     shown_ids = load_shown()
 
     # Get environment tags
     env = detect_environment()
     tags = env.get("tags", [])
 
-    # Evaluate each lesson (optional with AI)
-    for lesson_id in shown_ids:
-        lesson = get_lesson(lesson_id)
+    # Evaluate each engram (optional with AI)
+    for engram_id in shown_ids:
+        engram = get_engram(engram_id)
 
         # AI evaluation (optional - requires API key)
-        is_useful = evaluate_lesson_usefulness(lesson, session_data)
+        is_useful = evaluate_engram_usefulness(engram, session_data)
         # If no API key: is_useful = True (fail open)
 
         if is_useful:
             # Track match with tags
-            update_match_stats(lesson_id, repo=env.get("repo"), tags=tags)
+            update_match_stats(engram_id, repo=env.get("repo"), tags=tags)
 
     clear_shown()
 ```
 
-**No API Key Required**: System defaults to marking all shown lessons as useful when API key unavailable.
+**No API Key Required**: System defaults to marking all shown engrams as useful when API key unavailable.
 
 ---
 
@@ -550,10 +550,10 @@ def on_session_end(session_data):
 
 ### Tables
 
-#### `lessons`
+#### `engrams`
 
 ```sql
-CREATE TABLE lessons (
+CREATE TABLE engrams (
     id INTEGER PRIMARY KEY,
     text TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT 'general',
@@ -573,41 +573,41 @@ CREATE TABLE lessons (
 );
 ```
 
-#### `lesson_repo_stats` (Existing)
+#### `engram_repo_stats` (Existing)
 
 ```sql
-CREATE TABLE lesson_repo_stats (
-    lesson_id INTEGER NOT NULL,
+CREATE TABLE engram_repo_stats (
+    engram_id INTEGER NOT NULL,
     repo TEXT NOT NULL,
     times_matched INTEGER DEFAULT 0,
     last_matched TEXT,
-    PRIMARY KEY (lesson_id, repo)
+    PRIMARY KEY (engram_id, repo)
 );
 ```
 
-#### `lesson_tag_stats` (NEW)
+#### `engram_tag_stats` (NEW)
 
 ```sql
-CREATE TABLE lesson_tag_stats (
-    lesson_id INTEGER NOT NULL,
+CREATE TABLE engram_tag_stats (
+    engram_id INTEGER NOT NULL,
     tag_set TEXT NOT NULL,  -- JSON array: '["frontend", "react", "acme"]'
     times_matched INTEGER DEFAULT 0,
     last_matched TEXT,
-    PRIMARY KEY (lesson_id, tag_set)
+    PRIMARY KEY (engram_id, tag_set)
 );
 ```
 
-#### `lesson_tag_relevance`
+#### `engram_tag_relevance`
 
 ```sql
-CREATE TABLE lesson_tag_relevance (
-    lesson_id INTEGER NOT NULL,
+CREATE TABLE engram_tag_relevance (
+    engram_id INTEGER NOT NULL,
     tag TEXT NOT NULL,
     score REAL DEFAULT 0.0,           -- EMA-smoothed relevance score
     positive_evals INTEGER DEFAULT 0, -- times judged relevant with this tag
     negative_evals INTEGER DEFAULT 0, -- times judged irrelevant with this tag
     last_evaluated TEXT,
-    PRIMARY KEY (lesson_id, tag)
+    PRIMARY KEY (engram_id, tag)
 );
 ```
 
@@ -616,7 +616,7 @@ CREATE TABLE lesson_tag_relevance (
 ```sql
 CREATE TABLE session_audit (
     session_id TEXT PRIMARY KEY,
-    shown_lesson_ids TEXT NOT NULL,    -- JSON array
+    shown_engram_ids TEXT NOT NULL,    -- JSON array
     env_tags TEXT NOT NULL,            -- JSON array
     repo TEXT,
     timestamp TEXT NOT NULL,
@@ -644,23 +644,23 @@ CREATE TABLE categories (
 );
 ```
 
-#### `lesson_categories` (Junction Table)
+#### `engram_categories` (Junction Table)
 
 ```sql
-CREATE TABLE lesson_categories (
-    lesson_id INTEGER NOT NULL,
+CREATE TABLE engram_categories (
+    engram_id INTEGER NOT NULL,
     category_path TEXT NOT NULL,
-    PRIMARY KEY (lesson_id, category_path),
-    FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+    PRIMARY KEY (engram_id, category_path),
+    FOREIGN KEY (engram_id) REFERENCES engrams(id)
 );
 ```
 
 ### Indexes
 
 ```sql
-CREATE INDEX idx_lessons_category ON lessons(category);
-CREATE INDEX idx_lessons_level1 ON lessons(level1);
-CREATE INDEX idx_lessons_deprecated ON lessons(deprecated);
+CREATE INDEX idx_engrams_category ON engrams(category);
+CREATE INDEX idx_engrams_level1 ON engrams(level1);
+CREATE INDEX idx_engrams_deprecated ON engrams(deprecated);
 ```
 
 ---
@@ -715,7 +715,7 @@ def engrammar_add(
 ```python
 @mcp.tool()
 def engrammar_feedback(
-    lesson_id: int,
+    engram_id: int,
     applicable: bool,
     reason: str = "",
     add_prerequisites: dict | str | None = None
@@ -727,7 +727,7 @@ def engrammar_feedback(
 ```python
 @mcp.tool()
 def engrammar_update(
-    lesson_id: int,
+    engram_id: int,
     text: str | None = None,
     category: str | None = None,
     prerequisites: dict | str | None = None
@@ -738,10 +738,10 @@ def engrammar_update(
 
 ```python
 @mcp.tool()
-def engrammar_pin(lesson_id: int, prerequisites: dict | str | None = None) -> str
+def engrammar_pin(engram_id: int, prerequisites: dict | str | None = None) -> str
 
 @mcp.tool()
-def engrammar_unpin(lesson_id: int) -> str
+def engrammar_unpin(engram_id: int) -> str
 ```
 
 #### `engrammar_list`
@@ -761,7 +761,7 @@ def engrammar_list(
 ```python
 @mcp.tool()
 def engrammar_status() -> str
-# Shows: lesson count, categories, index health, environment (including tags)
+# Shows: engram count, categories, index health, environment (including tags)
 ```
 
 ---
@@ -777,7 +777,7 @@ def engrammar_status() -> str
 | Vector embedding     | ~50ms  | API call to Anthropic          |
 | Search (hybrid)      | ~100ms | Vector + BM25 + RRF            |
 | Tag filtering        | <5ms   | Set intersection operations    |
-| Session start hook   | ~100ms | Load + filter pinned lessons   |
+| Session start hook   | ~100ms | Load + filter pinned engrams   |
 | Database write       | <10ms  | WAL mode, concurrent-safe      |
 
 ### Optimizations
@@ -810,9 +810,9 @@ def engrammar_status() -> str
 
 | Component                       | Size       |
 | ------------------------------- | ---------- |
-| Embeddings index (1000 lessons) | ~2MB       |
-| Lesson metadata                 | ~500KB     |
-| Tag stats (10 tag sets/lesson)  | ~50KB      |
+| Embeddings index (1000 engrams) | ~2MB       |
+| Engram metadata                 | ~500KB     |
+| Tag stats (10 tag sets/engram)  | ~50KB      |
 | BM25 index                      | ~1MB       |
 | **Total**                       | **~3.5MB** |
 
@@ -822,7 +822,7 @@ def engrammar_status() -> str
 
 ### Overview
 
-Lessons are automatically extracted from Claude Code conversation transcripts stored as JSONL files in `~/.claude/projects/`. The extractor sends conversation content to Haiku for analysis, looking specifically for **friction moments** — not task summaries.
+Engrams are automatically extracted from Claude Code conversation transcripts stored as JSONL files in `~/.claude/projects/`. The extractor sends conversation content to Haiku for analysis, looking specifically for **friction moments** — not task summaries.
 
 ### Transcript Format
 
@@ -841,7 +841,7 @@ The extractor (`_read_transcript_messages`) reads the JSONL and:
 
 1. **Filters** to only `user` and `assistant` message types
 2. **Extracts text** from `message.content` (handles both string and array formats)
-3. **Strips injected engrammar blocks** (`[ENGRAMMAR_V1]...[/ENGRAMMAR_V1]`) to avoid re-learning previously injected lessons
+3. **Strips injected engrammar blocks** (`[ENGRAMMAR_V1]...[/ENGRAMMAR_V1]`) to avoid re-learning previously injected engrams
 4. **Truncates** each message to 500 chars
 5. **Caps total** at 8000 chars (keeps the last 8000)
 
@@ -870,11 +870,11 @@ The prompt explicitly rejects:
 
 ### Dedup During Extraction
 
-Each extracted lesson is checked against existing lessons via `find_similar_lesson()`:
+Each extracted engram is checked against existing engrams via `find_similar_engram()`:
 - **Embedding similarity** (threshold 0.85) using the Voyage index
 - **Fallback**: word overlap (threshold 0.70)
 
-The embedding index is **rebuilt after each transcript** so subsequent transcripts dedup against all previously extracted lessons in the same run.
+The embedding index is **rebuilt after each transcript** so subsequent transcripts dedup against all previously extracted engrams in the same run.
 
 ### Per-Transcript Pipeline
 
@@ -886,7 +886,7 @@ For each transcript (oldest-first):
     4. Read existing instructions (CLAUDE.md, AGENTS.md) to avoid duplicating documented knowledge
     5. Send transcript text + instructions to Haiku
     6. Parse JSON array response (robust parser handles markdown fences, extra text)
-    7. For each extracted lesson:
+    7. For each extracted engram:
        a. Infer prerequisites from text + project signals
        b. Enrich with session env tags
        c. Check dedup → merge into existing or add new
@@ -898,7 +898,7 @@ For each transcript (oldest-first):
 ### Post-Extraction
 
 After all transcripts:
-- **Backfill shown_lesson_ids** in session_audit records by searching user prompts against the lesson DB
+- **Backfill shown_engram_ids** in session_audit records by searching user prompts against the engram DB
 - This prepares data for the evaluation pipeline
 
 ### CLI Usage
@@ -922,12 +922,12 @@ subprocess.Popen([cli_path, "evaluate", "--session", session_id], ...)
 
 ## Data Flow
 
-### Lesson Lifecycle
+### Engram Lifecycle
 
 ```
 1. Creation
-   Transcript JSONL → extractor → Haiku analysis → add_lesson() → DB
-   OR: User → CLI/MCP → add_lesson() → DB
+   Transcript JSONL → extractor → Haiku analysis → add_engram() → DB
+   OR: User → CLI/MCP → add_engram() → DB
 
 2. Indexing
    DB → build_index() → Embeddings → .npy file
@@ -961,19 +961,19 @@ Hook: PreToolUse
     ↓
 search(query) → RRF → tag relevance filter/boost → results
     ↓
-Show relevant lessons + record in session_shown_lessons
+Show relevant engrams + record in session_shown_engrams
     ↓
 Session End
     ↓
-Write session_audit (shown lessons + env tags + transcript path)
+Write session_audit (shown engrams + env tags + transcript path)
     ↓
 Evaluator (async, via daemon)
     ↓
-Haiku judges relevance per lesson → raw scores
+Haiku judges relevance per engram → raw scores
     ↓
-update_tag_relevance(lesson_id, tag_scores) → EMA update per tag
+update_tag_relevance(engram_id, tag_scores) → EMA update per tag
     ↓
-Next Session: Scores filter irrelevant lessons, boost relevant ones
+Next Session: Scores filter irrelevant engrams, boost relevant ones
 ```
 
 ---
@@ -984,7 +984,7 @@ Next Session: Scores filter irrelevant lessons, boost relevant ones
 
 All changes are additive:
 
-- ✅ Existing lessons work without tags
+- ✅ Existing engrams work without tags
 - ✅ Repo-based auto-pin continues to work
 - ✅ Existing hooks unchanged (just pass extra params)
 - ✅ Search works without tag filter
@@ -994,10 +994,10 @@ All changes are additive:
 
 **No migration required**. System adapts:
 
-1. Existing lessons have `prerequisites=NULL` → match in all environments
+1. Existing engrams have `prerequisites=NULL` → match in all environments
 2. New matches start tracking tags → gradual tag_stats population
 3. Auto-pin can trigger on repo OR tags → dual system
-4. Users can manually add tags to existing lessons
+4. Users can manually add tags to existing engrams
 
 ---
 
@@ -1014,7 +1014,7 @@ All changes are additive:
 
 **Optional AI evaluation**:
 
-- Session end hook can evaluate lesson usefulness with Haiku
+- Session end hook can evaluate engram usefulness with Haiku
 - Requires `ANTHROPIC_API_KEY` or `~/.claude.json`
 - Gracefully falls back to simple tracking without AI
 
@@ -1039,11 +1039,11 @@ All changes are additive:
 1. **Tag Aliases**: Map related tags (`react` ↔ `reactjs`)
 2. **Tag Hierarchies**: `frontend/react/hooks` structure
 3. **Multi-Environment Testing**: Test across multiple project types
-4. **Web Dashboard**: Visualize lesson networks and tag relationships
+4. **Web Dashboard**: Visualize engram networks and tag relationships
 
 ### Considered But Deferred
 
-- **Automatic tag extraction from lesson text**: Too brittle, prefer explicit
+- **Automatic tag extraction from engram text**: Too brittle, prefer explicit
 - **Tag suggestions**: Requires ML model, keep simple for now
 - **Tag-based grouping in search**: Wait for user feedback
 - **Custom tag patterns per user**: Config complexity vs. benefit
@@ -1114,18 +1114,18 @@ python3 tests/manual_search_test.py
 
 ### Auto-Pin Not Triggering
 
-**Problem**: Lesson not auto-pinning
+**Problem**: Engram not auto-pinning
 
-- Check tag_stats: `SELECT * FROM lesson_tag_stats WHERE lesson_id = X`
+- Check tag_stats: `SELECT * FROM engram_tag_stats WHERE engram_id = X`
 - Verify 15 match threshold reached
 - Ensure common tags exist across tag sets
 
 ### Search Issues
 
-**Problem**: Lessons not appearing
+**Problem**: Engrams not appearing
 
 - Check prerequisites match: `engrammar_status` (shows env tags)
-- Verify lesson not deprecated
+- Verify engram not deprecated
 - Rebuild index: `engrammar rebuild`
 
 ---
@@ -1137,8 +1137,8 @@ python3 tests/manual_search_test.py
 | **Tag**          | Environment identifier (e.g., 'frontend', 'acme', 'react')         |
 | **Tag Set**      | Sorted list of tags for an environment                             |
 | **Tag Subset**   | Smaller set contained within multiple tag sets                     |
-| **Auto-Pin**     | Automatic marking of lessons as always-show when threshold reached |
-| **Prerequisite** | Condition for showing a lesson (repo, os, tags, etc.)              |
+| **Auto-Pin**     | Automatic marking of engrams as always-show when threshold reached |
+| **Prerequisite** | Condition for showing a engram (repo, os, tags, etc.)              |
 | **RRF**          | Reciprocal Rank Fusion - algorithm for merging ranked lists        |
 | **BM25**         | Best Matching 25 - probabilistic relevance ranking                 |
 | **MCP**          | Model Context Protocol - Claude's tool integration system          |

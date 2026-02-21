@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Engrammar CLI — manage semantic lessons for Claude Code sessions."""
+"""Engrammar CLI — manage semantic engrams for Claude Code sessions."""
 
 import json
 import os
@@ -13,30 +13,30 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 def cmd_setup(args):
     """Initialize database + build index."""
     from engrammar.config import DB_PATH, ENGRAMMAR_HOME
-    from engrammar.db import init_db, get_lesson_count
+    from engrammar.db import init_db, get_engram_count
 
     print("Initializing database...")
     init_db()
 
-    count = get_lesson_count()
+    count = get_engram_count()
     if count == 0:
         print("Empty database. Run 'engrammar-cli extract' to populate from transcripts.")
     else:
-        print(f"Database has {count} lessons.")
+        print(f"Database has {count} engrams.")
 
     # Build embedding index
     print("Building embedding index...")
-    from engrammar.db import get_all_active_lessons
+    from engrammar.db import get_all_active_engrams
     from engrammar.embeddings import build_index, build_tag_index
 
-    lessons = get_all_active_lessons()
-    if lessons:
-        n = build_index(lessons)
-        print(f"Indexed {n} lessons.")
-        nt = build_tag_index(lessons)
+    engrams = get_all_active_engrams()
+    if engrams:
+        n = build_index(engrams)
+        print(f"Indexed {n} engrams.")
+        nt = build_tag_index(engrams)
         print(f"Cached {nt} tag embeddings.")
     else:
-        print("No lessons to index.")
+        print("No engrams to index.")
 
     print("Setup complete.")
 
@@ -44,7 +44,7 @@ def cmd_setup(args):
 def cmd_status(args):
     """Show database stats, index health, hook config."""
     from engrammar.config import DB_PATH, INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, CONFIG_PATH, load_config
-    from engrammar.db import get_lesson_count, get_category_stats
+    from engrammar.db import get_engram_count, get_category_stats
 
     config = load_config()
 
@@ -52,9 +52,9 @@ def cmd_status(args):
 
     # Database
     if os.path.exists(DB_PATH):
-        count = get_lesson_count()
+        count = get_engram_count()
         print(f"Database:   {DB_PATH}")
-        print(f"Lessons:    {count} active")
+        print(f"Engrams:    {count} active")
 
         stats = get_category_stats()
         if stats:
@@ -80,7 +80,7 @@ def cmd_status(args):
         if tag_emb.size > 0:
             print(f"Tag index:  {tag_emb.shape[0]} cached tag embeddings")
         else:
-            print(f"Tag index:  empty (no lessons with tags)")
+            print(f"Tag index:  empty (no engrams with tags)")
     else:
         print(f"Tag index:  NOT BUILT (run 'rebuild' to create)")
 
@@ -93,7 +93,7 @@ def cmd_status(args):
 
 
 def cmd_search(args):
-    """Search lessons."""
+    """Search engrams."""
     if not args:
         print("Usage: engrammar search \"query\" [--category CATEGORY] [--tags tag1,tag2,...]")
         return
@@ -115,7 +115,7 @@ def cmd_search(args):
     results = search(query, category_filter=category, tag_filter=tags, top_k=5)
 
     if not results:
-        print("No matching lessons found.")
+        print("No matching engrams found.")
         return
 
     print(f"Found {len(results)} results:\n")
@@ -127,9 +127,9 @@ def cmd_search(args):
 
 
 def cmd_add(args):
-    """Add a new lesson."""
+    """Add a new engram."""
     if not args:
-        print("Usage: engrammar add \"lesson text\" --category dev/frontend/styling [--tags tag1,tag2,...]")
+        print("Usage: engrammar add \"engram text\" --category dev/frontend/styling [--tags tag1,tag2,...]")
         return
 
     text = args[0]
@@ -144,27 +144,27 @@ def cmd_add(args):
         if idx + 1 < len(args):
             tags = args[idx + 1].split(",")
 
-    from engrammar.db import add_lesson, get_all_active_lessons
+    from engrammar.db import add_engram, get_all_active_engrams
     from engrammar.embeddings import build_index, build_tag_index
 
     prereqs = {"tags": sorted(tags)} if tags else None
-    lesson_id = add_lesson(text=text, category=category, source="manual", prerequisites=prereqs)
+    engram_id = add_engram(text=text, category=category, source="manual", prerequisites=prereqs)
 
     if tags:
-        print(f"Added lesson #{lesson_id} in category '{category}' with tags: {', '.join(tags)}")
+        print(f"Added engram #{engram_id} in category '{category}' with tags: {', '.join(tags)}")
     else:
-        print(f"Added lesson #{lesson_id} in category '{category}'")
+        print(f"Added engram #{engram_id} in category '{category}'")
 
     # Rebuild index
     print("Rebuilding index...")
-    lessons = get_all_active_lessons()
-    build_index(lessons)
-    build_tag_index(lessons)
+    engrams = get_all_active_engrams()
+    build_index(engrams)
+    build_tag_index(engrams)
     print("Done.")
 
 
 def cmd_import(args):
-    """Import lessons from a JSON or markdown file."""
+    """Import engrams from a JSON or markdown file."""
     if not args:
         print("Usage: engrammar import FILE")
         return
@@ -174,14 +174,14 @@ def cmd_import(args):
         print(f"File not found: {filepath}")
         return
 
-    from engrammar.db import import_from_state_file, add_lesson, get_all_active_lessons
+    from engrammar.db import import_from_state_file, add_engram, get_all_active_engrams
     from engrammar.embeddings import build_index, build_tag_index
 
     if filepath.endswith(".json"):
         imported = import_from_state_file(filepath)
-        print(f"Imported {imported} lessons from {filepath}")
+        print(f"Imported {imported} engrams from {filepath}")
     else:
-        # Treat as markdown — each line starting with "- " is a lesson
+        # Treat as markdown — each line starting with "- " is a engram
         imported = 0
         with open(filepath, "r") as f:
             for line in f:
@@ -189,30 +189,30 @@ def cmd_import(args):
                 if line.startswith("- "):
                     text = line[2:].strip()
                     if text:
-                        add_lesson(text=text, category="general", source="manual")
+                        add_engram(text=text, category="general", source="manual")
                         imported += 1
-        print(f"Imported {imported} lessons from {filepath}")
+        print(f"Imported {imported} engrams from {filepath}")
 
     # Rebuild index
     print("Rebuilding index...")
-    lessons = get_all_active_lessons()
-    build_index(lessons)
-    build_tag_index(lessons)
+    engrams = get_all_active_engrams()
+    build_index(engrams)
+    build_tag_index(engrams)
     print("Done.")
 
 
 def cmd_export(args):
-    """Export all lessons to markdown."""
-    from engrammar.db import get_all_active_lessons
+    """Export all engrams to markdown."""
+    from engrammar.db import get_all_active_engrams
 
-    lessons = get_all_active_lessons()
-    if not lessons:
-        print("No lessons to export.")
+    engrams = get_all_active_engrams()
+    if not engrams:
+        print("No engrams to export.")
         return
 
     # Group by category
     by_category = {}
-    for l in lessons:
+    for l in engrams:
         cat = l.get("category", "general")
         by_category.setdefault(cat, []).append(l)
 
@@ -223,7 +223,7 @@ def cmd_export(args):
 
 
 def cmd_extract(args):
-    """Extract lessons from conversation transcripts (or facets with --facets)."""
+    """Extract engrams from conversation transcripts (or facets with --facets)."""
     dry_run = "--dry-run" in args
     use_facets = "--facets" in args
 
@@ -274,25 +274,25 @@ def cmd_extract(args):
 
 def cmd_rebuild(args):
     """Rebuild the embedding index."""
-    from engrammar.db import get_all_active_lessons
+    from engrammar.db import get_all_active_engrams
     from engrammar.embeddings import build_index, build_tag_index
 
-    print("Loading lessons...")
-    lessons = get_all_active_lessons()
+    print("Loading engrams...")
+    engrams = get_all_active_engrams()
 
-    if not lessons:
-        print("No lessons to index.")
+    if not engrams:
+        print("No engrams to index.")
         return
 
-    print(f"Building index for {len(lessons)} lessons...")
-    n = build_index(lessons)
-    nt = build_tag_index(lessons)
-    print(f"Done. Indexed {n} lessons, cached {nt} tag embeddings.")
+    print(f"Building index for {len(engrams)} engrams...")
+    n = build_index(engrams)
+    nt = build_tag_index(engrams)
+    print(f"Done. Indexed {n} engrams, cached {nt} tag embeddings.")
 
 
 def cmd_list(args):
-    """List all lessons with optional pagination. Use --verbose for full details."""
-    from engrammar.db import get_all_active_lessons
+    """List all engrams with optional pagination. Use --verbose for full details."""
+    from engrammar.db import get_all_active_engrams
 
     offset = 0
     limit = 20
@@ -320,34 +320,34 @@ def cmd_list(args):
         else:
             i += 1
 
-    lessons = get_all_active_lessons()
+    engrams = get_all_active_engrams()
 
     # Filter by category if specified
     if category:
         if verbose:
-            lessons = [l for l in lessons if l.get("category", "").startswith(category)]
+            engrams = [l for l in engrams if l.get("category", "").startswith(category)]
         else:
             from engrammar.db import get_connection
             conn = get_connection()
             rows = conn.execute(
-                "SELECT lesson_id FROM lesson_categories WHERE category_path LIKE ?",
+                "SELECT engram_id FROM engram_categories WHERE category_path LIKE ?",
                 (category + "%",)
             ).fetchall()
             conn.close()
-            category_ids = {r["lesson_id"] for r in rows}
-            lessons = [l for l in lessons if l["id"] in category_ids]
+            category_ids = {r["engram_id"] for r in rows}
+            engrams = [l for l in engrams if l["id"] in category_ids]
 
-    if not lessons:
-        print("No lessons found.")
+    if not engrams:
+        print("No engrams found.")
         return
 
     if verbose:
-        _list_verbose(lessons, sort_by, category)
+        _list_verbose(engrams, sort_by, category)
     else:
-        total = len(lessons)
-        page = lessons[offset:offset + limit]
+        total = len(engrams)
+        page = engrams[offset:offset + limit]
 
-        print(f"=== Lessons ({offset + 1}-{offset + len(page)} of {total}) ===\n")
+        print(f"=== Engrams ({offset + 1}-{offset + len(page)} of {total}) ===\n")
 
         for l in page:
             print(f"ID {l['id']}: [{l.get('category', 'general')}] {l['text'][:80]}...")
@@ -360,8 +360,8 @@ def cmd_list(args):
             print()
 
 
-def _list_verbose(lessons, sort_by="id", category=None):
-    """Show full lesson details with tags/scores (git-log style)."""
+def _list_verbose(engrams, sort_by="id", category=None):
+    """Show full engram details with tags/scores (git-log style)."""
     from engrammar.db import get_connection
 
     conn = get_connection()
@@ -369,34 +369,34 @@ def _list_verbose(lessons, sort_by="id", category=None):
     # Preload all tag relevance scores
     tag_scores = {}
     rows = conn.execute(
-        "SELECT lesson_id, tag, score, positive_evals, negative_evals "
-        "FROM lesson_tag_relevance ORDER BY lesson_id, score DESC"
+        "SELECT engram_id, tag, score, positive_evals, negative_evals "
+        "FROM engram_tag_relevance ORDER BY engram_id, score DESC"
     ).fetchall()
     for r in rows:
-        tag_scores.setdefault(r["lesson_id"], []).append(dict(r))
+        tag_scores.setdefault(r["engram_id"], []).append(dict(r))
 
     # Preload repo stats
     repo_stats = {}
     rows = conn.execute(
-        "SELECT lesson_id, repo, times_matched FROM lesson_repo_stats ORDER BY lesson_id"
+        "SELECT engram_id, repo, times_matched FROM engram_repo_stats ORDER BY engram_id"
     ).fetchall()
     for r in rows:
-        repo_stats.setdefault(r["lesson_id"], []).append(dict(r))
+        repo_stats.setdefault(r["engram_id"], []).append(dict(r))
 
     # Sort
     if sort_by == "score":
         def best_score(l):
             scores = tag_scores.get(l["id"], [])
             return max((s["score"] for s in scores), default=0)
-        lessons.sort(key=best_score, reverse=True)
+        engrams.sort(key=best_score, reverse=True)
     elif sort_by == "matched":
-        lessons.sort(key=lambda l: l.get("times_matched", 0), reverse=True)
+        engrams.sort(key=lambda l: l.get("times_matched", 0), reverse=True)
 
-    # Print each lesson
-    for l in lessons:
+    # Print each engram
+    for l in engrams:
         lid = l["id"]
         pinned = " PINNED" if l.get("pinned") else ""
-        print(f"\033[33mlesson {lid}\033[0m{pinned}")
+        print(f"\033[33mengram {lid}\033[0m{pinned}")
         print(f"Category: {l.get('category', 'general')}")
         print(f"Source:   {l.get('source', 'manual')}")
 
@@ -466,16 +466,16 @@ def _list_verbose(lessons, sort_by="id", category=None):
         print()
 
     conn.close()
-    print(f"--- {len(lessons)} lessons ---")
+    print(f"--- {len(engrams)} engrams ---")
 
 
 def cmd_update(args):
-    """Update a lesson's text, category, or prerequisites."""
+    """Update a engram's text, category, or prerequisites."""
     if len(args) < 2:
         print("Usage: engrammar update LESSON_ID [--text \"new text\"] [--category cat] [--prereqs '{\"repos\": [\"foo\"]}']")
         return
 
-    lesson_id = int(args[0])
+    engram_id = int(args[0])
     text = None
     category = None
     prereqs = None
@@ -494,15 +494,15 @@ def cmd_update(args):
         else:
             i += 1
 
-    from engrammar.db import get_connection, get_all_active_lessons, remove_lesson_category, add_lesson_category
+    from engrammar.db import get_connection, get_all_active_engrams, remove_engram_category, add_engram_category
     from engrammar.embeddings import build_index, build_tag_index
 
     conn = get_connection()
 
-    # Check if lesson exists
-    row = conn.execute("SELECT * FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    # Check if engram exists
+    row = conn.execute("SELECT * FROM engrams WHERE id = ?", (engram_id,)).fetchone()
     if not row:
-        print(f"Lesson {lesson_id} not found.")
+        print(f"Engram {engram_id} not found.")
         conn.close()
         return
 
@@ -517,8 +517,8 @@ def cmd_update(args):
         # Sync junction table
         old_category = row["category"]
         if old_category:
-            remove_lesson_category(lesson_id, old_category)
-        add_lesson_category(lesson_id, category)
+            remove_engram_category(engram_id, old_category)
+        add_engram_category(engram_id, category)
 
         updates.append("category = ?")
         params.append(category)
@@ -530,101 +530,101 @@ def cmd_update(args):
 
     if updates:
         updates.append("updated_at = datetime('now')")
-        params.append(lesson_id)
+        params.append(engram_id)
         conn.execute(
-            f"UPDATE lessons SET {', '.join(updates)} WHERE id = ?",
+            f"UPDATE engrams SET {', '.join(updates)} WHERE id = ?",
             params
         )
         conn.commit()
 
     conn.close()
 
-    print(f"Updated lesson {lesson_id}")
+    print(f"Updated engram {engram_id}")
 
     # Rebuild index if text changed
     if text is not None:
         print("Rebuilding index...")
-        lessons = get_all_active_lessons()
-        build_index(lessons)
-        build_tag_index(lessons)
+        engrams = get_all_active_engrams()
+        build_index(engrams)
+        build_tag_index(engrams)
         print("Done.")
 
     # Rebuild tag index if prerequisites changed
     if prereqs is not None and text is None:
         print("Rebuilding tag index...")
-        lessons = get_all_active_lessons()
-        build_tag_index(lessons)
+        engrams = get_all_active_engrams()
+        build_tag_index(engrams)
         print("Done.")
 
 
 def cmd_deprecate(args):
-    """Deprecate (soft-delete) a lesson."""
+    """Deprecate (soft-delete) a engram."""
     if not args:
         print("Usage: engrammar deprecate LESSON_ID")
         return
 
-    lesson_id = int(args[0])
+    engram_id = int(args[0])
 
-    from engrammar.db import deprecate_lesson
+    from engrammar.db import deprecate_engram
 
-    deprecate_lesson(lesson_id)
-    print(f"Deprecated lesson {lesson_id}")
+    deprecate_engram(engram_id)
+    print(f"Deprecated engram {engram_id}")
 
 
 def cmd_pin(args):
-    """Pin a lesson (always shown at session start)."""
+    """Pin a engram (always shown at session start)."""
     if not args:
         print("Usage: engrammar pin LESSON_ID")
         return
 
-    lesson_id = int(args[0])
+    engram_id = int(args[0])
 
     from engrammar.db import get_connection
 
     conn = get_connection()
-    conn.execute("UPDATE lessons SET pinned = 1 WHERE id = ?", (lesson_id,))
+    conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
     conn.commit()
     conn.close()
 
-    print(f"Pinned lesson {lesson_id}")
+    print(f"Pinned engram {engram_id}")
 
 
 def cmd_unpin(args):
-    """Unpin a lesson."""
+    """Unpin a engram."""
     if not args:
         print("Usage: engrammar unpin LESSON_ID")
         return
 
-    lesson_id = int(args[0])
+    engram_id = int(args[0])
 
     from engrammar.db import get_connection
 
     conn = get_connection()
-    conn.execute("UPDATE lessons SET pinned = 0 WHERE id = ?", (lesson_id,))
+    conn.execute("UPDATE engrams SET pinned = 0 WHERE id = ?", (engram_id,))
     conn.commit()
     conn.close()
 
-    print(f"Unpinned lesson {lesson_id}")
+    print(f"Unpinned engram {engram_id}")
 
 
 def cmd_categorize(args):
-    """Add or remove categories from a lesson."""
+    """Add or remove categories from a engram."""
     if len(args) < 3 or args[1] not in ("add", "remove"):
         print("Usage: engrammar categorize LESSON_ID add|remove CATEGORY")
         return
 
-    lesson_id = int(args[0])
+    engram_id = int(args[0])
     action = args[1]
     category = args[2]
 
-    from engrammar.db import add_lesson_category, remove_lesson_category
+    from engrammar.db import add_engram_category, remove_engram_category
 
     if action == "add":
-        add_lesson_category(lesson_id, category)
-        print(f"Added category '{category}' to lesson {lesson_id}")
+        add_engram_category(engram_id, category)
+        print(f"Added category '{category}' to engram {engram_id}")
     else:
-        remove_lesson_category(lesson_id, category)
-        print(f"Removed category '{category}' from lesson {lesson_id}")
+        remove_engram_category(engram_id, category)
+        print(f"Removed category '{category}' from engram {engram_id}")
 
 
 def cmd_reset_stats(args):
@@ -632,11 +632,11 @@ def cmd_reset_stats(args):
     confirm = "--confirm" in args
 
     if not confirm:
-        print("This will reset all lessons:")
-        print("  - Unpin all lessons (pinned = 0)")
+        print("This will reset all engrams:")
+        print("  - Unpin all engrams (pinned = 0)")
         print("  - Reset match counts (times_matched = 0)")
         print("  - Clear per-repo match tracking")
-        print("  - Preserve lesson text, categories, and manual prerequisites")
+        print("  - Preserve engram text, categories, and manual prerequisites")
         print()
         print("Run with --confirm to proceed: engrammar reset-stats --confirm")
         return
@@ -645,26 +645,26 @@ def cmd_reset_stats(args):
 
     conn = get_connection()
 
-    # Reset all lesson stats
+    # Reset all engram stats
     conn.execute("""
-        UPDATE lessons
+        UPDATE engrams
         SET pinned = 0,
             times_matched = 0,
             last_matched = NULL
     """)
 
     # Clear per-repo stats
-    conn.execute("DELETE FROM lesson_repo_stats")
+    conn.execute("DELETE FROM engram_repo_stats")
 
     conn.commit()
 
     # Get count for confirmation
-    count = conn.execute("SELECT COUNT(*) FROM lessons WHERE deprecated = 0").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM engrams WHERE deprecated = 0").fetchone()[0]
     conn.close()
 
     print(f"✅ Reset complete:")
-    print(f"   - Unpinned all lessons")
-    print(f"   - Reset match counts to 0 for {count} active lessons")
+    print(f"   - Unpinned all engrams")
+    print(f"   - Reset match counts to 0 for {count} active engrams")
     print(f"   - Cleared per-repo tracking")
     print()
     print("Match counts will rebuild with intelligent tracking as you use Claude Code.")
@@ -712,35 +712,35 @@ def cmd_evaluate(args):
 
 
 def cmd_backfill_prereqs(args):
-    """Retroactively set prerequisites on existing lessons using keyword inference + session audit tags."""
+    """Retroactively set prerequisites on existing engrams using keyword inference + session audit tags."""
     dry_run = "--dry-run" in args
 
-    from engrammar.db import get_all_active_lessons, get_connection, get_env_tags_for_sessions
+    from engrammar.db import get_all_active_engrams, get_connection, get_env_tags_for_sessions
     from engrammar.extractor import _infer_prerequisites
 
-    lessons = get_all_active_lessons()
-    if not lessons:
-        print("No active lessons found.")
+    engrams = get_all_active_engrams()
+    if not engrams:
+        print("No active engrams found.")
         return
 
     updated = 0
     skipped = 0
-    for lesson in lessons:
+    for engram in engrams:
         existing_prereqs = None
-        if lesson.get("prerequisites"):
+        if engram.get("prerequisites"):
             try:
-                existing_prereqs = json.loads(lesson["prerequisites"]) if isinstance(lesson["prerequisites"], str) else lesson["prerequisites"]
+                existing_prereqs = json.loads(engram["prerequisites"]) if isinstance(engram["prerequisites"], str) else engram["prerequisites"]
             except (json.JSONDecodeError, TypeError):
                 existing_prereqs = None
 
         # Always look up session audit tags
-        source_sessions = json.loads(lesson.get("source_sessions") or "[]")
+        source_sessions = json.loads(engram.get("source_sessions") or "[]")
         audit_tags = get_env_tags_for_sessions(source_sessions) if source_sessions else []
 
         # Only run keyword inference if no existing prerequisites
         keyword_prereqs = None
         if not existing_prereqs:
-            keyword_prereqs = _infer_prerequisites(lesson["text"])
+            keyword_prereqs = _infer_prerequisites(engram["text"])
 
         # Merge audit tags into prerequisites
         merged = existing_prereqs or keyword_prereqs or {}
@@ -754,7 +754,7 @@ def cmd_backfill_prereqs(args):
             continue
 
         # Check if anything actually changed
-        old_json = lesson.get("prerequisites") or "{}"
+        old_json = engram.get("prerequisites") or "{}"
         try:
             old_parsed = json.loads(old_json) if isinstance(old_json, str) else old_json
         except (json.JSONDecodeError, TypeError):
@@ -764,31 +764,31 @@ def cmd_backfill_prereqs(args):
             continue
 
         if dry_run:
-            print(f"  Would set lesson #{lesson['id']}: {json.dumps(merged)}")
-            print(f"    Text: {lesson['text'][:80]}...")
+            print(f"  Would set engram #{engram['id']}: {json.dumps(merged)}")
+            print(f"    Text: {engram['text'][:80]}...")
             updated += 1
         else:
             from datetime import datetime
             conn = get_connection()
             now = datetime.utcnow().isoformat()
             conn.execute(
-                "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(merged), now, lesson["id"]),
+                "UPDATE engrams SET prerequisites = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(merged), now, engram["id"]),
             )
             conn.commit()
             conn.close()
-            print(f"  Set lesson #{lesson['id']}: {json.dumps(merged)}")
+            print(f"  Set engram #{engram['id']}: {json.dumps(merged)}")
             updated += 1
 
     mode = "Would update" if dry_run else "Updated"
-    print(f"\n{mode} {updated} lessons, skipped {skipped}.")
+    print(f"\n{mode} {updated} engrams, skipped {skipped}.")
 
     # Rebuild tag index after prerequisite changes
     if not dry_run and updated > 0:
         from engrammar.embeddings import build_tag_index
         print("Rebuilding tag index...")
-        lessons = get_all_active_lessons()
-        nt = build_tag_index(lessons)
+        engrams = get_all_active_engrams()
+        nt = build_tag_index(engrams)
         print(f"Cached {nt} tag embeddings.")
 
 
@@ -818,7 +818,7 @@ def cmd_log(args):
 
     if not events:
         print("No hook events logged yet.")
-        print("Events will appear here as lessons are injected during sessions.")
+        print("Events will appear here as engrams are injected during sessions.")
         return
 
     # Apply filters
@@ -831,29 +831,29 @@ def cmd_log(args):
         print("No events match the filter.")
         return
 
-    # Preload lesson texts for display
-    lesson_ids_needed = set()
+    # Preload engram texts for display
+    engram_ids_needed = set()
     for e in events:
-        ids = json.loads(e["lesson_ids"])
-        lesson_ids_needed.update(ids)
+        ids = json.loads(e["engram_ids"])
+        engram_ids_needed.update(ids)
 
-    lesson_texts = {}
-    if lesson_ids_needed:
+    engram_texts = {}
+    if engram_ids_needed:
         conn = get_connection()
-        placeholders = ",".join("?" * len(lesson_ids_needed))
+        placeholders = ",".join("?" * len(engram_ids_needed))
         rows = conn.execute(
-            f"SELECT id, text FROM lessons WHERE id IN ({placeholders})",
-            list(lesson_ids_needed),
+            f"SELECT id, text FROM engrams WHERE id IN ({placeholders})",
+            list(engram_ids_needed),
         ).fetchall()
         conn.close()
-        lesson_texts = {r["id"]: r["text"] for r in rows}
+        engram_texts = {r["id"]: r["text"] for r in rows}
 
     # Print events (most recent first, already sorted by get_hook_events)
     for e in events:
         ts = e["timestamp"][:19].replace("T", " ")
         hook = e["hook_event"]
         sid = e["session_id"][:8] if e.get("session_id") else "unknown"
-        ids = json.loads(e["lesson_ids"])
+        ids = json.loads(e["engram_ids"])
         ctx = e.get("context") or ""
 
         # Color the hook name
@@ -871,9 +871,9 @@ def cmd_log(args):
         print(f"  Injected: {id_str}")
         if ctx:
             print(f"  Context:  {ctx[:100]}")
-        # Show lesson text snippets
+        # Show engram text snippets
         for lid in ids:
-            text = lesson_texts.get(lid, "<deleted>")
+            text = engram_texts.get(lid, "<deleted>")
             print(f"    #{lid}: {text[:70]}{'...' if len(text) > 70 else ''}")
         print()
 
@@ -905,7 +905,7 @@ def cmd_restore_db(args):
 
     from engrammar.config import DB_PATH, ENGRAMMAR_HOME
 
-    pattern = os.path.join(ENGRAMMAR_HOME, "lessons.db.backup-*")
+    pattern = os.path.join(ENGRAMMAR_HOME, "engrams.db.backup-*")
     backups = sorted(glob.glob(pattern))
 
     if not backups:
@@ -963,26 +963,26 @@ def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
         print("Commands:")
-        print("  setup        Initialize DB, import lessons, build index")
+        print("  setup        Initialize DB, import engrams, build index")
         print("  status       Show DB stats, index health, hook config")
-        print("  search       Search lessons: search \"query\"")
-        print("  list         List all lessons (--offset N --limit N --category cat --verbose --sort id|score|matched)")
+        print("  search       Search engrams: search \"query\"")
+        print("  list         List all engrams (--offset N --limit N --category cat --verbose --sort id|score|matched)")
         print("  log          Show hook event log (--tail N --session ID --hook HOOK)")
-        print("  add          Add lesson: add \"text\" --category cat")
-        print("  update       Update lesson: update ID --text \"new\" --category cat")
-        print("  deprecate    Soft-delete lesson: deprecate ID")
-        print("  pin          Pin lesson for session start: pin ID")
-        print("  unpin        Unpin lesson: unpin ID")
+        print("  add          Add engram: add \"text\" --category cat")
+        print("  update       Update engram: update ID --text \"new\" --category cat")
+        print("  deprecate    Soft-delete engram: deprecate ID")
+        print("  pin          Pin engram for session start: pin ID")
+        print("  unpin        Unpin engram: unpin ID")
         print("  categorize   Add/remove categories: categorize ID add|remove CATEGORY")
         print("  reset-stats  Reset all match counts and pins: reset-stats --confirm")
         print("  backfill     Create audit records from past sessions: backfill [--dry-run] [--limit N] [--evaluate]")
         print("  import       Import from file: import FILE")
-        print("  export       Export all lessons to markdown")
-        print("  extract      Extract lessons from transcripts: extract [--limit N] [--session UUID] [--dry-run] [--facets]")
+        print("  export       Export all engrams to markdown")
+        print("  extract      Extract engrams from transcripts: extract [--limit N] [--session UUID] [--dry-run] [--facets]")
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
-        print("  backfill-prereqs  Retroactively set prerequisites on existing lessons [--dry-run]")
+        print("  backfill-prereqs  Retroactively set prerequisites on existing engrams [--dry-run]")
         print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
         return
 

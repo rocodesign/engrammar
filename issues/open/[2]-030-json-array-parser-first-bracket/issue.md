@@ -5,7 +5,7 @@
 - Status: Open
 
 ## Problem
-`_parse_json_array()` returns the first bracketed JSON array it can decode, even when it is not the lesson payload (for example `[1]` from prefix text like `Note [1] ...`).
+`_parse_json_array()` returns the first bracketed JSON array it can decode, even when it is not the engram payload (for example `[1]` from prefix text like `Note [1] ...`).
 
 ## Why It Matters
 Extraction paths assume each parsed item is a dict and call `.get(...)`; if parser returns `[1]` or similar, extraction crashes with `AttributeError` instead of failing gracefully.

@@ -4,7 +4,7 @@ import json
 import os
 
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
-DB_PATH = os.path.join(ENGRAMMAR_HOME, "lessons.db")
+DB_PATH = os.path.join(ENGRAMMAR_HOME, "engrams.db")
 INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "embeddings.npy")
 IDS_PATH = os.path.join(ENGRAMMAR_HOME, "embedding_ids.npy")
 TAG_INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "tag_embeddings.npy")
@@ -31,8 +31,8 @@ def load_config():
             "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
         },
         "display": {
-            "max_lessons_per_prompt": 3,
-            "max_lessons_per_tool": 2,
+            "max_engrams_per_prompt": 3,
+            "max_engrams_per_tool": 2,
             "show_scores": False,
             "show_categories": True,
         },

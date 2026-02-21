@@ -29,15 +29,15 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ### High
 
-- [ ] **#007 Extract lessons at session end** `C2`
+- [ ] **#007 Extract engrams at session end** `C2`
   - `tasks/open/[1]-007-session-end-extraction/task.md`
 
 ### Medium
 
-- [ ] **#003 Strengthen lesson deduplication** `C2`
-  - `tasks/open/[2]-003-lesson-dedup-too-weak/task.md`
-- [ ] **#004 LLM-assisted lesson refinement on merge** `C2` `blocked-by: #003, #005`
-  - `tasks/open/[2]-004-llm-assisted-lesson-merge/task.md`
+- [ ] **#003 Strengthen engram deduplication** `C2`
+  - `tasks/open/[2]-003-engram-dedup-too-weak/task.md`
+- [ ] **#004 LLM-assisted engram refinement on merge** `C2` `blocked-by: #003, #005`
+  - `tasks/open/[2]-004-llm-assisted-engram-merge/task.md`
 - [ ] **#005 Incremental embedding index update** `C2`
   - `tasks/open/[2]-005-incremental-embedding-index/task.md`
 
@@ -47,8 +47,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [x] **#001 Fix self-extraction fake session IDs** `C1`
   - `tasks/completed/[1]-001-self-extraction-fake-session-ids/task.md`
-- [x] **#006 Deduplicate lesson injection globally per session** `C1`
-  - `tasks/completed/[1]-006-dedup-lessons-per-session/task.md`
+- [x] **#006 Deduplicate engram injection globally per session** `C1`
+  - `tasks/completed/[1]-006-dedup-engrams-per-session/task.md`
 
 ### Medium
 
