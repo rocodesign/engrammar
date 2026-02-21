@@ -29,13 +29,11 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ### High
 
-- [ ] **#006 Deduplicate lesson injection globally per session** `C1`
-  - `tasks/open/[1]-006-dedup-lessons-per-session/task.md`
+- [ ] **#007 Extract lessons at session end** `C2`
+  - `tasks/open/[1]-007-session-end-extraction/task.md`
 
 ### Medium
 
-- [ ] **#002 Fix extraction prompt wrong categories** `C1`
-  - `tasks/open/[2]-002-extraction-wrong-categories/task.md`
 - [ ] **#003 Strengthen lesson deduplication** `C2`
   - `tasks/open/[2]-003-lesson-dedup-too-weak/task.md`
 - [ ] **#004 LLM-assisted lesson refinement on merge** `C2` `blocked-by: #003, #005`
@@ -49,6 +47,13 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [x] **#001 Fix self-extraction fake session IDs** `C1`
   - `tasks/completed/[1]-001-self-extraction-fake-session-ids/task.md`
+- [x] **#006 Deduplicate lesson injection globally per session** `C1`
+  - `tasks/completed/[1]-006-dedup-lessons-per-session/task.md`
+
+### Medium
+
+- [x] **#002 Fix extraction prompt wrong categories** `C1`
+  - `tasks/completed/[2]-002-extraction-wrong-categories/task.md`
 
 ## Ideas
 

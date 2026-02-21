@@ -707,6 +707,142 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         return []
 
 
+def _process_extracted_lessons(extracted, session_id, env_tags):
+    """Process extracted lesson data — dedup, add to DB, update tag relevance.
+
+    Args:
+        extracted: list of lesson dicts from Haiku (with 'lesson', 'category', etc.)
+        session_id: the source session ID
+        env_tags: list of environment tag strings for this session
+
+    Returns:
+        tuple of (added_count, merged_count)
+    """
+    added = 0
+    merged = 0
+    for lesson_data in extracted:
+        text = lesson_data.get("lesson", "")
+        category = lesson_data.get("category") or lesson_data.get("topic", "general")
+        if "/" not in category:
+            category = "general/" + category
+        source_sessions = [session_id]
+        project_signals = lesson_data.get("project_signals", [])
+
+        if not text:
+            continue
+
+        prerequisites = _infer_prerequisites(text, project_signals)
+        prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
+
+        existing = find_similar_lesson(text)
+        if existing:
+            increment_lesson_occurrence(existing["id"], source_sessions)
+            _maybe_backfill_prerequisites(existing["id"], prerequisites)
+            if env_tags:
+                tag_scores = {tag: 0.5 for tag in env_tags}
+                update_tag_relevance(existing["id"], tag_scores, weight=1.0)
+            merged += 1
+            print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
+        else:
+            lesson_id = add_lesson(
+                text=text,
+                category=category,
+                source="auto-extracted",
+                source_sessions=source_sessions,
+                occurrence_count=1,
+                prerequisites=prerequisites,
+            )
+            if env_tags:
+                tag_scores = {tag: 0.5 for tag in env_tags}
+                update_tag_relevance(lesson_id, tag_scores, weight=1.0)
+            added += 1
+            prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
+            print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
+
+    return added, merged
+
+
+def extract_from_single_session(session_id, transcript_path=None, projects_dir=None):
+    """Extract lessons from a single session transcript.
+
+    Used by the session-end hook for automatic extraction, or via
+    `engrammar extract --session <uuid>`.
+
+    Args:
+        session_id: the session UUID to extract from
+        transcript_path: optional path to the transcript JSONL
+        projects_dir: override projects directory for transcript lookup
+
+    Returns:
+        dict with summary: {extracted, merged}
+    """
+    # Find transcript if not provided
+    if not transcript_path:
+        if projects_dir is None:
+            projects_dir = os.path.expanduser("~/.claude/projects")
+        pattern = os.path.join(projects_dir, "*", f"{session_id}.jsonl")
+        matches = glob.glob(pattern)
+        if not matches:
+            print(f"No transcript found for session {session_id[:12]}")
+            return {"extracted": 0, "merged": 0}
+        transcript_path = matches[0]
+
+    # Skip agent sessions (small transcripts < 10KB)
+    if os.path.getsize(transcript_path) < 10_000:
+        print(f"  Skipped (agent/short session)")
+        return {"extracted": 0, "merged": 0}
+
+    # Skip if already processed
+    processed_ids = get_processed_session_ids()
+    if session_id in processed_ids:
+        print(f"Session {session_id[:12]} already processed.")
+        return {"extracted": 0, "merged": 0}
+
+    transcript_text = _read_transcript_messages(transcript_path)
+    if not transcript_text or len(transcript_text) < 100:
+        print(f"  Skipped (too short)")
+        mark_sessions_processed([
+            {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+        ])
+        return {"extracted": 0, "merged": 0}
+
+    metadata = _read_transcript_metadata(transcript_path)
+    env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
+
+    # Write session audit so _enrich_with_session_tags can look up tags
+    if env_tags:
+        write_session_audit(session_id, [], env_tags, metadata.get("repo", ""),
+                            transcript_path=transcript_path)
+
+    existing_instructions = _read_existing_instructions(metadata.get("cwd"))
+
+    print(f"Extracting from session {session_id[:12]}...")
+    extracted = _call_claude_for_transcript_extraction(
+        transcript_text, session_id, existing_instructions=existing_instructions
+    )
+
+    if not extracted:
+        print("  No lessons extracted.")
+        mark_sessions_processed([
+            {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+        ])
+        return {"extracted": 0, "merged": 0}
+
+    added, merged = _process_extracted_lessons(extracted, session_id, env_tags)
+
+    mark_sessions_processed([
+        {"session_id": session_id, "had_friction": 1, "lessons_extracted": added + merged}
+    ])
+
+    # Rebuild index so new lessons are immediately searchable
+    if added > 0:
+        lessons = get_all_active_lessons()
+        build_index(lessons)
+
+    print(f"  Done. Added: {added}, Merged: {merged}")
+    return {"extracted": added, "merged": merged}
+
+
 def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
     """Extract lessons from real conversation transcripts (not facets).
 
@@ -729,9 +865,12 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         print("No projects directory found.")
         return {"processed": 0, "extracted": 0, "merged": 0, "skipped": 0}
 
-    # Find all transcript files
+    # Find all transcript files (top-level only — excludes subagent transcripts)
     pattern = os.path.join(projects_dir, "*", "*.jsonl")
     session_files = sorted(glob.glob(pattern), key=os.path.getmtime)
+
+    # Skip small transcripts (< 10KB) — agent sessions and trivial interactions
+    session_files = [f for f in session_files if os.path.getsize(f) >= 10_000]
 
     if limit:
         session_files = session_files[:limit]
@@ -800,50 +939,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             summary["processed"] += 1
             continue
 
-        added = 0
-        merged = 0
-        for lesson_data in extracted:
-            text = lesson_data.get("lesson", "")
-            # Use category directly from LLM; fall back to topic for legacy format
-            category = lesson_data.get("category") or lesson_data.get("topic", "general")
-            if "/" not in category:
-                category = "general/" + category
-            # Always use the real session_id — don't trust LLM to echo it correctly
-            source_sessions = [session_id]
-            project_signals = lesson_data.get("project_signals", [])
-
-            if not text:
-                continue
-
-            prerequisites = _infer_prerequisites(text, project_signals)
-            prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
-
-            existing = find_similar_lesson(text)
-            if existing:
-                increment_lesson_occurrence(existing["id"], source_sessions)
-                _maybe_backfill_prerequisites(existing["id"], prerequisites)
-                # Reinforce tag relevance for merged lesson
-                if env_tags:
-                    tag_scores = {tag: 0.5 for tag in env_tags}
-                    update_tag_relevance(existing["id"], tag_scores, weight=1.0)
-                merged += 1
-                print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
-            else:
-                lesson_id = add_lesson(
-                    text=text,
-                    category=category,
-                    source="auto-extracted",
-                    source_sessions=source_sessions,
-                    occurrence_count=1,
-                    prerequisites=prerequisites,
-                )
-                # Initialize tag relevance scores from detected env tags
-                if env_tags:
-                    tag_scores = {tag: 0.5 for tag in env_tags}
-                    update_tag_relevance(lesson_id, tag_scores, weight=1.0)
-                added += 1
-                prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
-                print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
+        added, merged = _process_extracted_lessons(extracted, session_id, env_tags)
 
         mark_sessions_processed([
             {"session_id": session_id, "had_friction": 1, "lessons_extracted": added + merged}

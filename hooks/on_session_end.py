@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SessionEnd hook — writes audit record and triggers background evaluation."""
+"""SessionEnd hook — writes audit record, triggers background evaluation and extraction."""
 
 import json
 import subprocess
@@ -26,7 +26,28 @@ def main():
         if not session_id:
             return
 
-        # Get shown lesson IDs from DB
+        cli_path = os.path.join(ENGRAMMAR_HOME, "engrammar-cli")
+
+        # Skip extraction for agent/subagent sessions — they're short task runs, not
+        # real conversations with friction to learn from.
+        transcript_size = 0
+        if transcript_path and os.path.exists(transcript_path):
+            transcript_size = os.path.getsize(transcript_path)
+
+        is_agent_session = (
+            (transcript_path and "/subagents/" in transcript_path)
+            or transcript_size < 10_000
+        )
+
+        if not is_agent_session and transcript_path:
+            subprocess.Popen(
+                [cli_path, "extract", "--session", session_id],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+        # Get shown lesson IDs from DB for audit + evaluation
         from engrammar.db import get_shown_lesson_ids, write_session_audit, clear_session_shown
 
         shown_ids = get_shown_lesson_ids(session_id)
@@ -45,7 +66,6 @@ def main():
         clear_session_shown(session_id)
 
         # Trigger background evaluation for this session
-        cli_path = os.path.join(ENGRAMMAR_HOME, "engrammar-cli")
         subprocess.Popen(
             [cli_path, "evaluate", "--session", session_id],
             stdout=subprocess.DEVNULL,
