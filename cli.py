@@ -213,6 +213,21 @@ def cmd_extract(args):
     dry_run = "--dry-run" in args
     use_facets = "--facets" in args
 
+    # Single-session extraction: extract --session <uuid>
+    session_id = None
+    if "--session" in args:
+        idx = args.index("--session")
+        if idx + 1 < len(args):
+            session_id = args[idx + 1]
+
+    if session_id:
+        from engrammar.extractor import extract_from_single_session
+
+        summary = extract_from_single_session(session_id)
+        if not dry_run:
+            print(f"\nSummary: {summary['extracted']} added, {summary['merged']} merged")
+        return
+
     if use_facets:
         from engrammar.extractor import extract_from_sessions
 
@@ -932,7 +947,7 @@ def main():
         print("  backfill     Create audit records from past sessions: backfill [--dry-run] [--limit N] [--evaluate]")
         print("  import       Import from file: import FILE")
         print("  export       Export all lessons to markdown")
-        print("  extract      Extract lessons from transcripts: extract [--limit N] [--dry-run] [--facets]")
+        print("  extract      Extract lessons from transcripts: extract [--limit N] [--session UUID] [--dry-run] [--facets]")
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")

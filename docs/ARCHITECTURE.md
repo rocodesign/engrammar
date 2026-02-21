@@ -13,6 +13,7 @@ Comprehensive technical documentation for the Engrammar semantic knowledge syste
 - [Database Schema](#database-schema)
 - [MCP Integration](#mcp-integration)
 - [Performance](#performance)
+- [Extraction Pipeline](#extraction-pipeline)
 - [Data Flow](#data-flow)
 
 ---
@@ -817,13 +818,116 @@ def engrammar_status() -> str
 
 ---
 
+## Extraction Pipeline
+
+### Overview
+
+Lessons are automatically extracted from Claude Code conversation transcripts stored as JSONL files in `~/.claude/projects/`. The extractor sends conversation content to Haiku for analysis, looking specifically for **friction moments** — not task summaries.
+
+### Transcript Format
+
+Each JSONL file contains one JSON object per line with these entry types:
+
+| Entry Type | Contains | Used by Extractor? |
+|---|---|---|
+| `file-history-snapshot` | File backup metadata | No |
+| `progress` | Hook events, agent progress | No |
+| `user` | User messages (text + tool results) | Yes — `message.content` text parts |
+| `assistant` | Model responses (text + thinking + tool_use) | Yes — `message.content` text parts |
+
+### What Gets Sent to Haiku
+
+The extractor (`_read_transcript_messages`) reads the JSONL and:
+
+1. **Filters** to only `user` and `assistant` message types
+2. **Extracts text** from `message.content` (handles both string and array formats)
+3. **Strips injected engrammar blocks** (`[ENGRAMMAR_V1]...[/ENGRAMMAR_V1]`) to avoid re-learning previously injected lessons
+4. **Truncates** each message to 500 chars
+5. **Caps total** at 8000 chars (keeps the last 8000)
+
+The result is a compressed conversation like:
+```
+user: let's work on TAPS-2126
+assistant: Here's the ticket: TAPS-2126 - Remove pact. Let me explore...
+user: don't just plan, actually make the changes
+assistant: You're right. Let me start implementing...
+```
+
+### Extraction Criteria
+
+The prompt instructs Haiku to **only** extract from friction patterns:
+
+1. **User corrections** — assistant tried A, user said "no, do B"
+2. **Repeated struggle** — multiple turns on something avoidable
+3. **Discovered conventions** — user revealed a project rule
+4. **Tooling gotchas** — unexpected tool/API behavior
+
+The prompt explicitly rejects:
+- User task instructions ("build X", "add Y")
+- Summaries of what was built
+- Generic programming advice
+- Implementation details
+
+### Dedup During Extraction
+
+Each extracted lesson is checked against existing lessons via `find_similar_lesson()`:
+- **Embedding similarity** (threshold 0.85) using the Voyage index
+- **Fallback**: word overlap (threshold 0.70)
+
+The embedding index is **rebuilt after each transcript** so subsequent transcripts dedup against all previously extracted lessons in the same run.
+
+### Per-Transcript Pipeline
+
+```
+For each transcript (oldest-first):
+    1. Read metadata → extract cwd, repo
+    2. Detect env tags by chdir to transcript's cwd
+    3. Write session_audit record (for tag enrichment)
+    4. Read existing instructions (CLAUDE.md, AGENTS.md) to avoid duplicating documented knowledge
+    5. Send transcript text + instructions to Haiku
+    6. Parse JSON array response (robust parser handles markdown fences, extra text)
+    7. For each extracted lesson:
+       a. Infer prerequisites from text + project signals
+       b. Enrich with session env tags
+       c. Check dedup → merge into existing or add new
+       d. Initialize tag relevance scores from env tags
+    8. Mark session as processed
+    9. Rebuild embedding index (for next transcript's dedup)
+```
+
+### Post-Extraction
+
+After all transcripts:
+- **Backfill shown_lesson_ids** in session_audit records by searching user prompts against the lesson DB
+- This prepares data for the evaluation pipeline
+
+### CLI Usage
+
+```bash
+# Extract from oldest N transcripts
+engrammar extract --limit 20
+
+# Dry run (show what would be extracted)
+engrammar extract --limit 5 --dry-run
+```
+
+### Automatic Extraction
+
+The SessionEnd hook triggers background evaluation for the current session:
+```python
+subprocess.Popen([cli_path, "evaluate", "--session", session_id], ...)
+```
+
+---
+
 ## Data Flow
 
 ### Lesson Lifecycle
 
 ```
 1. Creation
-   User → CLI/MCP → add_lesson() → DB
+   Transcript JSONL → extractor → Haiku analysis → add_lesson() → DB
+   OR: User → CLI/MCP → add_lesson() → DB
 
 2. Indexing
    DB → build_index() → Embeddings → .npy file
