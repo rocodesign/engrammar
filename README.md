@@ -2,7 +2,7 @@
 
 **Semantic Knowledge System for Claude Code**
 
-Engrammar automatically learns from your Claude Code sessions and surfaces relevant lessons at the right time, making Claude more helpful with every interaction.
+Engrammar automatically learns from your Claude Code sessions and surfaces relevant engrams at the right time, making Claude more helpful with every interaction.
 
 ## Quick Start
 
@@ -16,10 +16,10 @@ Engrammar automatically learns from your Claude Code sessions and surfaces relev
 # Detect environment tags
 ~/.engrammar/engrammar-cli detect-tags
 
-# Search lessons
+# Search engrams
 ~/.engrammar/engrammar-cli search "component patterns"
 
-# Add a lesson
+# Add a engram
 ~/.engrammar/engrammar-cli add "Use Tailwind for UI components" --category dev/frontend --tags acme,react
 ```
 
@@ -27,17 +27,17 @@ Engrammar automatically learns from your Claude Code sessions and surfaces relev
 
 ### 🎯 Smart Tag-Based Filtering
 
-Lessons automatically adapt to your environment:
+Engrams automatically adapt to your environment:
 
 - **Auto-detected tags**: Detects context from paths, git, files, dependencies
-- **Cross-project learning**: Lessons valuable in `['acme', 'frontend']` can auto-pin to all `['frontend']` projects
-- **Intelligent matching**: Only shows lessons relevant to your current stack
+- **Cross-project learning**: Engrams valuable in `['acme', 'frontend']` can auto-pin to all `['frontend']` projects
+- **Intelligent matching**: Only shows engrams relevant to your current stack
 
 ### 📍 Auto-Pin System
 
-Lessons automatically become permanent when proven useful:
+Engrams automatically become permanent when proven useful:
 
-- **15-match threshold**: After 15 matches, lessons auto-pin to their environment
+- **15-match threshold**: After 15 matches, engrams auto-pin to their environment
 - **Tag subset algorithm**: Finds minimal common tags across matches
 - **Smart prerequisites**: Auto-adds repo or tag requirements
 
@@ -49,18 +49,18 @@ Vector similarity + BM25 keyword matching with Reciprocal Rank Fusion for optima
 
 Direct access from Claude Code:
 
-- `engrammar_search` - Find relevant lessons
+- `engrammar_search` - Find relevant engrams
 - `engrammar_add` - Record new learnings
-- `engrammar_feedback` - Refine lesson relevance
+- `engrammar_feedback` - Refine engram relevance
 - `engrammar_status` - System health check
 
 ### 🎣 Session Hooks
 
-Automatically surfaces lessons at the right moment:
+Automatically surfaces engrams at the right moment:
 
-- **PreToolUse**: Shows lessons before tool execution
-- **SessionStart**: Displays pinned lessons
-- **SessionEnd**: Tracks which lessons were actually useful (no API key required)
+- **PreToolUse**: Shows engrams before tool execution
+- **SessionStart**: Displays pinned engrams
+- **SessionEnd**: Tracks which engrams were actually useful (no API key required)
 
 ## Installation
 
@@ -78,12 +78,12 @@ The system works completely **without API keys** - the AI evaluation in session 
 | `setup`                                    | Initialize database and build index     |
 | `status`                                   | Show system stats and environment       |
 | `detect-tags`                              | Show detected environment tags          |
-| `search "query" [--tags tag1,tag2]`        | Search lessons with optional tag filter |
-| `add "text" --category cat [--tags t1,t2]` | Add new lesson                          |
-| `list [--category cat] [--limit N]`        | List all lessons                        |
-| `update ID --text "new"`                   | Update lesson                           |
-| `pin ID`                                   | Pin lesson to always show               |
-| `deprecate ID`                             | Mark lesson as outdated                 |
+| `search "query" [--tags tag1,tag2]`        | Search engrams with optional tag filter |
+| `add "text" --category cat [--tags t1,t2]` | Add new engram                          |
+| `list [--category cat] [--limit N]`        | List all engrams                        |
+| `update ID --text "new"`                   | Update engram                           |
+| `pin ID`                                   | Pin engram to always show               |
+| `deprecate ID`                             | Mark engram as outdated                 |
 
 ## Environment Detection
 
@@ -111,9 +111,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ### Auto-Pin Scenario
 
 ```bash
-# Lesson matches 6 times in ['acme', 'frontend', 'typescript']
-# Lesson matches 5 times in ['acme', 'frontend', 'react']
-# Lesson matches 4 times in ['personal', 'frontend', 'typescript']
+# Engram matches 6 times in ['acme', 'frontend', 'typescript']
+# Engram matches 5 times in ['acme', 'frontend', 'react']
+# Engram matches 4 times in ['personal', 'frontend', 'typescript']
 # → Total: 15 matches with 'frontend' tag
 # → Auto-pins with {"tags": ["frontend"]}
 # → Now shows in ALL frontend projects
@@ -122,7 +122,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ### Manual Tagging
 
 ```bash
-# Add lesson for specific context
+# Add engram for specific context
 engrammar add "Follow acme's React patterns" \
   --category development/frontend \
   --tags acme,react,frontend
@@ -159,7 +159,7 @@ Located at `~/.engrammar/config.json`:
     "top_k": 5
   },
   "display": {
-    "max_lessons_per_tool": 2
+    "max_engrams_per_tool": 2
   }
 }
 ```

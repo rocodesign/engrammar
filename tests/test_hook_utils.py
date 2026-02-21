@@ -5,7 +5,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from src.hook_utils import (
-    format_lessons_block,
+    format_engrams_block,
     make_hook_output,
     parse_hook_input,
     read_session_id,
@@ -13,12 +13,12 @@ from src.hook_utils import (
 )
 
 
-def test_format_lessons_block_with_categories():
-    lessons = [
+def test_format_engrams_block_with_categories():
+    engrams = [
         {"id": 42, "text": "Never use inline styles", "category": "development/frontend"},
         {"id": 17, "text": "Branch naming: taps-NUMBER", "category": "development/git"},
     ]
-    result = format_lessons_block(lessons, show_categories=True)
+    result = format_engrams_block(engrams, show_categories=True)
 
     assert "[ENGRAMMAR_V1]" in result
     assert "[/ENGRAMMAR_V1]" in result
@@ -28,16 +28,16 @@ def test_format_lessons_block_with_categories():
     assert "engrammar_feedback" in result
 
 
-def test_format_lessons_block_without_categories():
-    lessons = [{"id": 1, "text": "Test lesson", "category": "test"}]
-    result = format_lessons_block(lessons, show_categories=False)
+def test_format_engrams_block_without_categories():
+    engrams = [{"id": 1, "text": "Test engram", "category": "test"}]
+    result = format_engrams_block(engrams, show_categories=False)
 
     assert "[EG#1]" in result
     assert "[test]" not in result
 
 
-def test_format_lessons_block_empty():
-    result = format_lessons_block([], show_categories=True)
+def test_format_engrams_block_empty():
+    result = format_engrams_block([], show_categories=True)
     assert result == ""
 
 

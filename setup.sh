@@ -59,7 +59,7 @@ else
     echo "Config already exists, keeping user customizations."
 fi
 
-# 6. Initialize DB + import existing lessons + build index
+# 6. Initialize DB + import existing engrams + build index
 echo ""
 echo "Running setup..."
 "$ENGRAMMAR_HOME/venv/bin/python" "$ENGRAMMAR_HOME/cli.py" setup

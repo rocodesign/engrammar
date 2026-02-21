@@ -12,13 +12,13 @@ Problem: SessionEnd usefulness evaluation had little context, could fail-open, a
 
 Solution:
 1. In-session feedback: Hook output uses `[ENGRAMMAR_V1]` with `EG#ID` markers.
-2. SessionEnd audit: Store deterministic record of shown lesson IDs and context.
+2. SessionEnd audit: Store deterministic record of shown engram IDs and context.
 3. SessionStart async evaluation: Process audit records through `claude -p` (Haiku) for per-tag scores.
 
 ## Key Implemented Pieces
-- Structured hook output with stable lesson IDs.
-- MCP instruction path for `engrammar_feedback` on non-applicable lessons.
-- DB tables: `lesson_tag_relevance`, `session_audit`, `processed_relevance_sessions`.
+- Structured hook output with stable engram IDs.
+- MCP instruction path for `engrammar_feedback` on non-applicable engrams.
+- DB tables: `engram_tag_relevance`, `session_audit`, `processed_relevance_sessions`.
 - EMA-based tag relevance scoring with clamping and thresholds.
 - Search integration via normalized tag relevance boost.
 - Auto-pin/unpin based on score + evidence rules.

@@ -1,14 +1,14 @@
-# Task: LLM-Assisted Lesson Refinement on Merge
+# Task: LLM-Assisted Engram Refinement on Merge
 
 - Priority: Medium
 - Complexity: C2
-- Related issue: `issues/open/[3]-032-llm-assisted-lesson-merge/issue.md`
+- Related issue: `issues/open/[3]-032-llm-assisted-engram-merge/issue.md`
 - Blocked by: #003 (stronger dedup), #005 (incremental index)
 - Status: Open
 
 ## Problem
 
-When duplicates merge, only `occurrence_count` bumps — text never improves. Early-extracted lessons stay vague even when later occurrences express the insight more concretely.
+When duplicates merge, only `occurrence_count` bumps — text never improves. Early-extracted engrams stay vague even when later occurrences express the insight more concretely.
 
 ## Fix
 
@@ -18,11 +18,11 @@ When duplicates merge, only `occurrence_count` bumps — text never improves. Ea
    - "Never replace concrete examples with abstract summaries."
    - "Output must be 1-2 sentences max."
 3. **Specificity guard**: Before accepting, verify backtick code spans and specific commands from original are present in output. Reject and keep original if dropped.
-4. **Audit trail**: Store previous text version in a `lesson_history` table so refinements are traceable.
-5. **Incremental index**: Update only the refined lesson's embedding (depends on #005).
+4. **Audit trail**: Store previous text version in a `engram_history` table so refinements are traceable.
+5. **Incremental index**: Update only the refined engram's embedding (depends on #005).
 
 ## Files
 
 - `src/extractor.py` — refinement logic in merge path
-- `src/db.py` — `lesson_history` table, migration
+- `src/db.py` — `engram_history` table, migration
 - `cli.py` — optional `refine` command for manual trigger

@@ -3,8 +3,8 @@
 set -e
 
 ENGRAMMAR_HOME="${ENGRAMMAR_HOME:-$HOME/.engrammar}"
-DB="$ENGRAMMAR_HOME/lessons.db"
-BACKUP="$ENGRAMMAR_HOME/lessons.db.backup-$(date +%Y%m%d-%H%M%S)"
+DB="$ENGRAMMAR_HOME/engrams.db"
+BACKUP="$ENGRAMMAR_HOME/engrams.db.backup-$(date +%Y%m%d-%H%M%S)"
 VENV="$ENGRAMMAR_HOME/venv/bin/python"
 REPORT_DIR="/tmp/engrammar-integration-$(date +%Y%m%d-%H%M%S)"
 
@@ -24,11 +24,11 @@ echo ""
 echo "── Step 2: Current state ──"
 "$VENV" -c "
 import sys, json; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_lesson_count, get_pinned_lessons, get_connection, get_all_active_lessons
+from engrammar.db import get_engram_count, get_pinned_engrams, get_connection, get_all_active_engrams
 
-count = get_lesson_count()
-pinned = get_pinned_lessons()
-lessons = get_all_active_lessons()
+count = get_engram_count()
+pinned = get_pinned_engrams()
+engrams = get_all_active_engrams()
 
 conn = get_connection()
 audits = conn.execute('SELECT COUNT(*) FROM session_audit').fetchone()[0]
@@ -36,17 +36,17 @@ evals = conn.execute(\"SELECT COUNT(*) FROM processed_relevance_sessions WHERE s
 pending = conn.execute(\"SELECT COUNT(*) FROM session_audit sa LEFT JOIN processed_relevance_sessions prs ON sa.session_id = prs.session_id WHERE prs.session_id IS NULL OR (prs.status != 'completed' AND prs.retry_count < 3)\").fetchone()[0]
 conn.close()
 
-print(f'Active lessons:    {count}')
-print(f'Pinned lessons:    {len(pinned)}')
+print(f'Active engrams:    {count}')
+print(f'Pinned engrams:    {len(pinned)}')
 print(f'Audit records:     {audits}')
 print(f'Completed evals:   {evals}')
 print(f'Pending evals:     {pending}')
 print()
 
-# Write lesson summary
-with open('$REPORT_DIR/01-lessons.json', 'w') as f:
-    json.dump([{'id': l['id'], 'text': l['text'][:100], 'category': l['category'], 'pinned': l['pinned'], 'times_matched': l['times_matched']} for l in lessons], f, indent=2)
-print('Wrote lesson summary to $REPORT_DIR/01-lessons.json')
+# Write engram summary
+with open('$REPORT_DIR/01-engrams.json', 'w') as f:
+    json.dump([{'id': l['id'], 'text': l['text'][:100], 'category': l['category'], 'pinned': l['pinned'], 'times_matched': l['times_matched']} for l in engrams], f, indent=2)
+print('Wrote engram summary to $REPORT_DIR/01-engrams.json')
 
 # Write pinned
 with open('$REPORT_DIR/02-pinned.json', 'w') as f:
@@ -54,13 +54,13 @@ with open('$REPORT_DIR/02-pinned.json', 'w') as f:
 "
 echo ""
 
-# ── Step 3: Extract lessons from transcripts ─────────────────────
-echo "── Step 3: Extracting lessons from conversation transcripts ──"
+# ── Step 3: Extract engrams from transcripts ─────────────────────
+echo "── Step 3: Extracting engrams from conversation transcripts ──"
 "$VENV" "$(dirname "$0")/cli.py" extract --limit 10 2>&1 | tee "$REPORT_DIR/03-extract.log"
 echo ""
 
 # ── Step 3b: Backfill prerequisites ──────────────────────────────
-echo "── Step 3b: Backfilling prerequisites on lessons ──"
+echo "── Step 3b: Backfilling prerequisites on engrams ──"
 "$VENV" "$(dirname "$0")/cli.py" backfill-prereqs 2>&1 | tee "$REPORT_DIR/03b-prereqs.log"
 echo ""
 
@@ -68,30 +68,30 @@ echo ""
 echo "── Step 4: Post-extraction state ──"
 "$VENV" -c "
 import sys, json; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_lesson_count, get_pinned_lessons, get_all_active_lessons, get_connection
+from engrammar.db import get_engram_count, get_pinned_engrams, get_all_active_engrams, get_connection
 
-count = get_lesson_count()
-pinned = get_pinned_lessons()
-lessons = get_all_active_lessons()
+count = get_engram_count()
+pinned = get_pinned_engrams()
+engrams = get_all_active_engrams()
 
 conn = get_connection()
 processed = conn.execute('SELECT COUNT(*) FROM processed_sessions').fetchone()[0]
 conn.close()
 
-print(f'Active lessons:       {count}')
-print(f'Pinned lessons:       {len(pinned)}')
+print(f'Active engrams:       {count}')
+print(f'Pinned engrams:       {len(pinned)}')
 print(f'Processed sessions:   {processed}')
 
 if pinned:
     print()
-    print('Pinned lessons:')
+    print('Pinned engrams:')
     for p in pinned:
         print(f'  #{p[\"id\"]}: {p[\"text\"][:80]}')
 
-# Write updated lesson summary
-with open('$REPORT_DIR/04-lessons-after.json', 'w') as f:
-    json.dump([{'id': l['id'], 'text': l['text'][:100], 'category': l['category'], 'source': l.get('source', 'unknown')} for l in lessons], f, indent=2)
-print(f'Wrote post-extraction lessons to $REPORT_DIR/04-lessons-after.json')
+# Write updated engram summary
+with open('$REPORT_DIR/04-engrams-after.json', 'w') as f:
+    json.dump([{'id': l['id'], 'text': l['text'][:100], 'category': l['category'], 'source': l.get('source', 'unknown')} for l in engrams], f, indent=2)
+print(f'Wrote post-extraction engrams to $REPORT_DIR/04-engrams-after.json')
 "
 echo ""
 
@@ -110,20 +110,20 @@ Instructions:
 1. Look for ANY text between [ENGRAMMAR_V1] and [/ENGRAMMAR_V1] tags in system-reminder blocks
 2. For each block found, list:
    - The hook event that injected it (SessionStart or UserPromptSubmit or PreToolUse)
-   - Every lesson with its EG#ID and full text
+   - Every engram with its EG#ID and full text
 3. If you see NO [ENGRAMMAR_V1] blocks, say 'NO ENGRAMMAR LESSONS INJECTED'
 
 Output format:
 ## Hook: <event name>
-- EG#<id>: <full lesson text>
+- EG#<id>: <full engram text>
 
-Do NOT fabricate lessons. Only report what you actually see." \
+Do NOT fabricate engrams. Only report what you actually see." \
   --no-session-persistence --output-format text 2>"$REPORT_DIR/05a-stderr.txt" > "$REPORT_DIR/05a-session-prompt.txt" || true
 echo "  Wrote to $REPORT_DIR/05a-session-prompt.txt"
 cat "$REPORT_DIR/05a-session-prompt.txt"
 echo ""
 
-# 5b. Prompt with coding context to trigger relevant lessons
+# 5b. Prompt with coding context to trigger relevant engrams
 echo "  5b. Coding-context prompt probe..."
 claude -p "You are being tested. Your ONLY job is to report what [ENGRAMMAR_V1] blocks appear in your context.
 
@@ -137,7 +137,7 @@ Instructions:
 
 Output format:
 ## Hook: <event name>
-- EG#<id>: <full lesson text>" \
+- EG#<id>: <full engram text>" \
   --no-session-persistence --output-format text 2>"$REPORT_DIR/05b-stderr.txt" > "$REPORT_DIR/05b-coding-prompt.txt" || true
 echo "  Wrote to $REPORT_DIR/05b-coding-prompt.txt"
 cat "$REPORT_DIR/05b-coding-prompt.txt"
@@ -153,13 +153,13 @@ STEP 2: After reading, report ALL [ENGRAMMAR_V1] blocks you saw in your ENTIRE c
 
 For each block:
 - State which hook event injected it
-- List every EG#ID and its full lesson text
+- List every EG#ID and its full engram text
 
 If no blocks at all, say 'NO ENGRAMMAR LESSONS INJECTED'
 
 Output format:
 ## Hook: <event name>
-- EG#<id>: <full lesson text>" \
+- EG#<id>: <full engram text>" \
   --no-session-persistence --output-format text 2>"$REPORT_DIR/05c-stderr.txt" > "$REPORT_DIR/05c-tool-use.txt" || true
 echo "  Wrote to $REPORT_DIR/05c-tool-use.txt"
 cat "$REPORT_DIR/05c-tool-use.txt"

@@ -33,8 +33,8 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-026-pin-evidence-overcount/issue.md`
 - [ ] **#28 Pending evaluation processing has no claim/lock step** `[C3]`
   - `issues/open/[2]-028-evaluator-no-claim-lock/issue.md`
-- [ ] **#29 Shown-lesson backfill uses present-day lesson set** `[C2]`
-  - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
+- [ ] **#29 Shown-engram backfill uses present-day engram set** `[C2]`
+  - `issues/open/[2]-029-backfill-shown-engrams-temporal-leakage/issue.md`
 - [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
   - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
 ### Medium
@@ -42,7 +42,7 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-007-single-threaded-daemon/issue.md`
 - [ ] **#8 Config cached per-process but daemon is long-lived** `[C1] low-hanging`
   - `issues/open/[3]-008-config-cache-daemon/issue.md`
-- [ ] **#12 Full index rebuild on every lesson add** `[C3]`
+- [ ] **#12 Full index rebuild on every engram add** `[C3]`
   - `issues/open/[3]-012-full-index-rebuild-on-add/issue.md`
 - [ ] **#13 Backfill repo detection is path-layout dependent** `[C1] low-hanging`
   - `issues/open/[3]-013-backfill-repo-detection-layout-dependent/issue.md`
@@ -69,7 +69,7 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/resolved/001-004-tag-relevance-redesign/issue.md`
 - [x] **#6 Race condition on `.session-shown.json`**
 - [x] **#10 Duplicate utility code across hooks**
-- [x] **#11 `find_similar_lesson` vector fallback added**
+- [x] **#11 `find_similar_engram` vector fallback added**
 - [x] **#16 MCP input validation minimal (outdated claim)**
 - [x] **#17 Coverage gaps in CLI/MCP/hooks (outdated claim)**
 - [x] **#18 `register_hooks.py` dead code (outdated claim)**

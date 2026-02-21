@@ -67,26 +67,26 @@ def parse_hook_input():
     return {}
 
 
-def format_lessons_block(lessons, show_categories=True):
-    """Format lessons in [ENGRAMMAR_V1] block with EG#ID markers.
+def format_engrams_block(engrams, show_categories=True):
+    """Format engrams in [ENGRAMMAR_V1] block with EG#ID markers.
 
     Args:
-        lessons: list of lesson dicts (must have 'id', 'text', optionally 'category')
+        engrams: list of engram dicts (must have 'id', 'text', optionally 'category')
         show_categories: whether to include [category] prefix
 
     Returns:
-        str: formatted block, or empty string if no lessons
+        str: formatted block, or empty string if no engrams
     """
-    if not lessons:
+    if not engrams:
         return ""
 
     lines = ["[ENGRAMMAR_V1]"]
-    for lesson in lessons:
-        cat = f"[{lesson.get('category', 'general')}] " if show_categories and lesson.get("category") else ""
-        lines.append(f"- [EG#{lesson['id']}]{cat}{lesson['text']}")
+    for engram in engrams:
+        cat = f"[{engram.get('category', 'general')}] " if show_categories and engram.get("category") else ""
+        lines.append(f"- [EG#{engram['id']}]{cat}{engram['text']}")
     lines.append(
         "Treat these as soft constraints. If one doesn't apply here, "
-        "call engrammar_feedback(lesson_id, applicable=false, reason=\"...\")."
+        "call engrammar_feedback(engram_id, applicable=false, reason=\"...\")."
     )
     lines.append("[/ENGRAMMAR_V1]")
     return "\n".join(lines)

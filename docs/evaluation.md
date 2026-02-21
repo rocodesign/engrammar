@@ -1,6 +1,6 @@
 # Evaluation & Tag Relevance Scoring
 
-How Engrammar learns which lessons are relevant in which contexts.
+How Engrammar learns which engrams are relevant in which contexts.
 
 ## Overview
 
@@ -8,9 +8,9 @@ The evaluation pipeline runs after each Claude Code session:
 
 ```
 Session End
-  → Record shown lessons + env tags (session_audit)
-  → Evaluator reads transcript + shown lessons
-  → Haiku judges relevance per lesson
+  → Record shown engrams + env tags (session_audit)
+  → Evaluator reads transcript + shown engrams
+  → Haiku judges relevance per engram
   → Tag relevance scores updated (EMA)
   → Scores influence future search results
 ```
@@ -21,7 +21,7 @@ Session End
 
 When a session ends, we record:
 
-- Which lessons were shown (via `session_shown_lessons`)
+- Which engrams were shown (via `session_shown_engrams`)
 - The environment tags at the time
 - The repo name
 - Path to the session transcript (if available)
@@ -37,7 +37,7 @@ engrammar evaluate          # process pending sessions
 engrammar evaluate --limit 5  # process up to 5
 ```
 
-For each session, Haiku reads the transcript and judges whether each shown lesson was relevant. Returns a raw score per lesson.
+For each session, Haiku reads the transcript and judges whether each shown engram was relevant. Returns a raw score per engram.
 
 ### 3. Tag Relevance Update (db.py)
 
@@ -58,14 +58,14 @@ Constants:
 ### Database Table
 
 ```sql
-CREATE TABLE lesson_tag_relevance (
-    lesson_id INTEGER NOT NULL,
+CREATE TABLE engram_tag_relevance (
+    engram_id INTEGER NOT NULL,
     tag TEXT NOT NULL,
     score REAL DEFAULT 0.0,
     positive_evals INTEGER DEFAULT 0,
     negative_evals INTEGER DEFAULT 0,
     last_evaluated TEXT,
-    PRIMARY KEY (lesson_id, tag)
+    PRIMARY KEY (engram_id, tag)
 );
 ```
 
@@ -75,7 +75,7 @@ CREATE TABLE lesson_tag_relevance (
 engrammar log --sort score
 ```
 
-Each lesson shows per-tag scores:
+Each engram shows per-tag scores:
 
 ```
 Tags:
@@ -88,7 +88,7 @@ Tags:
 Format: `tag  score  (+positive_evals/-negative_evals)`
 
 - **score**: EMA-smoothed relevance. Positive = relevant in that context, negative = not relevant.
-- **positive_evals**: times the evaluator judged this lesson relevant when shown with this tag
+- **positive_evals**: times the evaluator judged this engram relevant when shown with this tag
 - **negative_evals**: times judged irrelevant
 
 ### Score Convergence
@@ -116,13 +116,13 @@ NEGATIVE_SCORE_THRESHOLD = -0.1  # filter if avg below this
 RELEVANCE_WEIGHT = 0.01          # boost/penalty weight
 ```
 
-For each candidate lesson:
+For each candidate engram:
 
 1. Compute `(avg_score, total_evals)` across current env tags
 2. If `total_evals >= 3` AND `avg_score < -0.1` → **filter out**
 3. Otherwise → apply score as boost: `rrf_score += (avg_score / 3.0) * 0.01`
 
-### What Happens Per Lesson State
+### What Happens Per Engram State
 
 | State                         | avg_score | evals | Result                 |
 | ----------------------------- | --------- | ----- | ---------------------- |
@@ -136,7 +136,7 @@ For each candidate lesson:
 
 `get_tag_relevance_with_evidence()` divides by **total requested tags**, not just matched rows. Missing tags count as 0.0.
 
-Example: env tags = `["python", "github", "personal"]`, lesson has scores for `python` (-0.283) and `github` (-0.584) but not `personal`:
+Example: env tags = `["python", "github", "personal"]`, engram has scores for `python` (-0.283) and `github` (-0.584) but not `personal`:
 
 ```
 sum = -0.283 + -0.584 + 0.0 = -0.867
@@ -145,7 +145,7 @@ total_evals = 148 + 197 + 0 = 345
 → 345 >= 3 and -0.289 < -0.1 → FILTERED OUT
 ```
 
-Same lesson with env tags = `["acme", "frontend"]`:
+Same engram with env tags = `["acme", "frontend"]`:
 
 ```
 sum = 0.0 + 0.0 = 0.0
@@ -169,19 +169,19 @@ Prerequisites have two roles:
 - `tags` in prerequisites JSON
 - **No longer hard-gated** in search
 - Tag relevance scores handle filtering dynamically
-- Lessons can appear in contexts where they weren't originally tagged, if the evaluator hasn't accumulated enough negative signal to filter them
+- Engrams can appear in contexts where they weren't originally tagged, if the evaluator hasn't accumulated enough negative signal to filter them
 
-This means a lesson with `{"tags": ["acme", "react"]}` is no longer locked to only acme+react environments. It enters the candidate pool everywhere, and the evaluator gradually learns where it's relevant.
+This means a engram with `{"tags": ["acme", "react"]}` is no longer locked to only acme+react environments. It enters the candidate pool everywhere, and the evaluator gradually learns where it's relevant.
 
 ## Auto-Pin and Tag Relevance
 
-Two separate systems can pin lessons:
+Two separate systems can pin engrams:
 
 ### Match-count auto-pin (db.py)
 
 - Threshold: 15 matches for a tag subset
 - Adds `tags` to prerequisites and sets `pinned=1`
-- Based on how often a lesson is _shown_
+- Based on how often a engram is _shown_
 
 ### Tag-relevance auto-pin (db.py)
 
@@ -190,16 +190,16 @@ Two separate systems can pin lessons:
 - Based on evaluator _quality_ judgments
 - Can auto-unpin if score drops below 0.2
 
-### Pinned Lesson Filtering (session start / daemon)
+### Pinned Engram Filtering (session start / daemon)
 
-Pinned lessons go through:
+Pinned engrams go through:
 
 1. `check_structural_prerequisites()` — hard gate on os/repo/paths/mcp
 2. Tag relevance check — filter if `total_evals >= 3` and `avg < -0.1`
 
 ## Debugging
 
-### Check a lesson's tag relevance
+### Check a engram's tag relevance
 
 ```bash
 engrammar log <id> --sort score
@@ -225,7 +225,7 @@ DELETE FROM processed_relevance_sessions WHERE session_id = '...';
 
 Then `engrammar evaluate`.
 
-### Why is a lesson showing/not showing?
+### Why is a engram showing/not showing?
 
 1. Check structural prerequisites: `engrammar log <id>` → look at prerequisites
 2. Check tag relevance: look at per-tag scores and eval counts

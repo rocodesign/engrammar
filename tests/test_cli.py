@@ -15,31 +15,31 @@ from cli import (
     cmd_list,
     cmd_detect_tags,
 )
-from src.db import add_lesson, get_all_active_lessons, get_connection
+from src.db import add_engram, get_all_active_engrams, get_connection
 
 pytestmark = pytest.mark.usefixtures("mock_build_index")
 
 
 def test_cmd_add_basic(test_db, capsys):
-    cmd_add(["test lesson text", "--category", "dev/frontend"])
+    cmd_add(["test engram text", "--category", "dev/frontend"])
     captured = capsys.readouterr()
-    assert "Added lesson #1" in captured.out
+    assert "Added engram #1" in captured.out
     assert "dev/frontend" in captured.out
 
-    lessons = get_all_active_lessons(test_db)
-    assert len(lessons) == 1
-    assert lessons[0]["text"] == "test lesson text"
-    assert lessons[0]["category"] == "dev/frontend"
+    engrams = get_all_active_engrams(test_db)
+    assert len(engrams) == 1
+    assert engrams[0]["text"] == "test engram text"
+    assert engrams[0]["category"] == "dev/frontend"
 
 
 def test_cmd_add_with_tags(test_db, capsys):
-    cmd_add(["lesson with tags", "--category", "general", "--tags", "react,typescript"])
+    cmd_add(["engram with tags", "--category", "general", "--tags", "react,typescript"])
     captured = capsys.readouterr()
     assert "react" in captured.out
     assert "typescript" in captured.out
 
-    lessons = get_all_active_lessons(test_db)
-    prereqs = json.loads(lessons[0]["prerequisites"])
+    engrams = get_all_active_engrams(test_db)
+    prereqs = json.loads(engrams[0]["prerequisites"])
     assert "react" in prereqs["tags"]
     assert "typescript" in prereqs["tags"]
 
@@ -73,17 +73,17 @@ def test_cmd_search_no_results(test_db, capsys):
         mock_search.return_value = []
         cmd_search(["nonexistent query"])
     captured = capsys.readouterr()
-    assert "No matching lessons found" in captured.out
+    assert "No matching engrams found" in captured.out
 
 
 def test_cmd_update_text(test_db, capsys):
-    lesson_id = add_lesson(text="old text", category="general", db_path=test_db)
-    cmd_update([str(lesson_id), "--text", "new text"])
+    engram_id = add_engram(text="old text", category="general", db_path=test_db)
+    cmd_update([str(engram_id), "--text", "new text"])
     captured = capsys.readouterr()
-    assert f"Updated lesson {lesson_id}" in captured.out
+    assert f"Updated engram {engram_id}" in captured.out
 
-    lessons = get_all_active_lessons(test_db)
-    assert lessons[0]["text"] == "new text"
+    engrams = get_all_active_engrams(test_db)
+    assert engrams[0]["text"] == "new text"
 
 
 def test_cmd_update_nonexistent(test_db, capsys):
@@ -93,46 +93,46 @@ def test_cmd_update_nonexistent(test_db, capsys):
 
 
 def test_cmd_deprecate(test_db, capsys):
-    lesson_id = add_lesson(text="to deprecate", category="general", db_path=test_db)
-    cmd_deprecate([str(lesson_id)])
+    engram_id = add_engram(text="to deprecate", category="general", db_path=test_db)
+    cmd_deprecate([str(engram_id)])
     captured = capsys.readouterr()
-    assert f"Deprecated lesson {lesson_id}" in captured.out
+    assert f"Deprecated engram {engram_id}" in captured.out
 
-    lessons = get_all_active_lessons(test_db)
-    assert len(lessons) == 0
+    engrams = get_all_active_engrams(test_db)
+    assert len(engrams) == 0
 
 
 def test_cmd_pin_unpin(test_db, capsys):
-    lesson_id = add_lesson(text="pin me", category="general", db_path=test_db)
+    engram_id = add_engram(text="pin me", category="general", db_path=test_db)
 
-    cmd_pin([str(lesson_id)])
+    cmd_pin([str(engram_id)])
     captured = capsys.readouterr()
-    assert f"Pinned lesson {lesson_id}" in captured.out
+    assert f"Pinned engram {engram_id}" in captured.out
 
     conn = get_connection(test_db)
-    row = conn.execute("SELECT pinned FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    row = conn.execute("SELECT pinned FROM engrams WHERE id = ?", (engram_id,)).fetchone()
     conn.close()
     assert row["pinned"] == 1
 
-    cmd_unpin([str(lesson_id)])
+    cmd_unpin([str(engram_id)])
     captured = capsys.readouterr()
-    assert f"Unpinned lesson {lesson_id}" in captured.out
+    assert f"Unpinned engram {engram_id}" in captured.out
 
     conn = get_connection(test_db)
-    row = conn.execute("SELECT pinned FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+    row = conn.execute("SELECT pinned FROM engrams WHERE id = ?", (engram_id,)).fetchone()
     conn.close()
     assert row["pinned"] == 0
 
 
 def test_cmd_list(test_db, capsys):
-    add_lesson(text="lesson one", category="general", db_path=test_db)
-    add_lesson(text="lesson two", category="dev", db_path=test_db)
+    add_engram(text="engram one", category="general", db_path=test_db)
+    add_engram(text="engram two", category="dev", db_path=test_db)
 
     cmd_list([])
     captured = capsys.readouterr()
     assert "of 2" in captured.out
-    assert "lesson one" in captured.out
-    assert "lesson two" in captured.out
+    assert "engram one" in captured.out
+    assert "engram two" in captured.out
 
 
 def test_cmd_detect_tags(test_db, capsys):

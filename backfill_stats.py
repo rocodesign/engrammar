@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Backfill session audit records from past Claude Code transcripts.
 
-Reads session transcripts, identifies which lessons would have been shown,
+Reads session transcripts, identifies which engrams would have been shown,
 and creates session_audit records for the evaluator pipeline to process.
 
 Does NOT directly update match stats — evaluation is handled by
@@ -151,17 +151,17 @@ def _has_existing_audit(session_id, db_path=None):
 def backfill_session(session_data, dry_run=False, verbose=False, db_path=None):
     """Create a session_audit record for a historical session.
 
-    Searches for lessons that would have been shown (without prerequisite
+    Searches for engrams that would have been shown (without prerequisite
     filtering) and records them as an audit entry for the evaluator pipeline.
 
     Args:
         session_data: Session transcript data
         dry_run: Don't update database
-        verbose: Show per-lesson details
+        verbose: Show per-engram details
         db_path: optional database path
 
     Returns:
-        dict: {'shown': int, 'audit_created': bool, 'lesson_ids': [ids]}
+        dict: {'shown': int, 'audit_created': bool, 'engram_ids': [ids]}
     """
     from engrammar.search import search
 
@@ -169,7 +169,7 @@ def backfill_session(session_data, dry_run=False, verbose=False, db_path=None):
 
     # Skip if audit record already exists
     if not dry_run and _has_existing_audit(session_id, db_path=db_path):
-        return {'shown': 0, 'audit_created': False, 'lesson_ids': [], 'skipped': 'already_audited'}
+        return {'shown': 0, 'audit_created': False, 'engram_ids': [], 'skipped': 'already_audited'}
 
     messages = session_data['messages']
     repo = session_data['repo']
@@ -178,40 +178,40 @@ def backfill_session(session_data, dry_run=False, verbose=False, db_path=None):
     user_prompts = [msg['content'] for msg in messages if msg['role'] == 'user']
 
     if not user_prompts:
-        return {'shown': 0, 'audit_created': False, 'lesson_ids': []}
+        return {'shown': 0, 'audit_created': False, 'engram_ids': []}
 
-    # Find lessons that would have been shown (skip prerequisite filtering
+    # Find engrams that would have been shown (skip prerequisite filtering
     # since we can't reconstruct the historical environment accurately)
-    all_lessons = {}
+    all_engrams = {}
     for prompt in user_prompts:
         if len(prompt) < 5:
             continue
 
         try:
             results = search(prompt, top_k=5, db_path=db_path, skip_prerequisites=True)
-            for lesson in results:
-                if lesson['id'] not in all_lessons:
-                    all_lessons[lesson['id']] = lesson
+            for engram in results:
+                if engram['id'] not in all_engrams:
+                    all_engrams[engram['id']] = engram
         except Exception as e:
             if verbose:
                 print(f"    Search error: {e}")
 
-    if not all_lessons:
-        return {'shown': 0, 'audit_created': False, 'lesson_ids': []}
+    if not all_engrams:
+        return {'shown': 0, 'audit_created': False, 'engram_ids': []}
 
-    lesson_ids = sorted(all_lessons.keys())
+    engram_ids = sorted(all_engrams.keys())
 
     if verbose:
-        for lid in lesson_ids:
-            print(f"    Lesson #{lid}: {all_lessons[lid]['text'][:60]}...")
+        for lid in engram_ids:
+            print(f"    Engram #{lid}: {all_engrams[lid]['text'][:60]}...")
 
     if not dry_run:
         from engrammar.db import write_session_audit
 
         env_tags = _infer_env_from_transcript(session_data)
-        write_session_audit(session_id, lesson_ids, env_tags, repo, db_path=db_path)
+        write_session_audit(session_id, engram_ids, env_tags, repo, db_path=db_path)
 
-    return {'shown': len(all_lessons), 'audit_created': True, 'lesson_ids': lesson_ids}
+    return {'shown': len(all_engrams), 'audit_created': True, 'engram_ids': engram_ids}
 
 
 def main():
@@ -222,7 +222,7 @@ def main():
                     "Records are processed by `engrammar evaluate` for quality scoring."
     )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without updating DB")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show per-lesson details")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show per-engram details")
     parser.add_argument("--limit", type=int, help="Process only N most recent sessions")
     parser.add_argument("--session", help="Process a specific session file")
     parser.add_argument("--projects-dir", help="Override projects directory (default: ~/.claude/projects)")
@@ -251,7 +251,7 @@ def main():
     # Process each session
     audits_created = 0
     already_audited = 0
-    no_lessons = 0
+    no_engrams = 0
     skipped = 0
 
     for i, session_file in enumerate(session_files, 1):
@@ -274,11 +274,11 @@ def main():
             print("  Already audited")
             already_audited += 1
         elif result['shown'] == 0:
-            print("  No matching lessons")
-            no_lessons += 1
+            print("  No matching engrams")
+            no_engrams += 1
         else:
             action = "Would create" if args.dry_run else "Created"
-            print(f"  {action} audit: {result['shown']} lessons, repo={session_data['repo'] or 'unknown'}")
+            print(f"  {action} audit: {result['shown']} engrams, repo={session_data['repo'] or 'unknown'}")
             audits_created += 1
 
     # Summary
@@ -287,7 +287,7 @@ def main():
     print(f"{'='*60}")
     print(f"Audit records created: {audits_created}")
     print(f"Already audited:       {already_audited}")
-    print(f"No matching lessons:   {no_lessons}")
+    print(f"No matching engrams:   {no_engrams}")
     print(f"Skipped (errors):      {skipped}")
 
     if args.dry_run:

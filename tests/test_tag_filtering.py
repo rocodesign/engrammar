@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from src.environment import check_prerequisites, check_structural_prerequisites
-from src.search import search, _lesson_has_all_tags
-from src.db import init_db, add_lesson, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
+from src.search import search, _engram_has_all_tags
+from src.db import init_db, add_engram, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
 from src.embeddings import build_index
 
 
@@ -103,46 +103,46 @@ class TestPrerequisiteChecking:
         assert check_prerequisites(prereqs, env) is False
 
 
-class TestLessonTagChecking:
-    """Test _lesson_has_all_tags helper."""
+class TestEngramTagChecking:
+    """Test _engram_has_all_tags helper."""
 
-    def test_lesson_has_all_required_tags(self):
-        """Should return True when lesson has all required tags."""
-        lesson = {
+    def test_engram_has_all_required_tags(self):
+        """Should return True when engram has all required tags."""
+        engram = {
             "prerequisites": json.dumps({"tags": ["frontend", "react", "acme"]})
         }
         required = {"frontend", "react"}
-        assert _lesson_has_all_tags(lesson, required) is True
+        assert _engram_has_all_tags(engram, required) is True
 
-    def test_lesson_missing_required_tag(self):
-        """Should return False when lesson missing required tag."""
-        lesson = {
+    def test_engram_missing_required_tag(self):
+        """Should return False when engram missing required tag."""
+        engram = {
             "prerequisites": json.dumps({"tags": ["frontend", "react"]})
         }
         required = {"frontend", "vue"}
-        assert _lesson_has_all_tags(lesson, required) is False
+        assert _engram_has_all_tags(engram, required) is False
 
-    def test_lesson_no_prerequisites(self):
-        """Should return False when lesson has no prerequisites."""
-        lesson = {"prerequisites": None}
+    def test_engram_no_prerequisites(self):
+        """Should return False when engram has no prerequisites."""
+        engram = {"prerequisites": None}
         required = {"frontend"}
-        assert _lesson_has_all_tags(lesson, required) is False
+        assert _engram_has_all_tags(engram, required) is False
 
-    def test_lesson_no_tags(self):
+    def test_engram_no_tags(self):
         """Should return False when prerequisites exist but no tags."""
-        lesson = {
+        engram = {
             "prerequisites": json.dumps({"repos": ["app-repo"]})
         }
         required = {"frontend"}
-        assert _lesson_has_all_tags(lesson, required) is False
+        assert _engram_has_all_tags(engram, required) is False
 
     def test_empty_required_tags(self):
         """Should return True when no tags required."""
-        lesson = {
+        engram = {
             "prerequisites": json.dumps({"tags": ["frontend"]})
         }
         required = set()
-        assert _lesson_has_all_tags(lesson, required) is True
+        assert _engram_has_all_tags(engram, required) is True
 
 
 class TestSearchWithTagFilter:
@@ -150,26 +150,26 @@ class TestSearchWithTagFilter:
 
     def test_search_with_tag_filter(self, test_db):
         """Should filter results by tags."""
-        # Add test lessons
+        # Add test engrams
         conn = get_connection(test_db)
 
-        # Lesson 1: frontend + react
+        # Engram 1: frontend + react
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at, deprecated) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at, deprecated) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'), 0)",
             ("React patterns", "dev", json.dumps({"tags": ["frontend", "react"]}))
         )
 
-        # Lesson 2: frontend + vue
+        # Engram 2: frontend + vue
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at, deprecated) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at, deprecated) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'), 0)",
             ("Vue patterns", "dev", json.dumps({"tags": ["frontend", "vue"]}))
         )
 
-        # Lesson 3: backend
+        # Engram 3: backend
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at, deprecated) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at, deprecated) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'), 0)",
             ("Rails patterns", "dev", json.dumps({"tags": ["backend", "ruby"]}))
         )
@@ -178,26 +178,26 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_lessons
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        from src.db import get_all_active_engrams
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
-        # Search with react filter - should only get React lesson
+        # Search with react filter - should only get React engram
         # Note: This will also be filtered by environment prerequisites
-        # so we need to mock environment or the lesson won't match
+        # so we need to mock environment or the engram won't match
         results = search("patterns", tag_filter=["react"], top_k=5, db_path=test_db)
 
-        # If environment has react tag, should find lesson
+        # If environment has react tag, should find engram
         # If not, won't find it (which is correct behavior)
         # Just verify function doesn't crash
         assert isinstance(results, list)
 
     def test_search_with_multiple_tag_filter(self, test_db):
         """Should filter by multiple tags (AND logic)."""
-        # Add test lesson
+        # Add test engram
         conn = get_connection(test_db)
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at, deprecated) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at, deprecated) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'), 0)",
             ("Acme React patterns", "dev", json.dumps({"tags": ["acme", "frontend", "react"]}))
         )
@@ -205,9 +205,9 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_lessons
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        from src.db import get_all_active_engrams
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
         # Search with multiple tags
         results = search("patterns", tag_filter=["acme", "react"], top_k=5, db_path=test_db)
@@ -217,10 +217,10 @@ class TestSearchWithTagFilter:
 
     def test_search_without_tag_filter(self, test_db):
         """Should work normally without tag filter."""
-        # Add test lesson
+        # Add test engram
         conn = get_connection(test_db)
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at, deprecated) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at, deprecated) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'), 0)",
             ("General patterns", "dev", json.dumps({"tags": ["frontend"]}))
         )
@@ -228,9 +228,9 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_lessons
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        from src.db import get_all_active_engrams
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
         # Search without filter
         results = search("patterns", tag_filter=None, top_k=5, db_path=test_db)
@@ -279,8 +279,8 @@ class TestTagRelevanceFiltering:
     """Test tag relevance score filtering in search context."""
 
     def test_strong_negative_with_enough_evidence_filters(self, test_db):
-        """Lesson with strong negative signal and enough evals should be filtered."""
-        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+        """Engram with strong negative signal and enough evals should be filtered."""
+        lid = add_engram(text="Test engram", category="test", db_path=test_db)
 
         for _ in range(5):
             update_tag_relevance(lid, {"frontend": -1.0}, weight=1.0, db_path=test_db)
@@ -290,8 +290,8 @@ class TestTagRelevanceFiltering:
         assert avg < -0.1
 
     def test_strong_negative_low_evidence_passes(self, test_db):
-        """Lesson with negative signal but low evidence should not be filtered."""
-        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+        """Engram with negative signal but low evidence should not be filtered."""
+        lid = add_engram(text="Test engram", category="test", db_path=test_db)
 
         # Only 1 eval — not enough to filter
         update_tag_relevance(lid, {"frontend": -1.0}, weight=1.0, db_path=test_db)
@@ -301,8 +301,8 @@ class TestTagRelevanceFiltering:
         # Would not be filtered (exploration allowed)
 
     def test_positive_signal_passes(self, test_db):
-        """Lesson with positive signal should pass and get boosted."""
-        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+        """Engram with positive signal should pass and get boosted."""
+        lid = add_engram(text="Test engram", category="test", db_path=test_db)
 
         for _ in range(5):
             update_tag_relevance(lid, {"frontend": 1.0}, weight=1.0, db_path=test_db)
@@ -312,16 +312,16 @@ class TestTagRelevanceFiltering:
         assert avg > 0
 
     def test_no_data_passes(self, test_db):
-        """Lesson with no tag relevance data should pass with no boost."""
-        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+        """Engram with no tag relevance data should pass with no boost."""
+        lid = add_engram(text="Test engram", category="test", db_path=test_db)
 
         avg, evals = get_tag_relevance_with_evidence(lid, ["frontend"], db_path=test_db)
         assert avg == 0.0
         assert evals == 0
 
     def test_weak_negative_passes(self, test_db):
-        """Lesson with weak negative signal should pass (above threshold)."""
-        lid = add_lesson(text="Test lesson", category="test", db_path=test_db)
+        """Engram with weak negative signal should pass (above threshold)."""
+        lid = add_engram(text="Test engram", category="test", db_path=test_db)
 
         # Mix of slightly negative signals — should stay above -0.1
         update_tag_relevance(lid, {"frontend": -0.1}, weight=1.0, db_path=test_db)

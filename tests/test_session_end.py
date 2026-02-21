@@ -27,17 +27,17 @@ class TestSqliteRowHandling:
         """Should handle sqlite3.Row objects correctly (no .get() method)."""
         conn = get_connection(test_db)
         cursor = conn.execute(
-            "INSERT INTO lessons (text, category, created_at, updated_at) "
+            "INSERT INTO engrams (text, category, created_at, updated_at) "
             "VALUES (?, ?, datetime('now'), datetime('now'))",
-            ("Test lesson", "development/frontend")
+            ("Test engram", "development/frontend")
         )
-        lesson_id = cursor.lastrowid
+        engram_id = cursor.lastrowid
         conn.commit()
 
         # Query as hook does (returns sqlite3.Row)
         rows = conn.execute(
-            "SELECT id, text, category FROM lessons WHERE id = ?",
-            (lesson_id,)
+            "SELECT id, text, category FROM engrams WHERE id = ?",
+            (engram_id,)
         ).fetchall()
         conn.close()
 
@@ -46,5 +46,5 @@ class TestSqliteRowHandling:
         assert type(row).__name__ == "Row"
 
         # Test the fixed approach (line 181 in on_session_end.py)
-        lesson_category = row["category"] if row["category"] else "general"
-        assert lesson_category == "development/frontend"
+        engram_category = row["category"] if row["category"] else "general"
+        assert engram_category == "development/frontend"

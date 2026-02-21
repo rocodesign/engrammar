@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SessionStart hook — injects pinned lessons and queues maintenance."""
+"""SessionStart hook — injects pinned engrams and queues maintenance."""
 
 import json
 import sys
@@ -11,7 +11,7 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def main():
-    from engrammar.hook_utils import log_error, parse_hook_input, format_lessons_block, make_hook_output
+    from engrammar.hook_utils import log_error, parse_hook_input, format_engrams_block, make_hook_output
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
@@ -21,7 +21,7 @@ def main():
         data = parse_hook_input()
         session_id = data.get("session_id")
 
-        # Persist session_id so MCP server can auto-capture it for self-extracted lessons
+        # Persist session_id so MCP server can auto-capture it for self-extracted engrams
         if session_id:
             from engrammar.hook_utils import write_session_id
             write_session_id(session_id)
@@ -33,14 +33,14 @@ def main():
         except Exception as e:
             log_error("SessionStart", "start daemon/maintenance", e)
 
-        # Get pinned lessons
+        # Get pinned engrams
         from engrammar.config import load_config
-        from engrammar.db import get_pinned_lessons, get_tag_relevance_with_evidence
+        from engrammar.db import get_pinned_engrams, get_tag_relevance_with_evidence
         from engrammar.environment import check_structural_prerequisites, detect_environment
 
         config = load_config()
         env = detect_environment()
-        pinned = get_pinned_lessons()
+        pinned = get_pinned_engrams()
         env_tags = env.get("tags", [])
 
         show_categories = config["display"]["show_categories"]
@@ -59,11 +59,11 @@ def main():
         if not matching:
             return
 
-        # Record shown pinned lessons to avoid re-showing in prompt/tool hooks
+        # Record shown pinned engrams to avoid re-showing in prompt/tool hooks
         if session_id:
-            from engrammar.db import record_shown_lesson
+            from engrammar.db import record_shown_engram
             for p in matching:
-                record_shown_lesson(session_id, p["id"], "SessionStart")
+                record_shown_engram(session_id, p["id"], "SessionStart")
 
         # Log event
         try:
@@ -72,7 +72,7 @@ def main():
         except Exception:
             pass
 
-        context = format_lessons_block(matching, show_categories=show_categories)
+        context = format_engrams_block(matching, show_categories=show_categories)
         output = make_hook_output("SessionStart", context)
         print(json.dumps(output))
 

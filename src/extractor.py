@@ -1,7 +1,7 @@
-"""Extract lessons from Claude Code session facets.
+"""Extract engrams from Claude Code session facets.
 
 Reads session facets from ~/.claude/usage-data/facets/, sends friction sessions
-to Claude haiku for analysis, and imports extracted lessons into the Engrammar DB.
+to Claude haiku for analysis, and imports extracted engrams into the Engrammar DB.
 """
 
 import glob
@@ -19,13 +19,13 @@ _ENGRAMMAR_BLOCK_RE = re.compile(
 )
 
 from .db import (
-    add_lesson,
-    find_similar_lesson,
-    get_all_active_lessons,
+    add_engram,
+    find_similar_engram,
+    get_all_active_engrams,
     get_connection,
     get_env_tags_for_sessions,
     get_processed_session_ids,
-    increment_lesson_occurrence,
+    increment_engram_occurrence,
     mark_sessions_processed,
     update_tag_relevance,
     write_session_audit,
@@ -41,7 +41,7 @@ KEYWORD_PREREQUISITES = {
     "figma server": {"mcp_servers": ["figma"]},
 }
 
-TRANSCRIPT_EXTRACTION_PROMPT = """You are analyzing a Claude Code conversation transcript to extract lessons from FRICTION — moments where the assistant got something wrong and the user had to intervene.
+TRANSCRIPT_EXTRACTION_PROMPT = """You are analyzing a Claude Code conversation transcript to extract engrams from FRICTION — moments where the assistant got something wrong and the user had to intervene.
 
 ONLY extract from these patterns:
 1. **User corrections**: The assistant tried approach A, then the user said "no, do B instead" or "that's wrong, use X". Capture the rule: "Do B, not A" or "Use X because Y".
@@ -50,13 +50,13 @@ ONLY extract from these patterns:
 4. **Tooling gotchas**: A tool or API behaved unexpectedly and required a workaround. Capture the gotcha.
 
 CRITICAL — DO NOT extract:
-- User instructions or requests ("do X", "build Y", "add Z") — these are TASKS, not lessons
+- User instructions or requests ("do X", "build Y", "add Z") — these are TASKS, not engrams
 - Summaries of what was built or discussed
 - Generic programming advice (validate inputs, write tests, use types)
 - Implementation details about specific functions
 - Anything that reads like a design decision rather than a correction
 
-The test: if the lesson is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a lesson.
+The test: if the engram is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a engram.
 
 Good examples (notice the correction pattern):
 - "Use cy.contains('button', 'Text') not cy.get('button').contains('Text') — the latter yields the deepest element, not the button"
@@ -82,16 +82,16 @@ Output a JSON array of objects, each with:
     - "workflow/<area>" (communication, setup, debugging)
     - "general/<topic>" (catch-all for anything else)
   Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
-- "lesson": the specific, concrete lesson (1-2 sentences max)
+- "engram": the specific, concrete engram (1-2 sentences max)
 - "source_sessions": ["{session_id}"]
-- "scope": "general" if the lesson applies broadly, or "project-specific" if it only applies to a particular project/tool
+- "scope": "general" if the engram applies broadly, or "project-specific" if it only applies to a particular project/tool
 - "project_signals": list of project/tool names when scope is "project-specific". Empty list when scope is "general".
 
-If no lessons are worth extracting, output an empty array: []
+If no engrams are worth extracting, output an empty array: []
 
 Output ONLY valid JSON, no markdown fences, no explanation."""
 
-EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE lessons.
+EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE engrams.
 
 DO NOT extract:
 - Generic advice like "investigate methodically" or "ask for clarification"
@@ -105,7 +105,7 @@ DO extract concrete, reusable knowledge like:
 - "Never use inline styles in this codebase — use CSS classes or Tailwind component props"
 - "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
 
-Each lesson should be a rule or pattern that saves time if known in advance — not a description of what happened.
+Each engram should be a rule or pattern that saves time if known in advance — not a description of what happened.
 
 Here are the session summaries and friction details:
 
@@ -122,22 +122,22 @@ Output a JSON array of objects, each with:
     - "workflow/<area>" (communication, setup, debugging)
     - "general/<topic>" (catch-all for anything else)
   Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
-- "lesson": the specific, concrete lesson (1-2 sentences max)
+- "engram": the specific, concrete engram (1-2 sentences max)
 - "source_sessions": list of session IDs this was derived from
-- "scope": "general" if the lesson applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
+- "scope": "general" if the engram applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
 - "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TEAM", "Tailwind", "Figma MCP", "Playwright"]). Empty list when scope is "general".
 
 Output ONLY valid JSON, no markdown fences, no explanation."""
 
 
 def _parse_json_array(raw):
-    """Robustly parse a JSON array of lesson objects from LLM output.
+    """Robustly parse a JSON array of engram objects from LLM output.
 
     Handles common issues: extra text after the array, markdown fences,
     multiple JSON objects on separate lines.
 
     Returns:
-        list of dicts (parsed lesson array) or None if parsing fails
+        list of dicts (parsed engram array) or None if parsing fails
     """
     text = raw.strip()
 
@@ -151,12 +151,12 @@ def _parse_json_array(raw):
     # Try direct parse first
     try:
         result = json.loads(text)
-        if isinstance(result, list) and _is_lesson_array(result):
+        if isinstance(result, list) and _is_engram_array(result):
             return result
     except json.JSONDecodeError:
         pass
 
-    # Find complete JSON arrays by bracket matching; skip non-lesson arrays like [1]
+    # Find complete JSON arrays by bracket matching; skip non-engram arrays like [1]
     search_from = 0
     while True:
         start = text.find("[", search_from)
@@ -192,7 +192,7 @@ def _parse_json_array(raw):
 
         try:
             candidate = json.loads(text[start:end + 1])
-            if isinstance(candidate, list) and _is_lesson_array(candidate):
+            if isinstance(candidate, list) and _is_engram_array(candidate):
                 return candidate
         except json.JSONDecodeError:
             pass
@@ -202,22 +202,22 @@ def _parse_json_array(raw):
     return None
 
 
-def _is_lesson_array(arr):
-    """Check if a parsed JSON array looks like lesson objects.
+def _is_engram_array(arr):
+    """Check if a parsed JSON array looks like engram objects.
 
-    Returns True for empty arrays (no lessons extracted) or arrays
-    where every element is a dict with a 'lesson' key.
+    Returns True for empty arrays (no engrams extracted) or arrays
+    where every element is a dict with a 'engram' key.
     """
     if not arr:
         return True
-    return all(isinstance(item, dict) and "lesson" in item for item in arr)
+    return all(isinstance(item, dict) and "engram" in item for item in arr)
 
 
 def _infer_prerequisites(text, project_signals=None):
-    """Infer prerequisites from lesson text and optional project signals.
+    """Infer prerequisites from engram text and optional project signals.
 
     Args:
-        text: the lesson text
+        text: the engram text
         project_signals: optional list of project names from Haiku output
 
     Returns:
@@ -226,7 +226,7 @@ def _infer_prerequisites(text, project_signals=None):
     merged = {}
     text_lower = text.lower()
 
-    # Check keyword map against lesson text
+    # Check keyword map against engram text
     for keyword, prereqs in KEYWORD_PREREQUISITES.items():
         if keyword in text_lower:
             for key, val in prereqs.items():
@@ -281,11 +281,11 @@ def _enrich_with_session_tags(prerequisites, source_sessions, db_path=None):
     return prerequisites
 
 
-def _maybe_backfill_prerequisites(lesson_id, prerequisites, db_path=None):
-    """Backfill prerequisites on an existing lesson if it has none.
+def _maybe_backfill_prerequisites(engram_id, prerequisites, db_path=None):
+    """Backfill prerequisites on an existing engram if it has none.
 
     Args:
-        lesson_id: existing lesson to potentially update
+        engram_id: existing engram to potentially update
         prerequisites: dict of prerequisites to set
         db_path: optional database path
     """
@@ -296,14 +296,14 @@ def _maybe_backfill_prerequisites(lesson_id, prerequisites, db_path=None):
 
     conn = get_connection(db_path)
     row = conn.execute(
-        "SELECT prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+        "SELECT prerequisites FROM engrams WHERE id = ?", (engram_id,)
     ).fetchone()
 
     if row and not row["prerequisites"]:
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            "UPDATE lessons SET prerequisites = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(prerequisites), now, lesson_id),
+            "UPDATE engrams SET prerequisites = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(prerequisites), now, engram_id),
         )
         conn.commit()
     conn.close()
@@ -338,7 +338,7 @@ def _format_sessions_for_prompt(sessions):
 
 
 def _call_claude_for_extraction(sessions):
-    """Call claude CLI in headless mode to extract lessons from sessions."""
+    """Call claude CLI in headless mode to extract engrams from sessions."""
     session_text = _format_sessions_for_prompt(sessions)
     prompt = EXTRACTION_PROMPT.format(sessions=session_text)
 
@@ -407,7 +407,7 @@ def extract_from_sessions(dry_run=False):
         # Mark all new sessions as processed (even without friction)
         if not dry_run and new_facets:
             mark_sessions_processed([
-                {"session_id": f["session_id"], "had_friction": 0, "lessons_extracted": 0}
+                {"session_id": f["session_id"], "had_friction": 0, "engrams_extracted": 0}
                 for f in new_facets
             ])
         print(f"[{now}] No new sessions with friction. "
@@ -423,7 +423,7 @@ def extract_from_sessions(dry_run=False):
             print(f"    Friction: {s.get('friction_detail', 'N/A')}")
         return summary
 
-    # Extract lessons via Claude haiku
+    # Extract engrams via Claude haiku
     # Batch if there are many sessions
     all_extracted = []
     for i in range(0, len(friction_sessions), MAX_LESSONS_PER_BATCH):
@@ -432,26 +432,26 @@ def extract_from_sessions(dry_run=False):
         all_extracted.extend(extracted)
 
     if not all_extracted:
-        print("  No lessons extracted.")
+        print("  No engrams extracted.")
         # Still mark sessions as processed
         mark_sessions_processed([
             {"session_id": f["session_id"],
              "had_friction": 1 if f.get("friction_detail") else 0,
-             "lessons_extracted": 0}
+             "engrams_extracted": 0}
             for f in new_facets
         ])
         return summary
 
-    # Import extracted lessons into DB
+    # Import extracted engrams into DB
     added = 0
     merged = 0
-    for lesson_data in all_extracted:
-        text = lesson_data.get("lesson", "")
-        category = lesson_data.get("category") or lesson_data.get("topic", "general")
+    for engram_data in all_extracted:
+        text = engram_data.get("engram", "")
+        category = engram_data.get("category") or engram_data.get("topic", "general")
         if "/" not in category:
             category = "general/" + category
-        source_sessions = lesson_data.get("source_sessions", [])
-        project_signals = lesson_data.get("project_signals", [])
+        source_sessions = engram_data.get("source_sessions", [])
+        project_signals = engram_data.get("project_signals", [])
 
         if not text:
             continue
@@ -460,16 +460,16 @@ def extract_from_sessions(dry_run=False):
         prerequisites = _infer_prerequisites(text, project_signals)
         prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
 
-        # Check for similar existing lesson
-        existing = find_similar_lesson(text)
+        # Check for similar existing engram
+        existing = find_similar_engram(text)
         if existing:
-            increment_lesson_occurrence(existing["id"], source_sessions)
-            # Backfill prerequisites on existing lesson if it has none
+            increment_engram_occurrence(existing["id"], source_sessions)
+            # Backfill prerequisites on existing engram if it has none
             _maybe_backfill_prerequisites(existing["id"], prerequisites)
             merged += 1
-            print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
+            print(f"  Merged into engram #{existing['id']}: {text[:60]}...")
         else:
-            lesson_id = add_lesson(
+            engram_id = add_engram(
                 text=text,
                 category=category,
                 source="auto-extracted",
@@ -479,27 +479,27 @@ def extract_from_sessions(dry_run=False):
             )
             added += 1
             prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
-            print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
+            print(f"  Added engram #{engram_id} [{category}]{prereq_str}: {text[:60]}...")
 
     summary["extracted"] = added
     summary["merged"] = merged
 
-    # Rebuild embedding index if new lessons were added
+    # Rebuild embedding index if new engrams were added
     if added > 0:
         print("  Rebuilding embedding index...")
-        lessons = get_all_active_lessons()
-        build_index(lessons)
-        print(f"  Indexed {len(lessons)} lessons.")
+        engrams = get_all_active_engrams()
+        build_index(engrams)
+        print(f"  Indexed {len(engrams)} engrams.")
 
     # Mark all new sessions as processed
     mark_sessions_processed([
         {"session_id": f["session_id"],
          "had_friction": 1 if f.get("friction_detail") else 0,
-         "lessons_extracted": 1 if f.get("friction_detail") else 0}
+         "engrams_extracted": 1 if f.get("friction_detail") else 0}
         for f in new_facets
     ])
 
-    summary["total_active"] = len(get_all_active_lessons())
+    summary["total_active"] = len(get_all_active_engrams())
     print(f"  Done. Added: {added}, Merged: {merged}, Total active: {summary['total_active']}")
 
     return summary
@@ -595,7 +595,7 @@ def _read_existing_instructions(cwd):
 
 
 def _read_user_prompts(jsonl_path):
-    """Read user prompts from a transcript JSONL for shown-lesson matching."""
+    """Read user prompts from a transcript JSONL for shown-engram matching."""
     prompts = []
     try:
         with open(jsonl_path, "r") as f:
@@ -650,7 +650,7 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
                 elif not isinstance(content, str):
                     continue
 
-                # Strip engrammar injection blocks to avoid re-learning injected lessons
+                # Strip engrammar injection blocks to avoid re-learning injected engrams
                 content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
 
                 role = message_obj.get("role", entry.get("type", ""))
@@ -666,10 +666,10 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
 
 
 def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions=""):
-    """Call claude CLI to extract lessons from a conversation transcript."""
+    """Call claude CLI to extract engrams from a conversation transcript."""
     instructions_block = ""
     if existing_instructions:
-        instructions_block = f"\nThe project already has these instructions documented — DO NOT extract lessons that restate this information:\n{existing_instructions}\n"
+        instructions_block = f"\nThe project already has these instructions documented — DO NOT extract engrams that restate this information:\n{existing_instructions}\n"
     prompt = TRANSCRIPT_EXTRACTION_PROMPT.format(
         transcript=transcript_text,
         session_id=session_id,
@@ -707,11 +707,11 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         return []
 
 
-def _process_extracted_lessons(extracted, session_id, env_tags):
-    """Process extracted lesson data — dedup, add to DB, update tag relevance.
+def _process_extracted_engrams(extracted, session_id, env_tags):
+    """Process extracted engram data — dedup, add to DB, update tag relevance.
 
     Args:
-        extracted: list of lesson dicts from Haiku (with 'lesson', 'category', etc.)
+        extracted: list of engram dicts from Haiku (with 'engram', 'category', etc.)
         session_id: the source session ID
         env_tags: list of environment tag strings for this session
 
@@ -720,13 +720,13 @@ def _process_extracted_lessons(extracted, session_id, env_tags):
     """
     added = 0
     merged = 0
-    for lesson_data in extracted:
-        text = lesson_data.get("lesson", "")
-        category = lesson_data.get("category") or lesson_data.get("topic", "general")
+    for engram_data in extracted:
+        text = engram_data.get("engram", "")
+        category = engram_data.get("category") or engram_data.get("topic", "general")
         if "/" not in category:
             category = "general/" + category
         source_sessions = [session_id]
-        project_signals = lesson_data.get("project_signals", [])
+        project_signals = engram_data.get("project_signals", [])
 
         if not text:
             continue
@@ -734,17 +734,17 @@ def _process_extracted_lessons(extracted, session_id, env_tags):
         prerequisites = _infer_prerequisites(text, project_signals)
         prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
 
-        existing = find_similar_lesson(text)
+        existing = find_similar_engram(text)
         if existing:
-            increment_lesson_occurrence(existing["id"], source_sessions)
+            increment_engram_occurrence(existing["id"], source_sessions)
             _maybe_backfill_prerequisites(existing["id"], prerequisites)
             if env_tags:
                 tag_scores = {tag: 0.5 for tag in env_tags}
                 update_tag_relevance(existing["id"], tag_scores, weight=1.0)
             merged += 1
-            print(f"  Merged into lesson #{existing['id']}: {text[:60]}...")
+            print(f"  Merged into engram #{existing['id']}: {text[:60]}...")
         else:
-            lesson_id = add_lesson(
+            engram_id = add_engram(
                 text=text,
                 category=category,
                 source="auto-extracted",
@@ -754,16 +754,16 @@ def _process_extracted_lessons(extracted, session_id, env_tags):
             )
             if env_tags:
                 tag_scores = {tag: 0.5 for tag in env_tags}
-                update_tag_relevance(lesson_id, tag_scores, weight=1.0)
+                update_tag_relevance(engram_id, tag_scores, weight=1.0)
             added += 1
             prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
-            print(f"  Added lesson #{lesson_id} [{category}]{prereq_str}: {text[:60]}...")
+            print(f"  Added engram #{engram_id} [{category}]{prereq_str}: {text[:60]}...")
 
     return added, merged
 
 
 def extract_from_single_session(session_id, transcript_path=None, projects_dir=None):
-    """Extract lessons from a single session transcript.
+    """Extract engrams from a single session transcript.
 
     Used by the session-end hook for automatic extraction, or via
     `engrammar extract --session <uuid>`.
@@ -802,7 +802,7 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
     if not transcript_text or len(transcript_text) < 100:
         print(f"  Skipped (too short)")
         mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
         ])
         return {"extracted": 0, "merged": 0}
 
@@ -822,32 +822,32 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
     )
 
     if not extracted:
-        print("  No lessons extracted.")
+        print("  No engrams extracted.")
         mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
         ])
         return {"extracted": 0, "merged": 0}
 
-    added, merged = _process_extracted_lessons(extracted, session_id, env_tags)
+    added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
 
     mark_sessions_processed([
-        {"session_id": session_id, "had_friction": 1, "lessons_extracted": added + merged}
+        {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
     ])
 
-    # Rebuild index so new lessons are immediately searchable
+    # Rebuild index so new engrams are immediately searchable
     if added > 0:
-        lessons = get_all_active_lessons()
-        build_index(lessons)
+        engrams = get_all_active_engrams()
+        build_index(engrams)
 
     print(f"  Done. Added: {added}, Merged: {merged}")
     return {"extracted": added, "merged": merged}
 
 
 def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
-    """Extract lessons from real conversation transcripts (not facets).
+    """Extract engrams from real conversation transcripts (not facets).
 
     Reads JSONL transcripts from ~/.claude/projects/, sends them to Haiku
-    for lesson extraction using the same criteria as MCP self-extraction
+    for engram extraction using the same criteria as MCP self-extraction
     (corrections, significant effort, conventions, quirks).
 
     Args:
@@ -904,7 +904,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             summary["skipped"] += 1
             if not dry_run:
                 mark_sessions_processed([
-                    {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+                    {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
                 ])
             continue
 
@@ -932,34 +932,34 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         )
 
         if not extracted:
-            print("  No lessons extracted.")
+            print("  No engrams extracted.")
             mark_sessions_processed([
-                {"session_id": session_id, "had_friction": 0, "lessons_extracted": 0}
+                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
             ])
             summary["processed"] += 1
             continue
 
-        added, merged = _process_extracted_lessons(extracted, session_id, env_tags)
+        added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
 
         mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 1, "lessons_extracted": added + merged}
+            {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
         ])
 
         # Rebuild index after each transcript so the next one can dedup against fresh embeddings
         if added > 0:
-            lessons = get_all_active_lessons()
-            build_index(lessons)
+            engrams = get_all_active_engrams()
+            build_index(engrams)
 
         summary["processed"] += 1
         summary["extracted"] += added
         summary["merged"] += merged
 
     if summary["extracted"] > 0 and not dry_run:
-        summary["total_active"] = len(get_all_active_lessons())
+        summary["total_active"] = len(get_all_active_engrams())
 
-    # Backfill shown_lesson_ids in session_audit records for the evaluator
+    # Backfill shown_engram_ids in session_audit records for the evaluator
     if not dry_run:
-        _backfill_shown_lessons(projects_dir)
+        _backfill_shown_engrams(projects_dir)
 
     print(f"\nDone. Processed: {summary['processed']}, "
           f"Added: {summary['extracted']}, Merged: {summary['merged']}, "
@@ -968,25 +968,25 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
     return summary
 
 
-def _backfill_shown_lessons(projects_dir=None):
-    """Populate shown_lesson_ids in session_audit records.
+def _backfill_shown_engrams(projects_dir=None):
+    """Populate shown_engram_ids in session_audit records.
 
-    For each audit record with empty shown_lesson_ids, searches user prompts
-    from the transcript against the lesson DB to find which lessons would have
+    For each audit record with empty shown_engram_ids, searches user prompts
+    from the transcript against the engram DB to find which engrams would have
     been shown. Updates the audit record in place.
     """
     from .search import search
 
     conn = get_connection()
     rows = conn.execute(
-        "SELECT session_id, env_tags, repo, transcript_path FROM session_audit WHERE shown_lesson_ids = '[]'"
+        "SELECT session_id, env_tags, repo, transcript_path FROM session_audit WHERE shown_engram_ids = '[]'"
     ).fetchall()
     conn.close()
 
     if not rows:
         return
 
-    print(f"\nBackfilling shown lessons for {len(rows)} session(s)...")
+    print(f"\nBackfilling shown engrams for {len(rows)} session(s)...")
     updated = 0
 
     for row in rows:
@@ -1009,24 +1009,24 @@ def _backfill_shown_lessons(projects_dir=None):
         if not user_prompts:
             continue
 
-        # Search for matching lessons
-        all_lesson_ids = set()
+        # Search for matching engrams
+        all_engram_ids = set()
         for prompt in user_prompts:
             if len(prompt) < 5:
                 continue
             try:
                 results = search(prompt, top_k=5, skip_prerequisites=True)
-                for lesson in results:
-                    all_lesson_ids.add(lesson["id"])
+                for engram in results:
+                    all_engram_ids.add(engram["id"])
             except Exception:
                 continue
 
-        if all_lesson_ids:
+        if all_engram_ids:
             env_tags = json.loads(row["env_tags"])
             write_session_audit(
-                session_id, sorted(all_lesson_ids), env_tags,
+                session_id, sorted(all_engram_ids), env_tags,
                 row["repo"], transcript_path=transcript_path,
             )
             updated += 1
 
-    print(f"  Updated {updated} audit record(s) with shown lessons.")
+    print(f"  Updated {updated} audit record(s) with shown engrams.")

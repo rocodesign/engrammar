@@ -47,7 +47,7 @@ engrammar search "state management" --tags react
 engrammar search "ui component" --tags acme,react,frontend
 ```
 
-### Add Lessons
+### Add Engrams
 
 ```bash
 # Basic add
@@ -68,7 +68,7 @@ engrammar add "Use Rails engines for domain isolation" \
 ### List & Browse
 
 ```bash
-# List all lessons
+# List all engrams
 engrammar list
 
 # List with pagination
@@ -77,15 +77,15 @@ engrammar list --limit 10 --offset 0
 # List by category
 engrammar list --category development/frontend
 
-# Show specific category lessons
+# Show specific category engrams
 engrammar list --category tools/figma
 ```
 
-### Update Lessons
+### Update Engrams
 
 ```bash
 # Update text
-engrammar update 42 --text "New lesson text"
+engrammar update 42 --text "New engram text"
 
 # Update category
 engrammar update 42 --category development/frontend/hooks
@@ -97,10 +97,10 @@ engrammar update 42 --prereqs '{"tags":["react","hooks"]}'
 ### Pin Management
 
 ```bash
-# Pin lesson (always show at session start)
+# Pin engram (always show at session start)
 engrammar pin 42
 
-# Unpin lesson
+# Unpin engram
 engrammar unpin 42
 
 # Pin with prerequisites
@@ -112,18 +112,18 @@ engrammar pin 42
 ### Deprecate
 
 ```bash
-# Mark lesson as outdated
+# Mark engram as outdated
 engrammar deprecate 42
 ```
 
 ### Import/Export
 
 ```bash
-# Export all lessons to markdown
-engrammar export > lessons.md
+# Export all engrams to markdown
+engrammar export > engrams.md
 
 # Import from file
-engrammar import lessons.json
+engrammar import engrams.json
 ```
 
 ---
@@ -176,23 +176,23 @@ engrammar_add(
 ### Feedback
 
 ```python
-# Mark lesson as useful
+# Mark engram as useful
 engrammar_feedback(
-    lesson_id=42,
+    engram_id=42,
     applicable=True,
     reason="Helped avoid state management bug"
 )
 
 # Mark as not applicable with reason
 engrammar_feedback(
-    lesson_id=42,
+    engram_id=42,
     applicable=False,
     reason="Project doesn't use Figma"
 )
 
 # Add prerequisites based on feedback
 engrammar_feedback(
-    lesson_id=42,
+    engram_id=42,
     applicable=False,
     reason="Only relevant in acme projects",
     add_prerequisites={"tags": ["acme"]}
@@ -203,14 +203,14 @@ engrammar_feedback(
 
 ```python
 # Update text
-engrammar_update(lesson_id=42, text="Updated lesson text")
+engrammar_update(engram_id=42, text="Updated engram text")
 
 # Update category
-engrammar_update(lesson_id=42, category="development/frontend/hooks")
+engrammar_update(engram_id=42, category="development/frontend/hooks")
 
 # Update prerequisites
 engrammar_update(
-    lesson_id=42,
+    engram_id=42,
     prerequisites={"tags": ["react", "hooks"]}
 )
 ```
@@ -218,23 +218,23 @@ engrammar_update(
 ### Pin/Unpin
 
 ```python
-# Pin lesson
-engrammar_pin(lesson_id=42)
+# Pin engram
+engrammar_pin(engram_id=42)
 
 # Pin with prerequisites
 engrammar_pin(
-    lesson_id=42,
+    engram_id=42,
     prerequisites={"tags": ["frontend", "react"]}
 )
 
 # Unpin
-engrammar_unpin(lesson_id=42)
+engrammar_unpin(engram_id=42)
 ```
 
 ### List
 
 ```python
-# List all lessons
+# List all engrams
 engrammar_list()
 
 # List by category
@@ -252,14 +252,14 @@ engrammar_list(include_deprecated=True)
 ```python
 # Show system status
 engrammar_status()
-# Shows: lesson count, categories, environment, detected tags
+# Shows: engram count, categories, environment, detected tags
 ```
 
 ### Deprecate
 
 ```python
 # Mark as outdated
-engrammar_deprecate(lesson_id=42, reason="Outdated pattern")
+engrammar_deprecate(engram_id=42, reason="Outdated pattern")
 ```
 
 ---
@@ -307,19 +307,19 @@ Tags are automatically detected from:
 
 ```bash
 # CLI
-engrammar add "Lesson text" --tags frontend,react,typescript
+engrammar add "Engram text" --tags frontend,react,typescript
 
 # MCP
-engrammar_add(text="Lesson text", tags=["frontend", "react", "typescript"])
+engrammar_add(text="Engram text", tags=["frontend", "react", "typescript"])
 ```
 
 ### Tag-Based Search
 
 ```bash
-# Find React-related lessons
+# Find React-related engrams
 engrammar search "hooks" --tags react
 
-# Find acme frontend lessons
+# Find acme frontend engrams
 engrammar search "component" --tags acme,frontend
 
 # MCP version
@@ -328,7 +328,7 @@ engrammar_search(query="hooks", tags=["react"])
 
 ### Auto-Pin Behavior
 
-When a lesson reaches **15 matches** across different tag contexts:
+When a engram reaches **15 matches** across different tag contexts:
 
 ```
 Example:
@@ -452,10 +452,10 @@ engrammar search "patterns" \
 
 ```
 Results show:
-- id: Lesson identifier
+- id: Engram identifier
 - score: Relevance (higher = better)
 - category: Hierarchical category
-- text: Lesson content
+- text: Engram content
 - matched: How many times shown and used
 - occurrences: How many sessions mentioned this
 
@@ -466,13 +466,13 @@ High matched count = proven useful
 
 ## Common Workflows
 
-### 1. Add Project-Specific Lesson
+### 1. Add Project-Specific Engram
 
 ```bash
 # Detect current environment
 engrammar detect-tags
 
-# Add lesson with detected tags
+# Add engram with detected tags
 engrammar add "Use Tailwind table components for data tables" \
   --category development/frontend/components \
   --tags acme,react,tailwind,frontend
@@ -499,22 +499,22 @@ engrammar_add(
 )
 ```
 
-### 4. Mark Lesson as Not Applicable
+### 4. Mark Engram as Not Applicable
 
 ```python
-# Lesson showed but doesn't apply
+# Engram showed but doesn't apply
 engrammar_feedback(
-    lesson_id=42,
+    engram_id=42,
     applicable=False,
     reason="This project doesn't use Figma",
     add_prerequisites={"mcp_servers": ["figma"]}
 )
 ```
 
-### 5. Update Lesson After Refactor
+### 5. Update Engram After Refactor
 
 ```bash
-# Find lesson
+# Find engram
 engrammar search "old pattern name"
 
 # Update it
@@ -523,7 +523,7 @@ engrammar update 42 \
   --category development/frontend/patterns
 ```
 
-### 6. Pin Critical Lesson
+### 6. Pin Critical Engram
 
 ```bash
 # Pin for all projects
@@ -534,10 +534,10 @@ engrammar update 42 --prereqs '{"tags":["acme"]}'
 engrammar pin 42
 ```
 
-### 7. Clean Up Deprecated Lessons
+### 7. Clean Up Deprecated Engrams
 
 ```bash
-# List all lessons
+# List all engrams
 engrammar list
 
 # Deprecate outdated ones
@@ -555,20 +555,20 @@ engrammar rebuild
 engrammar export > ~/backups/engrammar-$(date +%Y%m%d).md
 
 # Export to JSON (manual query)
-sqlite3 ~/.engrammar/lessons.db \
-  "SELECT * FROM lessons WHERE deprecated = 0" \
-  > ~/backups/lessons.json
+sqlite3 ~/.engrammar/engrams.db \
+  "SELECT * FROM engrams WHERE deprecated = 0" \
+  > ~/backups/engrams.json
 ```
 
 ### 9. Investigate Auto-Pin
 
 ```bash
-# Check which lessons are pinned
+# Check which engrams are pinned
 engrammar list | grep PINNED
 
-# Check tag stats for a lesson
-sqlite3 ~/.engrammar/lessons.db \
-  "SELECT * FROM lesson_tag_stats WHERE lesson_id = 42"
+# Check tag stats for a engram
+sqlite3 ~/.engrammar/engrams.db \
+  "SELECT * FROM engram_tag_stats WHERE engram_id = 42"
 ```
 
 ### 10. Debug Tag Detection
@@ -611,18 +611,18 @@ engrammar status
 # Search in Claude Code
 engrammar_search(query="pattern", tags=["react"])
 
-# Add lesson
-engrammar_add(text="lesson", category="cat", tags=["tag"])
+# Add engram
+engrammar_add(text="engram", category="cat", tags=["tag"])
 
 # Give feedback
-engrammar_feedback(lesson_id=42, applicable=False, reason="why")
+engrammar_feedback(engram_id=42, applicable=False, reason="why")
 ```
 
 ### File Locations
 
 ```
 ~/.engrammar/
-├── lessons.db              # SQLite database
+├── engrams.db              # SQLite database
 ├── embeddings.npy          # Vector search index
 ├── config.json             # Configuration
 ├── engrammar-cli           # CLI executable
@@ -642,7 +642,7 @@ engrammar_feedback(lesson_id=42, applicable=False, reason="why")
     "top_k": 5                   # Default result count
   },
   "display": {
-    "max_lessons_per_tool": 2    # Max per tool use
+    "max_engrams_per_tool": 2    # Max per tool use
   }
 }
 ```
@@ -664,32 +664,32 @@ ls -la tsconfig.json package.json Gemfile
 git remote -v
 ```
 
-### Lesson Not Appearing
+### Engram Not Appearing
 
 ```bash
 # Check prerequisites match
 engrammar status  # See current tags
 
-# Check lesson details
-engrammar list | grep -A5 "lesson text"
+# Check engram details
+engrammar list | grep -A5 "engram text"
 
 # Verify not deprecated
-sqlite3 ~/.engrammar/lessons.db \
-  "SELECT * FROM lessons WHERE id = 42"
+sqlite3 ~/.engrammar/engrams.db \
+  "SELECT * FROM engrams WHERE id = 42"
 ```
 
 ### Auto-Pin Not Working
 
 ```bash
 # Check tag stats
-sqlite3 ~/.engrammar/lessons.db \
-  "SELECT * FROM lesson_tag_stats WHERE lesson_id = 42"
+sqlite3 ~/.engrammar/engrams.db \
+  "SELECT * FROM engram_tag_stats WHERE engram_id = 42"
 
 # Verify threshold (15 matches needed)
-sqlite3 ~/.engrammar/lessons.db \
+sqlite3 ~/.engrammar/engrams.db \
   "SELECT tag_set, SUM(times_matched) as total
-   FROM lesson_tag_stats
-   WHERE lesson_id = 42
+   FROM engram_tag_stats
+   WHERE engram_id = 42
    GROUP BY tag_set"
 ```
 
@@ -702,7 +702,7 @@ engrammar rebuild
 # Try broader query
 engrammar search "single keyword"
 
-# Check if lesson exists
+# Check if engram exists
 engrammar list --category development
 ```
 
@@ -736,7 +736,7 @@ Good:  ["acme", "react", "frontend", "tailwind"]
 Bad:   ["acme"]
 ```
 
-### 3. Write Actionable Lessons
+### 3. Write Actionable Engrams
 
 ```
 Good:  "Use Design System Table component instead of custom tables"
@@ -750,7 +750,7 @@ Bad:   "Tables are important"
 engrammar search "similar concept"
 
 # Then add if unique
-engrammar add "new lesson"
+engrammar add "new engram"
 ```
 
 ### 5. Give Feedback
@@ -758,7 +758,7 @@ engrammar add "new lesson"
 ```python
 # Help system learn
 engrammar_feedback(
-    lesson_id=42,
+    engram_id=42,
     applicable=False,
     reason="Specific reason",
     add_prerequisites={"tags": ["relevant-tag"]}
@@ -771,7 +771,7 @@ Don't manually pin everything - let the 15-match threshold work naturally.
 
 ### 7. Use Tags for Context
 
-Tags help the system understand when lessons apply:
+Tags help the system understand when engrams apply:
 
 - `["acme", "react"]` - acme React projects
 - `["personal", "vue"]` - Personal Vue projects
@@ -808,25 +808,25 @@ PACKAGE_DEPENDENCY_TAGS["my-library"] = ["mylibrary", "frontend"]
 ### Database Queries
 
 ```bash
-# Most matched lessons
-sqlite3 ~/.engrammar/lessons.db \
+# Most matched engrams
+sqlite3 ~/.engrammar/engrams.db \
   "SELECT id, text, times_matched
-   FROM lessons
+   FROM engrams
    WHERE deprecated = 0
    ORDER BY times_matched DESC
    LIMIT 10"
 
 # Tag distribution
-sqlite3 ~/.engrammar/lessons.db \
-  "SELECT tag_set, COUNT(*) as lessons, SUM(times_matched) as matches
-   FROM lesson_tag_stats
+sqlite3 ~/.engrammar/engrams.db \
+  "SELECT tag_set, COUNT(*) as engrams, SUM(times_matched) as matches
+   FROM engram_tag_stats
    GROUP BY tag_set
    ORDER BY matches DESC"
 
-# Pinned lessons
-sqlite3 ~/.engrammar/lessons.db \
+# Pinned engrams
+sqlite3 ~/.engrammar/engrams.db \
   "SELECT id, text, prerequisites
-   FROM lessons
+   FROM engrams
    WHERE pinned = 1 AND deprecated = 0"
 ```
 
@@ -836,11 +836,11 @@ sqlite3 ~/.engrammar/lessons.db \
 # Bulk add from file
 while IFS= read -r line; do
   engrammar add "$line" --category bulk --tags imported
-done < lessons.txt
+done < engrams.txt
 
-# Bulk deprecate old lessons
-sqlite3 ~/.engrammar/lessons.db \
-  "UPDATE lessons
+# Bulk deprecate old engrams
+sqlite3 ~/.engrammar/engrams.db \
+  "UPDATE engrams
    SET deprecated = 1
    WHERE created_at < '2024-01-01'"
 ```
@@ -879,8 +879,8 @@ engrammar_add(
 cd ~/.engrammar
 ./engrammar-cli setup
 
-# Import previous lessons (if backed up)
-./engrammar-cli import ~/backups/lessons.json
+# Import previous engrams (if backed up)
+./engrammar-cli import ~/backups/engrams.json
 
 # Verify
 ./engrammar-cli status
@@ -899,7 +899,7 @@ cd ~/.engrammar
 
 ### Slow Operations
 
-- ⚠️ First index build: ~30s (1000 lessons)
+- ⚠️ First index build: ~30s (1000 engrams)
 - ⚠️ Rebuild: ~30s
 - ⚠️ Export: ~5s (large datasets)
 

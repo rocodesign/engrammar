@@ -8,10 +8,10 @@ from io import StringIO
 from unittest.mock import patch
 
 from src.db import (
-    add_lesson,
+    add_engram,
     get_connection,
-    record_shown_lesson,
-    get_shown_lesson_ids,
+    record_shown_engram,
+    get_shown_engram_ids,
 )
 
 pytestmark = pytest.mark.usefixtures("mock_build_index")
@@ -24,8 +24,8 @@ _DEFAULT_CONFIG = {
         "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
     },
     "display": {
-        "max_lessons_per_prompt": 3,
-        "max_lessons_per_tool": 2,
+        "max_engrams_per_prompt": 3,
+        "max_engrams_per_tool": 2,
         "show_scores": False,
         "show_categories": True,
     },
@@ -43,9 +43,9 @@ def _set_stdin(monkeypatch, data):
 
 class TestSessionStart:
     def test_injects_pinned(self, test_db, monkeypatch, capsys):
-        lesson_id = add_lesson(text="Always do X", category="rules", db_path=test_db)
+        engram_id = add_engram(text="Always do X", category="rules", db_path=test_db)
         conn = get_connection(test_db)
-        conn.execute("UPDATE lessons SET pinned = 1 WHERE id = ?", (lesson_id,))
+        conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
         conn.commit()
         conn.close()
 
@@ -75,15 +75,15 @@ class TestSessionStart:
         assert captured.out == ""
 
     def test_structural_prereq_filter(self, test_db, monkeypatch, capsys):
-        """Pinned lesson with non-matching structural prereqs is filtered."""
-        lesson_id = add_lesson(
+        """Pinned engram with non-matching structural prereqs is filtered."""
+        engram_id = add_engram(
             text="repo-specific",
             category="general",
             prerequisites=json.dumps({"repos": ["other-repo"]}),
             db_path=test_db,
         )
         conn = get_connection(test_db)
-        conn.execute("UPDATE lessons SET pinned = 1 WHERE id = ?", (lesson_id,))
+        conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
         conn.commit()
         conn.close()
 
@@ -102,10 +102,10 @@ class TestSessionStart:
         assert captured.out == ""
 
     def test_tag_relevance_filter(self, test_db, monkeypatch, capsys):
-        """Pinned lesson with strong negative tag relevance is filtered."""
-        lesson_id = add_lesson(text="bad match", category="general", db_path=test_db)
+        """Pinned engram with strong negative tag relevance is filtered."""
+        engram_id = add_engram(text="bad match", category="general", db_path=test_db)
         conn = get_connection(test_db)
-        conn.execute("UPDATE lessons SET pinned = 1 WHERE id = ?", (lesson_id,))
+        conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
         conn.commit()
         conn.close()
 
@@ -128,7 +128,7 @@ class TestSessionStart:
 
 
 class TestPrompt:
-    def test_returns_lessons(self, test_db, monkeypatch, capsys):
+    def test_returns_engrams(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"prompt": "How to use react hooks?", "session_id": "sess-1"})
         with patch("src.client.send_request", return_value={
                  "results": [{"id": 1, "text": "Use hooks correctly", "category": "dev"}],
@@ -165,8 +165,8 @@ class TestPrompt:
         assert captured.out == ""
 
     def test_dedup_shown(self, test_db, monkeypatch, capsys):
-        """Already-shown lesson is filtered out."""
-        record_shown_lesson("sess-1", 42, "SessionStart", db_path=test_db)
+        """Already-shown engram is filtered out."""
+        record_shown_engram("sess-1", 42, "SessionStart", db_path=test_db)
 
         _set_stdin(monkeypatch, {"prompt": "show me something", "session_id": "sess-1"})
         with patch("src.client.send_request", return_value={
@@ -184,7 +184,7 @@ class TestPrompt:
 
 
 class TestToolUse:
-    def test_returns_lessons(self, test_db, monkeypatch, capsys):
+    def test_returns_engrams(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {
             "tool_name": "Bash",
             "tool_input": {"command": "npm test"},
@@ -220,8 +220,8 @@ class TestToolUse:
 
 class TestSessionEnd:
     def test_writes_audit_clears_shown(self, test_db, monkeypatch, capsys):
-        lesson_id = add_lesson(text="shown lesson", category="general", db_path=test_db)
-        record_shown_lesson("sess-1", lesson_id, "UserPromptSubmit", db_path=test_db)
+        engram_id = add_engram(text="shown engram", category="general", db_path=test_db)
+        record_shown_engram("sess-1", engram_id, "UserPromptSubmit", db_path=test_db)
 
         _set_stdin(monkeypatch, {
             "session_id": "sess-1",
@@ -234,8 +234,8 @@ class TestSessionEnd:
             from hooks.on_session_end import main
             main()
 
-        # Shown lessons should be cleared
-        shown = get_shown_lesson_ids("sess-1", db_path=test_db)
+        # Shown engrams should be cleared
+        shown = get_shown_engram_ids("sess-1", db_path=test_db)
         assert len(shown) == 0
 
         # Audit record should exist
@@ -245,7 +245,7 @@ class TestSessionEnd:
         ).fetchone()
         conn.close()
         assert audit is not None
-        assert lesson_id in json.loads(audit["shown_lesson_ids"])
+        assert engram_id in json.loads(audit["shown_engram_ids"])
 
     def test_no_session_id(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {})

@@ -1,4 +1,4 @@
-"""SQLite database for lesson storage."""
+"""SQLite database for engram storage."""
 
 import json
 import os
@@ -21,7 +21,7 @@ def init_db(db_path=None):
     """Create tables if they don't exist."""
     conn = get_connection(db_path)
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS lessons (
+        CREATE TABLE IF NOT EXISTS engrams (
             id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'general',
@@ -45,67 +45,67 @@ def init_db(db_path=None):
             description TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_lessons_category ON lessons(category);
-        CREATE INDEX IF NOT EXISTS idx_lessons_level1 ON lessons(level1);
-        CREATE INDEX IF NOT EXISTS idx_lessons_deprecated ON lessons(deprecated);
+        CREATE INDEX IF NOT EXISTS idx_engrams_category ON engrams(category);
+        CREATE INDEX IF NOT EXISTS idx_engrams_level1 ON engrams(level1);
+        CREATE INDEX IF NOT EXISTS idx_engrams_deprecated ON engrams(deprecated);
 
-        CREATE TABLE IF NOT EXISTS lesson_categories (
-            lesson_id INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS engram_categories (
+            engram_id INTEGER NOT NULL,
             category_path TEXT NOT NULL,
-            PRIMARY KEY (lesson_id, category_path),
-            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+            PRIMARY KEY (engram_id, category_path),
+            FOREIGN KEY (engram_id) REFERENCES engrams(id)
         );
 
-        CREATE TABLE IF NOT EXISTS lesson_repo_stats (
-            lesson_id INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS engram_repo_stats (
+            engram_id INTEGER NOT NULL,
             repo TEXT NOT NULL,
             times_matched INTEGER DEFAULT 0,
             last_matched TEXT,
-            PRIMARY KEY (lesson_id, repo),
-            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+            PRIMARY KEY (engram_id, repo),
+            FOREIGN KEY (engram_id) REFERENCES engrams(id)
         );
 
-        CREATE TABLE IF NOT EXISTS lesson_tag_stats (
-            lesson_id INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS engram_tag_stats (
+            engram_id INTEGER NOT NULL,
             tag_set TEXT NOT NULL,
             times_matched INTEGER DEFAULT 0,
             last_matched TEXT,
-            PRIMARY KEY (lesson_id, tag_set),
-            FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+            PRIMARY KEY (engram_id, tag_set),
+            FOREIGN KEY (engram_id) REFERENCES engrams(id)
         );
 
         CREATE TABLE IF NOT EXISTS processed_sessions (
             session_id TEXT PRIMARY KEY,
             processed_at TEXT,
             had_friction INTEGER DEFAULT 0,
-            lessons_extracted INTEGER DEFAULT 0
+            engrams_extracted INTEGER DEFAULT 0
         );
 
         -- Replaces .session-shown.json (fixes race condition)
-        CREATE TABLE IF NOT EXISTS session_shown_lessons (
+        CREATE TABLE IF NOT EXISTS session_shown_engrams (
             id INTEGER PRIMARY KEY,
             session_id TEXT NOT NULL,
-            lesson_id INTEGER NOT NULL,
+            engram_id INTEGER NOT NULL,
             hook_event TEXT NOT NULL,
             shown_at TEXT NOT NULL,
-            UNIQUE(session_id, lesson_id)
+            UNIQUE(session_id, engram_id)
         );
 
         -- Per-tag relevance scoring
-        CREATE TABLE IF NOT EXISTS lesson_tag_relevance (
-            lesson_id INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS engram_tag_relevance (
+            engram_id INTEGER NOT NULL,
             tag TEXT NOT NULL,
             score REAL DEFAULT 0.0,
             positive_evals INTEGER DEFAULT 0,
             negative_evals INTEGER DEFAULT 0,
             last_evaluated TEXT,
-            PRIMARY KEY (lesson_id, tag)
+            PRIMARY KEY (engram_id, tag)
         );
 
         -- Ground truth for what was shown per session
         CREATE TABLE IF NOT EXISTS session_audit (
             session_id TEXT PRIMARY KEY,
-            shown_lesson_ids TEXT NOT NULL,
+            shown_engram_ids TEXT NOT NULL,
             env_tags TEXT NOT NULL,
             repo TEXT,
             timestamp TEXT NOT NULL,
@@ -126,18 +126,18 @@ def init_db(db_path=None):
             timestamp TEXT NOT NULL,
             session_id TEXT,
             hook_event TEXT NOT NULL,
-            lesson_ids TEXT NOT NULL,
+            engram_ids TEXT NOT NULL,
             context TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_hook_event_log_ts ON hook_event_log(timestamp);
     """)
 
     # Migrations for existing DBs
-    columns = [r[1] for r in conn.execute("PRAGMA table_info(lessons)").fetchall()]
+    columns = [r[1] for r in conn.execute("PRAGMA table_info(engrams)").fetchall()]
     if "prerequisites" not in columns:
-        conn.execute("ALTER TABLE lessons ADD COLUMN prerequisites TEXT DEFAULT NULL")
+        conn.execute("ALTER TABLE engrams ADD COLUMN prerequisites TEXT DEFAULT NULL")
     if "pinned" not in columns:
-        conn.execute("ALTER TABLE lessons ADD COLUMN pinned INTEGER DEFAULT 0")
+        conn.execute("ALTER TABLE engrams ADD COLUMN pinned INTEGER DEFAULT 0")
 
     # Migration: add transcript_path to session_audit
     audit_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_audit)").fetchall()]
@@ -158,11 +158,11 @@ def _parse_category(category):
     )
 
 
-def add_lesson(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, prerequisites=None, db_path=None):
-    """Insert a new lesson.
+def add_engram(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, prerequisites=None, db_path=None):
+    """Insert a new engram.
 
     Args:
-        text: lesson content
+        text: engram content
         category: primary category (used for display/level parsing)
         categories: optional list of additional category paths
         source: "auto-extracted" | "manual" | "feedback"
@@ -185,19 +185,19 @@ def add_lesson(text, category="general", categories=None, source="manual", sourc
         # else: leave as None
 
     cursor = conn.execute(
-        """INSERT INTO lessons (text, category, level1, level2, level3, source,
+        """INSERT INTO engrams (text, category, level1, level2, level3, source,
            source_sessions, occurrence_count, prerequisites, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (text, category, level1, level2, level3, source, sessions_json,
          occurrence_count, prereqs_json, now, now),
     )
-    lesson_id = cursor.lastrowid
+    engram_id = cursor.lastrowid
 
     # Ensure primary category path exists and add to junction table
     _ensure_category(conn, category)
     conn.execute(
-        "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
-        (lesson_id, category),
+        "INSERT OR IGNORE INTO engram_categories (engram_id, category_path) VALUES (?, ?)",
+        (engram_id, category),
     )
 
     # Add additional categories
@@ -205,13 +205,13 @@ def add_lesson(text, category="general", categories=None, source="manual", sourc
         for cat in categories:
             _ensure_category(conn, cat)
             conn.execute(
-                "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
-                (lesson_id, cat),
+                "INSERT OR IGNORE INTO engram_categories (engram_id, category_path) VALUES (?, ?)",
+                (engram_id, cat),
             )
 
     conn.commit()
     conn.close()
-    return lesson_id
+    return engram_id
 
 
 def _ensure_category(conn, category):
@@ -224,20 +224,20 @@ def _ensure_category(conn, category):
         )
 
 
-def get_all_active_lessons(db_path=None):
-    """Get all non-deprecated lessons."""
+def get_all_active_engrams(db_path=None):
+    """Get all non-deprecated engrams."""
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT * FROM lessons WHERE deprecated = 0 ORDER BY id"
+        "SELECT * FROM engrams WHERE deprecated = 0 ORDER BY id"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def get_lessons_by_category(level1, level2=None, level3=None, db_path=None):
-    """Get lessons filtered by category levels."""
+def get_engrams_by_category(level1, level2=None, level3=None, db_path=None):
+    """Get engrams filtered by category levels."""
     conn = get_connection(db_path)
-    query = "SELECT * FROM lessons WHERE deprecated = 0 AND level1 = ?"
+    query = "SELECT * FROM engrams WHERE deprecated = 0 AND level1 = ?"
     params = [level1]
 
     if level2 is not None:
@@ -255,18 +255,18 @@ def get_lessons_by_category(level1, level2=None, level3=None, db_path=None):
 AUTO_PIN_THRESHOLD = 15
 
 
-def find_auto_pin_tag_subsets(lesson_id, threshold=AUTO_PIN_THRESHOLD, db_path=None):
+def find_auto_pin_tag_subsets(engram_id, threshold=AUTO_PIN_THRESHOLD, db_path=None):
     """Find minimal common tag subset with threshold+ matches.
 
     Algorithm:
-    1. Get all tag_sets where lesson matched
+    1. Get all tag_sets where engram matched
     2. Generate powerset of all unique tags (limit size=4 for performance)
     3. Count matches for each subset across all tag_sets
     4. Find minimal subsets (no proper subset also meets threshold)
     5. Return smallest minimal subset
 
     Args:
-        lesson_id: the lesson to check
+        engram_id: the engram to check
         threshold: minimum matches required (default 15)
         db_path: optional database path
 
@@ -275,12 +275,12 @@ def find_auto_pin_tag_subsets(lesson_id, threshold=AUTO_PIN_THRESHOLD, db_path=N
     """
     conn = get_connection(db_path)
 
-    # Get all tag sets for this lesson
+    # Get all tag sets for this engram
     rows = conn.execute(
         """SELECT tag_set, times_matched
-           FROM lesson_tag_stats
-           WHERE lesson_id = ?""",
-        (lesson_id,)
+           FROM engram_tag_stats
+           WHERE engram_id = ?""",
+        (engram_id,)
     ).fetchall()
     conn.close()
 
@@ -333,11 +333,11 @@ def find_auto_pin_tag_subsets(lesson_id, threshold=AUTO_PIN_THRESHOLD, db_path=N
     return sorted(list(smallest))
 
 
-def update_match_stats(lesson_id, repo=None, tags=None, db_path=None):
+def update_match_stats(engram_id, repo=None, tags=None, db_path=None):
     """Increment times_matched (global + per-repo + per-tag-set) and auto-pin if threshold reached.
 
     Args:
-        lesson_id: the lesson that matched
+        engram_id: the engram that matched
         repo: current repo name (for per-repo tracking)
         tags: list of environment tags (for per-tag-set tracking)
     """
@@ -346,38 +346,38 @@ def update_match_stats(lesson_id, repo=None, tags=None, db_path=None):
 
     # Global counter
     conn.execute(
-        """UPDATE lessons SET times_matched = times_matched + 1,
+        """UPDATE engrams SET times_matched = times_matched + 1,
            last_matched = ?, updated_at = ? WHERE id = ?""",
-        (now, now, lesson_id),
+        (now, now, engram_id),
     )
 
     # Per-repo counter
     if repo:
         conn.execute(
-            """INSERT INTO lesson_repo_stats (lesson_id, repo, times_matched, last_matched)
+            """INSERT INTO engram_repo_stats (engram_id, repo, times_matched, last_matched)
                VALUES (?, ?, 1, ?)
-               ON CONFLICT(lesson_id, repo) DO UPDATE SET
+               ON CONFLICT(engram_id, repo) DO UPDATE SET
                times_matched = times_matched + 1, last_matched = ?""",
-            (lesson_id, repo, now, now),
+            (engram_id, repo, now, now),
         )
 
         # Check repo-based auto-pin threshold
         row = conn.execute(
-            "SELECT times_matched FROM lesson_repo_stats WHERE lesson_id = ? AND repo = ?",
-            (lesson_id, repo),
+            "SELECT times_matched FROM engram_repo_stats WHERE engram_id = ? AND repo = ?",
+            (engram_id, repo),
         ).fetchone()
 
         if row and row["times_matched"] >= AUTO_PIN_THRESHOLD:
-            lesson = conn.execute(
-                "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+            engram = conn.execute(
+                "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
             ).fetchone()
 
-            if lesson and not lesson["pinned"]:
+            if engram and not engram["pinned"]:
                 # Auto-pin with repo prerequisite
                 existing = {}
-                if lesson["prerequisites"]:
+                if engram["prerequisites"]:
                     try:
-                        existing = json.loads(lesson["prerequisites"])
+                        existing = json.loads(engram["prerequisites"])
                     except (json.JSONDecodeError, TypeError):
                         pass
 
@@ -386,120 +386,120 @@ def update_match_stats(lesson_id, repo=None, tags=None, db_path=None):
                 existing["repos"] = list(repos)
 
                 conn.execute(
-                    "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(existing), now, lesson_id),
+                    "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(existing), now, engram_id),
                 )
 
     # Per-tag-set counter (NEW)
     if tags:
         tag_set_json = json.dumps(sorted(tags))
         conn.execute(
-            """INSERT INTO lesson_tag_stats (lesson_id, tag_set, times_matched, last_matched)
+            """INSERT INTO engram_tag_stats (engram_id, tag_set, times_matched, last_matched)
                VALUES (?, ?, 1, ?)
-               ON CONFLICT(lesson_id, tag_set) DO UPDATE SET
+               ON CONFLICT(engram_id, tag_set) DO UPDATE SET
                times_matched = times_matched + 1, last_matched = ?""",
-            (lesson_id, tag_set_json, now, now),
+            (engram_id, tag_set_json, now, now),
         )
 
         # Check for tag-based auto-pin
         conn.commit()  # Commit first to make stats visible to find_auto_pin_tag_subsets
-        auto_pin_tags = find_auto_pin_tag_subsets(lesson_id, db_path=db_path)
+        auto_pin_tags = find_auto_pin_tag_subsets(engram_id, db_path=db_path)
         if auto_pin_tags:
-            # Check if lesson is already pinned
-            lesson = conn.execute(
-                "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+            # Check if engram is already pinned
+            engram = conn.execute(
+                "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
             ).fetchone()
 
-            if lesson and not lesson["pinned"]:
+            if engram and not engram["pinned"]:
                 # Auto-pin with tag prerequisite
                 existing = {}
-                if lesson["prerequisites"]:
+                if engram["prerequisites"]:
                     try:
-                        existing = json.loads(lesson["prerequisites"])
+                        existing = json.loads(engram["prerequisites"])
                     except (json.JSONDecodeError, TypeError):
                         pass
 
                 existing["tags"] = auto_pin_tags
 
                 conn.execute(
-                    "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(existing), now, lesson_id),
+                    "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(existing), now, engram_id),
                 )
 
     conn.commit()
     conn.close()
 
 
-def get_lesson_categories(lesson_id, db_path=None):
-    """Get all categories for a lesson."""
+def get_engram_categories(engram_id, db_path=None):
+    """Get all categories for a engram."""
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT category_path FROM lesson_categories WHERE lesson_id = ?", (lesson_id,)
+        "SELECT category_path FROM engram_categories WHERE engram_id = ?", (engram_id,)
     ).fetchall()
     conn.close()
     return [r["category_path"] for r in rows]
 
 
-def add_lesson_category(lesson_id, category_path, db_path=None):
-    """Add a category to an existing lesson."""
+def add_engram_category(engram_id, category_path, db_path=None):
+    """Add a category to an existing engram."""
     conn = get_connection(db_path)
     _ensure_category(conn, category_path)
     conn.execute(
-        "INSERT OR IGNORE INTO lesson_categories (lesson_id, category_path) VALUES (?, ?)",
-        (lesson_id, category_path),
+        "INSERT OR IGNORE INTO engram_categories (engram_id, category_path) VALUES (?, ?)",
+        (engram_id, category_path),
     )
     conn.commit()
     conn.close()
 
 
-def remove_lesson_category(lesson_id, category_path, db_path=None):
-    """Remove a category from a lesson."""
+def remove_engram_category(engram_id, category_path, db_path=None):
+    """Remove a category from a engram."""
     conn = get_connection(db_path)
     conn.execute(
-        "DELETE FROM lesson_categories WHERE lesson_id = ? AND category_path = ?",
-        (lesson_id, category_path),
+        "DELETE FROM engram_categories WHERE engram_id = ? AND category_path = ?",
+        (engram_id, category_path),
     )
     conn.commit()
     conn.close()
 
 
-def deprecate_lesson(lesson_id, db_path=None):
-    """Soft delete a lesson."""
+def deprecate_engram(engram_id, db_path=None):
+    """Soft delete a engram."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        "UPDATE lessons SET deprecated = 1, updated_at = ? WHERE id = ?",
-        (now, lesson_id),
+        "UPDATE engrams SET deprecated = 1, updated_at = ? WHERE id = ?",
+        (now, engram_id),
     )
     conn.commit()
     conn.close()
 
 
-def get_lesson_count(db_path=None):
-    """Get count of active lessons."""
+def get_engram_count(db_path=None):
+    """Get count of active engrams."""
     conn = get_connection(db_path)
     count = conn.execute(
-        "SELECT COUNT(*) FROM lessons WHERE deprecated = 0"
+        "SELECT COUNT(*) FROM engrams WHERE deprecated = 0"
     ).fetchone()[0]
     conn.close()
     return count
 
 
-def get_pinned_lessons(db_path=None):
-    """Get all pinned, non-deprecated lessons."""
+def get_pinned_engrams(db_path=None):
+    """Get all pinned, non-deprecated engrams."""
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT * FROM lessons WHERE deprecated = 0 AND pinned = 1 ORDER BY id"
+        "SELECT * FROM engrams WHERE deprecated = 0 AND pinned = 1 ORDER BY id"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 def get_category_stats(db_path=None):
-    """Get lesson counts per top-level category."""
+    """Get engram counts per top-level category."""
     conn = get_connection(db_path)
     rows = conn.execute(
-        """SELECT level1, COUNT(*) as count FROM lessons
+        """SELECT level1, COUNT(*) as count FROM engrams
            WHERE deprecated = 0 GROUP BY level1 ORDER BY count DESC"""
     ).fetchall()
     conn.close()
@@ -518,31 +518,31 @@ def mark_sessions_processed(sessions, db_path=None):
     """Bulk mark sessions as processed.
 
     Args:
-        sessions: list of dicts with session_id, had_friction, lessons_extracted
+        sessions: list of dicts with session_id, had_friction, engrams_extracted
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     for s in sessions:
         conn.execute(
             """INSERT OR IGNORE INTO processed_sessions
-               (session_id, processed_at, had_friction, lessons_extracted)
+               (session_id, processed_at, had_friction, engrams_extracted)
                VALUES (?, ?, ?, ?)""",
-            (s["session_id"], now, s.get("had_friction", 0), s.get("lessons_extracted", 0)),
+            (s["session_id"], now, s.get("had_friction", 0), s.get("engrams_extracted", 0)),
         )
     conn.commit()
     conn.close()
 
 
-def find_similar_lesson(text, db_path=None):
-    """Find an existing active lesson with similar text.
+def find_similar_engram(text, db_path=None):
+    """Find an existing active engram with similar text.
 
     Uses embedding cosine similarity (threshold 0.85) when index is available,
     falls back to word overlap (threshold 0.70).
 
-    Returns the lesson dict if found, None otherwise.
+    Returns the engram dict if found, None otherwise.
     """
-    lessons = get_all_active_lessons(db_path=db_path)
-    if not lessons:
+    engrams = get_all_active_engrams(db_path=db_path)
+    if not engrams:
         return None
 
     # Try embedding-based similarity first
@@ -552,10 +552,10 @@ def find_similar_lesson(text, db_path=None):
         if embeddings is not None and ids is not None:
             query_emb = embed_text(text)
             results = vector_search(query_emb, embeddings, ids, top_k=3)
-            lessons_by_id = {l["id"]: l for l in lessons}
-            for lesson_id, score in results:
-                if score >= 0.85 and lesson_id in lessons_by_id:
-                    return lessons_by_id[lesson_id]
+            engrams_by_id = {l["id"]: l for l in engrams}
+            for engram_id, score in results:
+                if score >= 0.85 and engram_id in engrams_by_id:
+                    return engrams_by_id[engram_id]
     except Exception:
         pass  # Fall through to word overlap
 
@@ -564,26 +564,26 @@ def find_similar_lesson(text, db_path=None):
     if not text_words:
         return None
 
-    for lesson in lessons:
-        lesson_words = set(lesson["text"].lower().split())
-        if not lesson_words:
+    for engram in engrams:
+        engram_words = set(engram["text"].lower().split())
+        if not engram_words:
             continue
-        overlap = len(text_words & lesson_words)
-        smaller = min(len(text_words), len(lesson_words))
+        overlap = len(text_words & engram_words)
+        smaller = min(len(text_words), len(engram_words))
         if smaller > 0 and overlap / smaller > 0.7:
-            return lesson
+            return engram
 
     return None
 
 
-def increment_lesson_occurrence(lesson_id, new_sessions=None, db_path=None):
-    """Merge source sessions and bump occurrence count for an existing lesson."""
+def increment_engram_occurrence(engram_id, new_sessions=None, db_path=None):
+    """Merge source sessions and bump occurrence count for an existing engram."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
 
     row = conn.execute(
-        "SELECT source_sessions, occurrence_count FROM lessons WHERE id = ?",
-        (lesson_id,),
+        "SELECT source_sessions, occurrence_count FROM engrams WHERE id = ?",
+        (engram_id,),
     ).fetchone()
 
     if row:
@@ -594,58 +594,58 @@ def increment_lesson_occurrence(lesson_id, new_sessions=None, db_path=None):
                     existing_sessions.append(s)
 
         conn.execute(
-            """UPDATE lessons SET source_sessions = ?, occurrence_count = ?,
+            """UPDATE engrams SET source_sessions = ?, occurrence_count = ?,
                updated_at = ? WHERE id = ?""",
-            (json.dumps(existing_sessions), len(existing_sessions), now, lesson_id),
+            (json.dumps(existing_sessions), len(existing_sessions), now, engram_id),
         )
 
     conn.commit()
     conn.close()
 
 
-def record_shown_lesson(session_id, lesson_id, hook_event, db_path=None):
-    """Record that a lesson was shown during a session (DB-based, replaces file tracking)."""
+def record_shown_engram(session_id, engram_id, hook_event, db_path=None):
+    """Record that a engram was shown during a session (DB-based, replaces file tracking)."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        """INSERT OR IGNORE INTO session_shown_lessons (session_id, lesson_id, hook_event, shown_at)
+        """INSERT OR IGNORE INTO session_shown_engrams (session_id, engram_id, hook_event, shown_at)
            VALUES (?, ?, ?, ?)""",
-        (session_id, lesson_id, hook_event, now),
+        (session_id, engram_id, hook_event, now),
     )
     conn.commit()
     conn.close()
 
 
-def get_shown_lesson_ids(session_id, db_path=None):
-    """Get set of lesson IDs shown during a session."""
+def get_shown_engram_ids(session_id, db_path=None):
+    """Get set of engram IDs shown during a session."""
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT lesson_id FROM session_shown_lessons WHERE session_id = ?",
+        "SELECT engram_id FROM session_shown_engrams WHERE session_id = ?",
         (session_id,),
     ).fetchall()
     conn.close()
-    return {r["lesson_id"] for r in rows}
+    return {r["engram_id"] for r in rows}
 
 
 def clear_session_shown(session_id, db_path=None):
-    """Clear shown lessons for a session."""
+    """Clear shown engrams for a session."""
     conn = get_connection(db_path)
     conn.execute(
-        "DELETE FROM session_shown_lessons WHERE session_id = ?",
+        "DELETE FROM session_shown_engrams WHERE session_id = ?",
         (session_id,),
     )
     conn.commit()
     conn.close()
 
 
-def write_session_audit(session_id, shown_lesson_ids, env_tags, repo, transcript_path=None, db_path=None):
+def write_session_audit(session_id, shown_engram_ids, env_tags, repo, transcript_path=None, db_path=None):
     """Write audit record of what was shown in a session."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        """INSERT OR REPLACE INTO session_audit (session_id, shown_lesson_ids, env_tags, repo, timestamp, transcript_path)
+        """INSERT OR REPLACE INTO session_audit (session_id, shown_engram_ids, env_tags, repo, timestamp, transcript_path)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (session_id, json.dumps(sorted(shown_lesson_ids)), json.dumps(sorted(env_tags)), repo, now, transcript_path),
+        (session_id, json.dumps(sorted(shown_engram_ids)), json.dumps(sorted(env_tags)), repo, now, transcript_path),
     )
     conn.commit()
     conn.close()
@@ -692,7 +692,7 @@ def get_unprocessed_audit_sessions(limit=10, db_path=None):
     """
     conn = get_connection(db_path)
     rows = conn.execute(
-        """SELECT sa.session_id, sa.shown_lesson_ids, sa.env_tags, sa.repo, sa.timestamp, sa.transcript_path
+        """SELECT sa.session_id, sa.shown_engram_ids, sa.env_tags, sa.repo, sa.timestamp, sa.transcript_path
            FROM session_audit sa
            LEFT JOIN processed_relevance_sessions prs ON sa.session_id = prs.session_id
            WHERE prs.session_id IS NULL
@@ -713,13 +713,13 @@ PIN_THRESHOLD = 0.6
 UNPIN_THRESHOLD = 0.2
 
 
-def update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=None):
+def update_tag_relevance(engram_id, tag_scores, weight=1.0, db_path=None):
     """Update per-tag relevance scores using EMA.
 
     Formula: new = clamp(old * (1 - EMA_ALPHA) + raw * EMA_ALPHA * weight, -3, 3)
 
     Args:
-        lesson_id: the lesson
+        engram_id: the engram
         tag_scores: dict mapping tag -> raw score (e.g. {"typescript": 0.9, "frontend": -0.5})
         weight: multiplier for the raw score (2.0 for direct MCP feedback, 1.0 for eval)
         db_path: optional database path
@@ -729,8 +729,8 @@ def update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=None):
 
     for tag, raw_score in tag_scores.items():
         row = conn.execute(
-            "SELECT score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ? AND tag = ?",
-            (lesson_id, tag),
+            "SELECT score, positive_evals, negative_evals FROM engram_tag_relevance WHERE engram_id = ? AND tag = ?",
+            (engram_id, tag),
         ).fetchone()
 
         if row:
@@ -742,10 +742,10 @@ def update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=None):
             neg = row["negative_evals"] + (1 if raw_score < 0 else 0)
 
             conn.execute(
-                """UPDATE lesson_tag_relevance
+                """UPDATE engram_tag_relevance
                    SET score = ?, positive_evals = ?, negative_evals = ?, last_evaluated = ?
-                   WHERE lesson_id = ? AND tag = ?""",
-                (new_score, pos, neg, now, lesson_id, tag),
+                   WHERE engram_id = ? AND tag = ?""",
+                (new_score, pos, neg, now, engram_id, tag),
             )
         else:
             initial_score = max(SCORE_CLAMP[0], min(SCORE_CLAMP[1], raw_score * EMA_ALPHA * weight))
@@ -753,38 +753,38 @@ def update_tag_relevance(lesson_id, tag_scores, weight=1.0, db_path=None):
             neg = 1 if raw_score < 0 else 0
 
             conn.execute(
-                """INSERT INTO lesson_tag_relevance (lesson_id, tag, score, positive_evals, negative_evals, last_evaluated)
+                """INSERT INTO engram_tag_relevance (engram_id, tag, score, positive_evals, negative_evals, last_evaluated)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (lesson_id, tag, initial_score, pos, neg, now),
+                (engram_id, tag, initial_score, pos, neg, now),
             )
 
     conn.commit()
     conn.close()
 
     # Check pin/unpin decisions after score update
-    check_and_apply_pin_decisions(lesson_id, db_path=db_path)
+    check_and_apply_pin_decisions(engram_id, db_path=db_path)
 
 
-def get_tag_relevance_scores(lesson_id, db_path=None):
-    """Get all tag relevance scores for a lesson.
+def get_tag_relevance_scores(engram_id, db_path=None):
+    """Get all tag relevance scores for a engram.
 
     Returns:
         dict mapping tag -> score
     """
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT tag, score FROM lesson_tag_relevance WHERE lesson_id = ?",
-        (lesson_id,),
+        "SELECT tag, score FROM engram_tag_relevance WHERE engram_id = ?",
+        (engram_id,),
     ).fetchall()
     conn.close()
     return {r["tag"]: r["score"] for r in rows}
 
 
-def get_avg_tag_relevance(lesson_id, tags, db_path=None):
-    """Get average relevance score for a lesson across given tags.
+def get_avg_tag_relevance(engram_id, tags, db_path=None):
+    """Get average relevance score for a engram across given tags.
 
     Args:
-        lesson_id: the lesson
+        engram_id: the engram
         tags: list of env tags to average over
 
     Returns:
@@ -796,8 +796,8 @@ def get_avg_tag_relevance(lesson_id, tags, db_path=None):
     conn = get_connection(db_path)
     placeholders = ",".join("?" * len(tags))
     rows = conn.execute(
-        f"SELECT score FROM lesson_tag_relevance WHERE lesson_id = ? AND tag IN ({placeholders})",
-        (lesson_id, *tags),
+        f"SELECT score FROM engram_tag_relevance WHERE engram_id = ? AND tag IN ({placeholders})",
+        (engram_id, *tags),
     ).fetchall()
     conn.close()
 
@@ -806,15 +806,15 @@ def get_avg_tag_relevance(lesson_id, tags, db_path=None):
     return sum(r["score"] for r in rows) / len(rows)
 
 
-def get_tag_relevance_with_evidence(lesson_id, tags, db_path=None):
-    """Get average relevance score and total evidence count for a lesson across given tags.
+def get_tag_relevance_with_evidence(engram_id, tags, db_path=None):
+    """Get average relevance score and total evidence count for a engram across given tags.
 
     Unlike get_avg_tag_relevance(), this:
     - Divides by total requested tags (not just matched rows) — treats missing tags as 0.0
     - Returns evidence count (sum of positive + negative evals) for filter threshold decisions
 
     Args:
-        lesson_id: the lesson
+        engram_id: the engram
         tags: list of env tags to check
 
     Returns:
@@ -827,8 +827,8 @@ def get_tag_relevance_with_evidence(lesson_id, tags, db_path=None):
     conn = get_connection(db_path)
     placeholders = ",".join("?" * len(tags))
     rows = conn.execute(
-        f"SELECT score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ? AND tag IN ({placeholders})",
-        (lesson_id, *tags),
+        f"SELECT score, positive_evals, negative_evals FROM engram_tag_relevance WHERE engram_id = ? AND tag IN ({placeholders})",
+        (engram_id, *tags),
     ).fetchall()
     conn.close()
 
@@ -841,10 +841,10 @@ def get_tag_relevance_with_evidence(lesson_id, tags, db_path=None):
     return (avg_score, total_evals)
 
 
-def check_and_apply_pin_decisions(lesson_id, db_path=None):
+def check_and_apply_pin_decisions(engram_id, db_path=None):
     """Auto-pin at avg > PIN_THRESHOLD with enough evidence, auto-unpin at avg < UNPIN_THRESHOLD.
 
-    Only auto-unpins if the lesson was auto-pinned (has "auto_pinned": true in prerequisites).
+    Only auto-unpins if the engram was auto-pinned (has "auto_pinned": true in prerequisites).
     Manual pins are never auto-unpinned.
 
     Returns:
@@ -854,8 +854,8 @@ def check_and_apply_pin_decisions(lesson_id, db_path=None):
 
     # Get all tag relevance data
     rows = conn.execute(
-        "SELECT tag, score, positive_evals, negative_evals FROM lesson_tag_relevance WHERE lesson_id = ?",
-        (lesson_id,),
+        "SELECT tag, score, positive_evals, negative_evals FROM engram_tag_relevance WHERE engram_id = ?",
+        (engram_id,),
     ).fetchall()
 
     if not rows:
@@ -865,23 +865,23 @@ def check_and_apply_pin_decisions(lesson_id, db_path=None):
     total_evals = sum(r["positive_evals"] + r["negative_evals"] for r in rows)
     avg_score = sum(r["score"] for r in rows) / len(rows)
 
-    lesson = conn.execute(
-        "SELECT pinned, prerequisites FROM lessons WHERE id = ?", (lesson_id,)
+    engram = conn.execute(
+        "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
     ).fetchone()
 
-    if not lesson:
+    if not engram:
         conn.close()
         return None
 
     now = datetime.utcnow().isoformat()
     result = None
 
-    if not lesson["pinned"] and avg_score > PIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
+    if not engram["pinned"] and avg_score > PIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
         # Auto-pin
         existing = {}
-        if lesson["prerequisites"]:
+        if engram["prerequisites"]:
             try:
-                existing = json.loads(lesson["prerequisites"])
+                existing = json.loads(engram["prerequisites"])
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -892,24 +892,24 @@ def check_and_apply_pin_decisions(lesson_id, db_path=None):
             existing["tags"] = positive_tags
 
         conn.execute(
-            "UPDATE lessons SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(existing), now, lesson_id),
+            "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(existing), now, engram_id),
         )
         result = "pinned"
 
-    elif lesson["pinned"] and avg_score < UNPIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
+    elif engram["pinned"] and avg_score < UNPIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
         # Only auto-unpin if it was auto-pinned
         existing = {}
-        if lesson["prerequisites"]:
+        if engram["prerequisites"]:
             try:
-                existing = json.loads(lesson["prerequisites"])
+                existing = json.loads(engram["prerequisites"])
             except (json.JSONDecodeError, TypeError):
                 pass
 
         if existing.get("auto_pinned"):
             conn.execute(
-                "UPDATE lessons SET pinned = 0, updated_at = ? WHERE id = ?",
-                (now, lesson_id),
+                "UPDATE engrams SET pinned = 0, updated_at = ? WHERE id = ?",
+                (now, engram_id),
             )
             result = "unpinned"
 
@@ -919,26 +919,26 @@ def check_and_apply_pin_decisions(lesson_id, db_path=None):
 
 
 def import_from_state_file(path, db_path=None):
-    """Import lessons from a JSON state file."""
+    """Import engrams from a JSON state file."""
     if not os.path.exists(path):
         return 0
 
     with open(path, "r") as f:
         data = json.load(f)
 
-    lessons = data.get("lessons", [])
+    engrams = data.get("engrams", [])
     imported = 0
 
-    for lesson in lessons:
-        category = lesson.get("category") or lesson.get("topic", "general")
+    for engram in engrams:
+        category = engram.get("category") or engram.get("topic", "general")
         if "/" not in category:
             category = "general/" + category
-        text = lesson.get("lesson", "")
-        source_sessions = lesson.get("source_sessions", [])
-        occurrence_count = lesson.get("occurrence_count", 1)
+        text = engram.get("engram", "")
+        source_sessions = engram.get("source_sessions", [])
+        occurrence_count = engram.get("occurrence_count", 1)
 
         if text:
-            add_lesson(
+            add_engram(
                 text=text,
                 category=category,
                 source="auto-extracted",
@@ -951,21 +951,21 @@ def import_from_state_file(path, db_path=None):
     return imported
 
 
-def log_hook_event(session_id, hook_event, lesson_ids, context=None, db_path=None):
+def log_hook_event(session_id, hook_event, engram_ids, context=None, db_path=None):
     """Write a persistent event log entry for a hook injection.
 
     Args:
         session_id: current session ID (may be None)
         hook_event: e.g. "SessionStart", "UserPromptSubmit", "PreToolUse"
-        lesson_ids: list of lesson IDs that were injected
+        engram_ids: list of engram IDs that were injected
         context: optional string (query snippet, tool name, etc.)
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        """INSERT INTO hook_event_log (timestamp, session_id, hook_event, lesson_ids, context)
+        """INSERT INTO hook_event_log (timestamp, session_id, hook_event, engram_ids, context)
            VALUES (?, ?, ?, ?, ?)""",
-        (now, session_id, hook_event, json.dumps(lesson_ids), context),
+        (now, session_id, hook_event, json.dumps(engram_ids), context),
     )
     conn.commit()
     conn.close()
@@ -975,7 +975,7 @@ def get_hook_events(limit=50, offset=0, db_path=None):
     """Get hook event log entries, most recent first.
 
     Returns:
-        list of dicts with id, timestamp, session_id, hook_event, lesson_ids, context
+        list of dicts with id, timestamp, session_id, hook_event, engram_ids, context
     """
     conn = get_connection(db_path)
     rows = conn.execute(

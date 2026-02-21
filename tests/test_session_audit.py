@@ -30,7 +30,7 @@ def test_write_and_read_audit(test_db):
     unprocessed = get_unprocessed_audit_sessions(db_path=test_db)
     assert len(unprocessed) == 1
     assert unprocessed[0]["session_id"] == "sess-1"
-    assert json.loads(unprocessed[0]["shown_lesson_ids"]) == [1, 2, 3]
+    assert json.loads(unprocessed[0]["shown_engram_ids"]) == [1, 2, 3]
     assert json.loads(unprocessed[0]["env_tags"]) == ["frontend", "react"]
     assert unprocessed[0]["repo"] == "app-repo"
 

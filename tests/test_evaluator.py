@@ -9,7 +9,7 @@ import pytest
 
 from src.db import (
     init_db,
-    add_lesson,
+    add_engram,
     write_session_audit,
     get_connection,
 )
@@ -31,8 +31,8 @@ def test_db():
 
 
 def _setup_session(test_db, session_id="sess-1", transcript_path=None):
-    """Helper: create a lesson + audit record."""
-    lid = add_lesson(text="Never use inline styles", category="development/frontend", db_path=test_db)
+    """Helper: create a engram + audit record."""
+    lid = add_engram(text="Never use inline styles", category="development/frontend", db_path=test_db)
     write_session_audit(session_id, [lid], ["frontend", "react"], "app-repo",
                         transcript_path=transcript_path, db_path=test_db)
     return lid
@@ -43,7 +43,7 @@ class TestRunEvaluation:
         """Should mark session as completed when evaluation succeeds."""
         lid = _setup_session(test_db)
 
-        mock_result = [{"lesson_id": lid, "tag_scores": {"frontend": 0.8, "react": 0.5}}]
+        mock_result = [{"engram_id": lid, "tag_scores": {"frontend": 0.8, "react": 0.5}}]
         with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result):
             success = run_evaluation_for_session("sess-1", db_path=test_db)
 
@@ -81,7 +81,7 @@ class TestRunEvaluation:
         assert success is False
 
     def test_empty_shown_returns_true(self, test_db):
-        """Should return True (success) when no lessons were shown."""
+        """Should return True (success) when no engrams were shown."""
         write_session_audit("sess-empty", [], ["test"], "repo", db_path=test_db)
         success = run_evaluation_for_session("sess-empty", db_path=test_db)
         assert success is True
@@ -97,7 +97,7 @@ class TestRunEvaluation:
 
         lid = _setup_session(test_db, transcript_path=str(transcript_file))
 
-        mock_result = [{"lesson_id": lid, "tag_scores": {"frontend": 0.9}}]
+        mock_result = [{"engram_id": lid, "tag_scores": {"frontend": 0.9}}]
         with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result) as mock_call:
             with patch("src.evaluator._find_transcript_excerpt") as mock_glob:
                 success = run_evaluation_for_session("sess-1", db_path=test_db)
@@ -183,10 +183,10 @@ class TestPendingEvaluations:
     def test_batch_processing(self, test_db):
         """Should process multiple sessions."""
         for i in range(3):
-            lid = add_lesson(text=f"Lesson {i}", category="test", db_path=test_db)
+            lid = add_engram(text=f"Engram {i}", category="test", db_path=test_db)
             write_session_audit(f"sess-{i}", [lid], ["test"], "repo", db_path=test_db)
 
-        mock_result = [{"lesson_id": 1, "tag_scores": {"test": 0.5}}]
+        mock_result = [{"engram_id": 1, "tag_scores": {"test": 0.5}}]
         with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result):
             results = run_pending_evaluations(limit=5, db_path=test_db)
 

@@ -5,7 +5,7 @@ from src.environment import check_prerequisites
 
 
 def test_no_prerequisites_always_passes():
-    """Lessons without prerequisites should always match."""
+    """Engrams without prerequisites should always match."""
     assert check_prerequisites(None, {"os": "darwin", "repo": "test"}) is True
     assert check_prerequisites({}, {"os": "darwin", "repo": "test"}) is True
 
@@ -20,7 +20,7 @@ def test_os_prerequisite():
 def test_repo_prerequisite_fail_closed():
     """Repo prerequisites should fail-closed when repo is unknown.
 
-    This is the security fix - lessons requiring specific repos should
+    This is the security fix - engrams requiring specific repos should
     NOT leak into contexts where repo detection fails.
     """
     prereqs = {"repos": ["app-repo"]}

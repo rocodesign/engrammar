@@ -47,10 +47,10 @@ def main():
                 start_new_session=True,
             )
 
-        # Get shown lesson IDs from DB for audit + evaluation
-        from engrammar.db import get_shown_lesson_ids, write_session_audit, clear_session_shown
+        # Get shown engram IDs from DB for audit + evaluation
+        from engrammar.db import get_shown_engram_ids, write_session_audit, clear_session_shown
 
-        shown_ids = get_shown_lesson_ids(session_id)
+        shown_ids = get_shown_engram_ids(session_id)
         if not shown_ids:
             return
 

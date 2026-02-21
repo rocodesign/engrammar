@@ -1,10 +1,10 @@
 # Idea: RRF Tuning and Alternative Fusion Strategies
 
-Explore whether RRF is the best fusion approach for a small lesson corpus, or if alternatives would give better discrimination.
+Explore whether RRF is the best fusion approach for a small engram corpus, or if alternatives would give better discrimination.
 
 ## Current state
 
-RRF with dynamic k=N/5 (currently k=10 for 51 lessons) gives rank 0 a 1.82x advantage over rank 9. Combined with the tag affinity multiplier (0.3x-1.7x), this produces good results. But RRF has inherent limitations:
+RRF with dynamic k=N/5 (currently k=10 for 51 engrams) gives rank 0 a 1.82x advantage over rank 9. Combined with the tag affinity multiplier (0.3x-1.7x), this produces good results. But RRF has inherent limitations:
 
 ## Observations from testing
 

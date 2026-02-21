@@ -1,7 +1,7 @@
 """
 Regression test documenting the backfill environment bug.
 
-KNOWN ISSUE: Backfill uses CURRENT environment to filter lessons for HISTORICAL sessions.
+KNOWN ISSUE: Backfill uses CURRENT environment to filter engrams for HISTORICAL sessions.
 This causes incorrect match statistics when sessions were in different repos/environments.
 
 See: Bug Analysis - Backfill Environment Filtering
@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-from src.db import init_db, get_connection, add_lesson
+from src.db import init_db, get_connection, add_engram
 from src.search import search
 from src.environment import detect_environment
 
@@ -40,13 +40,13 @@ class TestBackfillEnvironmentBug:
         RESOLVED: Tag prerequisites no longer hard-gate search results.
 
         Tag relevance scoring now handles context filtering dynamically.
-        Lessons with tag prerequisites are no longer excluded from search
+        Engrams with tag prerequisites are no longer excluded from search
         when the current environment doesn't have matching tags.
         """
-        # Create a lesson with acme tag prerequisite
+        # Create a engram with acme tag prerequisite
         conn = get_connection(test_db)
         conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
             (
                 "Use Acme patterns",
@@ -61,29 +61,29 @@ class TestBackfillEnvironmentBug:
         monkeypatch.setattr(os, 'getcwd', lambda: '/Users/user/work/personal/my-app')
 
         from src.embeddings import build_index
-        from src.db import get_all_active_lessons
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        from src.db import get_all_active_engrams
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
         results = search("acme patterns", db_path=test_db)
 
-        # FIXED: Lesson is now included because tag prerequisites no longer hard-gate.
+        # FIXED: Engram is now included because tag prerequisites no longer hard-gate.
         # Tag relevance scoring handles context filtering dynamically.
-        assert len(results) >= 1, "Lesson should be included — tag prereqs no longer hard-gate search"
+        assert len(results) >= 1, "Engram should be included — tag prereqs no longer hard-gate search"
 
     def test_backfill_false_negative_resolved(self, test_db):
         """
         RESOLVED: False negative no longer occurs.
 
-        Previously: Lessons with tag prereqs were excluded from search when
+        Previously: Engrams with tag prereqs were excluded from search when
         current env didn't have matching tags (false negative for backfill).
         Now: Tag prereqs no longer hard-gate search. Tag relevance scoring
-        handles filtering dynamically, so lessons enter the candidate pool.
+        handles filtering dynamically, so engrams enter the candidate pool.
         """
-        # Create acme-specific lesson
+        # Create acme-specific engram
         conn = get_connection(test_db)
         cursor = conn.execute(
-            "INSERT INTO lessons (text, category, prerequisites, created_at, updated_at) "
+            "INSERT INTO engrams (text, category, prerequisites, created_at, updated_at) "
             "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
             (
                 "Use Tailwind components",
@@ -91,64 +91,64 @@ class TestBackfillEnvironmentBug:
                 json.dumps({"tags": ["acme", "react"]})
             )
         )
-        lesson_id = cursor.lastrowid
+        engram_id = cursor.lastrowid
         conn.commit()
         conn.close()
 
         from src.search import search
         from src.embeddings import build_index
-        from src.db import get_all_active_lessons
+        from src.db import get_all_active_engrams
 
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
         results = search("table component", db_path=test_db)
-        lesson_ids = [r['id'] for r in results]
+        engram_ids = [r['id'] for r in results]
 
-        # FIXED: Lesson is now included — tag prereqs no longer hard-gate search
-        assert lesson_id in lesson_ids, \
-            "Lesson should be included — tag prerequisites no longer hard-gate search"
+        # FIXED: Engram is now included — tag prereqs no longer hard-gate search
+        assert engram_id in engram_ids, \
+            "Engram should be included — tag prerequisites no longer hard-gate search"
 
     def test_backfill_false_positive_scenario(self, test_db):
         """
-        Demonstrate false positive: Lesson shouldn't match historical session but does.
+        Demonstrate false positive: Engram shouldn't match historical session but does.
 
         Historical session: personal/my-app with ['vue'] tags
         Backfill run from:  acme/app-repo with ['acme', 'react'] tags
-        Result: Acme-specific lessons are included (WRONG)
+        Result: Acme-specific engrams are included (WRONG)
         """
-        # Create lesson WITHOUT prerequisites (matches everything)
+        # Create engram WITHOUT prerequisites (matches everything)
         conn = get_connection(test_db)
         cursor = conn.execute(
-            "INSERT INTO lessons (text, category, created_at, updated_at) "
+            "INSERT INTO engrams (text, category, created_at, updated_at) "
             "VALUES (?, ?, datetime('now'), datetime('now'))",
             ("General React patterns", "development/frontend")
         )
-        lesson_id = cursor.lastrowid
+        engram_id = cursor.lastrowid
         conn.commit()
         conn.close()
 
         # Historical session: personal Vue project (no 'acme' or 'react' tags)
         # User prompt: "component state management"
-        # Lesson SHOULD match because it has no prerequisites
+        # Engram SHOULD match because it has no prerequisites
 
-        # But if lesson had acme prerequisites and backfill runs from acme repo...
+        # But if engram had acme prerequisites and backfill runs from acme repo...
         # It would match even though historical session was Vue (FALSE POSITIVE)
 
-        # This test shows the inverse: lessons without prerequisites always match
+        # This test shows the inverse: engrams without prerequisites always match
         # regardless of environment, which is correct behavior
         from src.search import search
         from src.embeddings import build_index
-        from src.db import get_all_active_lessons
+        from src.db import get_all_active_engrams
 
-        lessons = get_all_active_lessons(test_db)
-        build_index(lessons)
+        engrams = get_all_active_engrams(test_db)
+        build_index(engrams)
 
         results = search("state management", db_path=test_db)
-        lesson_ids = [r['id'] for r in results]
+        engram_ids = [r['id'] for r in results]
 
         # This one matches because no prerequisites (correct)
-        # But the bug would cause acme-prerequisite lessons to match too
+        # But the bug would cause acme-prerequisite engrams to match too
 
     def test_backfill_has_no_access_to_historical_tags(self):
         """
@@ -194,7 +194,7 @@ class TestBackfillRecommendation:
 
         Why real-time is better:
         1. Has accurate environment at the time
-        2. Tracks actual shown lessons, not guesses
+        2. Tracks actual shown engrams, not guesses
         3. No risk of data corruption
         4. Simpler system
         """
@@ -237,14 +237,14 @@ class TestBackfillSolution:
 
         def search(query, skip_env_filter=False, ...):
             if not skip_env_filter:
-                lessons = filter_by_prerequisites(lessons, env)
+                engrams = filter_by_prerequisites(engrams, env)
             # ... rest of search
 
         Then backfill could skip filtering entirely.
 
         Status: Not implemented
         Complexity: Low
-        Effectiveness: Poor (includes wrong lessons)
+        Effectiveness: Poor (includes wrong engrams)
         """
         pass
 
