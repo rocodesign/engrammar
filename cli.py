@@ -261,12 +261,14 @@ def cmd_rebuild(args):
 
 
 def cmd_list(args):
-    """List all lessons with optional pagination."""
+    """List all lessons with optional pagination. Use --verbose for full details."""
     from engrammar.db import get_all_active_lessons
 
     offset = 0
     limit = 20
     category = None
+    verbose = "--verbose" in args or "-v" in args
+    sort_by = "id"
 
     # Parse args
     i = 0
@@ -280,6 +282,11 @@ def cmd_list(args):
         elif args[i] == "--category" and i + 1 < len(args):
             category = args[i + 1]
             i += 2
+        elif args[i] == "--sort" and i + 1 < len(args):
+            sort_by = args[i + 1]
+            i += 2
+        elif args[i] in ("--verbose", "-v"):
+            i += 1
         else:
             i += 1
 
@@ -287,30 +294,149 @@ def cmd_list(args):
 
     # Filter by category if specified
     if category:
-        from engrammar.db import get_connection
-        conn = get_connection()
-        rows = conn.execute(
-            "SELECT lesson_id FROM lesson_categories WHERE category_path LIKE ?",
-            (category + "%",)
-        ).fetchall()
-        conn.close()
-        category_ids = {r["lesson_id"] for r in rows}
-        lessons = [l for l in lessons if l["id"] in category_ids]
+        if verbose:
+            lessons = [l for l in lessons if l.get("category", "").startswith(category)]
+        else:
+            from engrammar.db import get_connection
+            conn = get_connection()
+            rows = conn.execute(
+                "SELECT lesson_id FROM lesson_categories WHERE category_path LIKE ?",
+                (category + "%",)
+            ).fetchall()
+            conn.close()
+            category_ids = {r["lesson_id"] for r in rows}
+            lessons = [l for l in lessons if l["id"] in category_ids]
 
-    total = len(lessons)
-    page = lessons[offset:offset + limit]
+    if not lessons:
+        print("No lessons found.")
+        return
 
-    print(f"=== Lessons ({offset + 1}-{offset + len(page)} of {total}) ===\n")
+    if verbose:
+        _list_verbose(lessons, sort_by, category)
+    else:
+        total = len(lessons)
+        page = lessons[offset:offset + limit]
 
-    for l in page:
-        print(f"ID {l['id']}: [{l.get('category', 'general')}] {l['text'][:80]}...")
-        if l.get("pinned"):
-            print(f"  📌 PINNED")
-        if l.get("prerequisites"):
-            prereqs = json.loads(l["prerequisites"]) if isinstance(l["prerequisites"], str) else l["prerequisites"]
-            print(f"  Prerequisites: {prereqs}")
-        print(f"  Matched: {l.get('times_matched', 0)}x | Occurrences: {l.get('occurrence_count', 1)}")
+        print(f"=== Lessons ({offset + 1}-{offset + len(page)} of {total}) ===\n")
+
+        for l in page:
+            print(f"ID {l['id']}: [{l.get('category', 'general')}] {l['text'][:80]}...")
+            if l.get("pinned"):
+                print(f"  PINNED")
+            if l.get("prerequisites"):
+                prereqs = json.loads(l["prerequisites"]) if isinstance(l["prerequisites"], str) else l["prerequisites"]
+                print(f"  Prerequisites: {prereqs}")
+            print(f"  Matched: {l.get('times_matched', 0)}x | Occurrences: {l.get('occurrence_count', 1)}")
+            print()
+
+
+def _list_verbose(lessons, sort_by="id", category=None):
+    """Show full lesson details with tags/scores (git-log style)."""
+    from engrammar.db import get_connection
+
+    conn = get_connection()
+
+    # Preload all tag relevance scores
+    tag_scores = {}
+    rows = conn.execute(
+        "SELECT lesson_id, tag, score, positive_evals, negative_evals "
+        "FROM lesson_tag_relevance ORDER BY lesson_id, score DESC"
+    ).fetchall()
+    for r in rows:
+        tag_scores.setdefault(r["lesson_id"], []).append(dict(r))
+
+    # Preload repo stats
+    repo_stats = {}
+    rows = conn.execute(
+        "SELECT lesson_id, repo, times_matched FROM lesson_repo_stats ORDER BY lesson_id"
+    ).fetchall()
+    for r in rows:
+        repo_stats.setdefault(r["lesson_id"], []).append(dict(r))
+
+    # Sort
+    if sort_by == "score":
+        def best_score(l):
+            scores = tag_scores.get(l["id"], [])
+            return max((s["score"] for s in scores), default=0)
+        lessons.sort(key=best_score, reverse=True)
+    elif sort_by == "matched":
+        lessons.sort(key=lambda l: l.get("times_matched", 0), reverse=True)
+
+    # Print each lesson
+    for l in lessons:
+        lid = l["id"]
+        pinned = " PINNED" if l.get("pinned") else ""
+        print(f"\033[33mlesson {lid}\033[0m{pinned}")
+        print(f"Category: {l.get('category', 'general')}")
+        print(f"Source:   {l.get('source', 'manual')}")
+
+        # Show transcript paths from source sessions
+        source_sessions = l.get("source_sessions")
+        if source_sessions:
+            if isinstance(source_sessions, str):
+                source_sessions = json.loads(source_sessions)
+            if source_sessions:
+                audit_rows = conn.execute(
+                    f"SELECT transcript_path FROM session_audit WHERE session_id IN ({','.join('?' for _ in source_sessions)})",
+                    source_sessions,
+                ).fetchall()
+                paths = [r["transcript_path"] for r in audit_rows if r["transcript_path"]]
+                if paths:
+                    for p in paths:
+                        print(f"Transcript: {p}")
+
+        print(f"Created:  {l.get('created_at', 'unknown')}")
+        if l.get("updated_at"):
+            print(f"Updated:  {l['updated_at']}")
+        print(f"Matched:  {l.get('times_matched', 0)}x | Occurrences: {l.get('occurrence_count', 1)}")
+
+        # Prerequisites
+        prereqs = l.get("prerequisites")
+        if prereqs:
+            if isinstance(prereqs, str):
+                prereqs = json.loads(prereqs)
+            parts = []
+            if prereqs.get("tags"):
+                parts.append(f"tags={prereqs['tags']}")
+            if prereqs.get("repos"):
+                parts.append(f"repos={prereqs['repos']}")
+            if prereqs.get("tools"):
+                parts.append(f"tools={prereqs['tools']}")
+            if parts:
+                print(f"Prereqs:  {', '.join(parts)}")
+
+        # Repo stats
+        repos = repo_stats.get(lid, [])
+        if repos:
+            repo_parts = [f"{r['repo']}({r['times_matched']}x)" for r in repos]
+            print(f"Repos:    {', '.join(repo_parts)}")
+
+        # Tag relevance scores
+        scores = tag_scores.get(lid, [])
+        if scores:
+            score_parts = []
+            for s in scores:
+                tag = s["tag"]
+                sc = s["score"]
+                pos = s["positive_evals"]
+                neg = s["negative_evals"]
+                if sc > 0.1:
+                    color = "\033[32m"  # green
+                elif sc < -0.1:
+                    color = "\033[31m"  # red
+                else:
+                    color = "\033[90m"  # gray
+                score_parts.append(f"  {color}{tag:12s} {sc:+.3f}  (+{pos}/-{neg})\033[0m")
+            print("Tags:")
+            print("\n".join(score_parts))
+
+        # Full text
         print()
+        print(f"    {l['text']}")
+        print()
+
+    conn.close()
+    print(f"--- {len(lessons)} lessons ---")
 
 
 def cmd_update(args):
@@ -621,135 +747,91 @@ def cmd_backfill_prereqs(args):
 
 
 def cmd_log(args):
-    """Show full lesson details in a scrollable git-log style format."""
-    from engrammar.db import get_all_active_lessons, get_connection
+    """Show hook event log — what was injected, when, and by which hook."""
+    from engrammar.db import get_hook_events, get_connection
 
     # Parse args
-    category = None
-    sort_by = "id"  # id, score, matched
+    tail = 20
+    session_filter = None
+    hook_filter = None
     i = 0
     while i < len(args):
-        if args[i] == "--category" and i + 1 < len(args):
-            category = args[i + 1]
+        if args[i] == "--tail" and i + 1 < len(args):
+            tail = int(args[i + 1])
             i += 2
-        elif args[i] == "--sort" and i + 1 < len(args):
-            sort_by = args[i + 1]
+        elif args[i] == "--session" and i + 1 < len(args):
+            session_filter = args[i + 1]
+            i += 2
+        elif args[i] == "--hook" and i + 1 < len(args):
+            hook_filter = args[i + 1]
             i += 2
         else:
             i += 1
 
-    lessons = get_all_active_lessons()
+    events = get_hook_events(limit=tail)
 
-    if category:
-        lessons = [l for l in lessons if l.get("category", "").startswith(category)]
-
-    if not lessons:
-        print("No lessons found.")
+    if not events:
+        print("No hook events logged yet.")
+        print("Events will appear here as lessons are injected during sessions.")
         return
 
-    conn = get_connection()
+    # Apply filters
+    if session_filter:
+        events = [e for e in events if e.get("session_id", "").startswith(session_filter)]
+    if hook_filter:
+        events = [e for e in events if hook_filter.lower() in e.get("hook_event", "").lower()]
 
-    # Preload all tag relevance scores
-    tag_scores = {}
-    rows = conn.execute(
-        "SELECT lesson_id, tag, score, positive_evals, negative_evals "
-        "FROM lesson_tag_relevance ORDER BY lesson_id, score DESC"
-    ).fetchall()
-    for r in rows:
-        tag_scores.setdefault(r["lesson_id"], []).append(dict(r))
+    if not events:
+        print("No events match the filter.")
+        return
 
-    # Preload repo stats
-    repo_stats = {}
-    rows = conn.execute(
-        "SELECT lesson_id, repo, times_matched FROM lesson_repo_stats ORDER BY lesson_id"
-    ).fetchall()
-    for r in rows:
-        repo_stats.setdefault(r["lesson_id"], []).append(dict(r))
+    # Preload lesson texts for display
+    lesson_ids_needed = set()
+    for e in events:
+        ids = json.loads(e["lesson_ids"])
+        lesson_ids_needed.update(ids)
 
-    # Sort
-    if sort_by == "score":
-        def best_score(l):
-            scores = tag_scores.get(l["id"], [])
-            return max((s["score"] for s in scores), default=0)
-        lessons.sort(key=best_score, reverse=True)
-    elif sort_by == "matched":
-        lessons.sort(key=lambda l: l.get("times_matched", 0), reverse=True)
+    lesson_texts = {}
+    if lesson_ids_needed:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(lesson_ids_needed))
+        rows = conn.execute(
+            f"SELECT id, text FROM lessons WHERE id IN ({placeholders})",
+            list(lesson_ids_needed),
+        ).fetchall()
+        conn.close()
+        lesson_texts = {r["id"]: r["text"] for r in rows}
 
-    # Print each lesson
-    for l in lessons:
-        lid = l["id"]
-        pinned = " PINNED" if l.get("pinned") else ""
-        print(f"\033[33mlesson {lid}\033[0m{pinned}")
-        print(f"Category: {l.get('category', 'general')}")
-        print(f"Source:   {l.get('source', 'manual')}")
+    # Print events (most recent first, already sorted by get_hook_events)
+    for e in events:
+        ts = e["timestamp"][:19].replace("T", " ")
+        hook = e["hook_event"]
+        sid = e["session_id"][:8] if e.get("session_id") else "unknown"
+        ids = json.loads(e["lesson_ids"])
+        ctx = e.get("context") or ""
 
-        # Show transcript paths from source sessions
-        source_sessions = l.get("source_sessions")
-        if source_sessions:
-            if isinstance(source_sessions, str):
-                source_sessions = json.loads(source_sessions)
-            if source_sessions:
-                audit_rows = conn.execute(
-                    f"SELECT transcript_path FROM session_audit WHERE session_id IN ({','.join('?' for _ in source_sessions)})",
-                    source_sessions,
-                ).fetchall()
-                paths = [r["transcript_path"] for r in audit_rows if r["transcript_path"]]
-                if paths:
-                    for p in paths:
-                        print(f"Transcript: {p}")
+        # Color the hook name
+        if hook == "SessionStart":
+            color = "\033[34m"  # blue
+        elif hook == "UserPromptSubmit":
+            color = "\033[32m"  # green
+        elif hook == "PreToolUse":
+            color = "\033[33m"  # yellow
+        else:
+            color = "\033[0m"
 
-        print(f"Created:  {l.get('created_at', 'unknown')}")
-        if l.get("updated_at"):
-            print(f"Updated:  {l['updated_at']}")
-        print(f"Matched:  {l.get('times_matched', 0)}x | Occurrences: {l.get('occurrence_count', 1)}")
-
-        # Prerequisites
-        prereqs = l.get("prerequisites")
-        if prereqs:
-            if isinstance(prereqs, str):
-                prereqs = json.loads(prereqs)
-            parts = []
-            if prereqs.get("tags"):
-                parts.append(f"tags={prereqs['tags']}")
-            if prereqs.get("repos"):
-                parts.append(f"repos={prereqs['repos']}")
-            if prereqs.get("tools"):
-                parts.append(f"tools={prereqs['tools']}")
-            if parts:
-                print(f"Prereqs:  {', '.join(parts)}")
-
-        # Repo stats
-        repos = repo_stats.get(lid, [])
-        if repos:
-            repo_parts = [f"{r['repo']}({r['times_matched']}x)" for r in repos]
-            print(f"Repos:    {', '.join(repo_parts)}")
-
-        # Tag relevance scores
-        scores = tag_scores.get(lid, [])
-        if scores:
-            score_parts = []
-            for s in scores:
-                tag = s["tag"]
-                sc = s["score"]
-                pos = s["positive_evals"]
-                neg = s["negative_evals"]
-                if sc > 0.1:
-                    color = "\033[32m"  # green
-                elif sc < -0.1:
-                    color = "\033[31m"  # red
-                else:
-                    color = "\033[90m"  # gray
-                score_parts.append(f"  {color}{tag:12s} {sc:+.3f}  (+{pos}/-{neg})\033[0m")
-            print("Tags:")
-            print("\n".join(score_parts))
-
-        # Full text
-        print()
-        print(f"    {l['text']}")
+        id_str = ", ".join(f"#{lid}" for lid in ids)
+        print(f"\033[90m{ts}\033[0m  {color}{hook:20s}\033[0m  \033[90m({sid})\033[0m")
+        print(f"  Injected: {id_str}")
+        if ctx:
+            print(f"  Context:  {ctx[:100]}")
+        # Show lesson text snippets
+        for lid in ids:
+            text = lesson_texts.get(lid, "<deleted>")
+            print(f"    #{lid}: {text[:70]}{'...' if len(text) > 70 else ''}")
         print()
 
-    conn.close()
-    print(f"--- {len(lessons)} lessons ---")
+    print(f"--- {len(events)} events ---")
 
 
 def cmd_detect_tags(args):
@@ -838,8 +920,8 @@ def main():
         print("  setup        Initialize DB, import lessons, build index")
         print("  status       Show DB stats, index health, hook config")
         print("  search       Search lessons: search \"query\"")
-        print("  list         List all lessons (--offset N --limit N --category cat)")
-        print("  log          Full lesson details with tags/scores (--sort id|score|matched --category cat)")
+        print("  list         List all lessons (--offset N --limit N --category cat --verbose --sort id|score|matched)")
+        print("  log          Show hook event log (--tail N --session ID --hook HOOK)")
         print("  add          Add lesson: add \"text\" --category cat")
         print("  update       Update lesson: update ID --text \"new\" --category cat")
         print("  deprecate    Soft-delete lesson: deprecate ID")

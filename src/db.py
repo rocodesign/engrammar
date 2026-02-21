@@ -119,6 +119,17 @@ def init_db(db_path=None):
             retry_count INTEGER DEFAULT 0,
             status TEXT DEFAULT 'pending'
         );
+
+        -- Persistent event log for hook activity
+        CREATE TABLE IF NOT EXISTS hook_event_log (
+            id INTEGER PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            session_id TEXT,
+            hook_event TEXT NOT NULL,
+            lesson_ids TEXT NOT NULL,
+            context TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_hook_event_log_ts ON hook_event_log(timestamp);
     """)
 
     # Migrations for existing DBs
@@ -938,3 +949,38 @@ def import_from_state_file(path, db_path=None):
             imported += 1
 
     return imported
+
+
+def log_hook_event(session_id, hook_event, lesson_ids, context=None, db_path=None):
+    """Write a persistent event log entry for a hook injection.
+
+    Args:
+        session_id: current session ID (may be None)
+        hook_event: e.g. "SessionStart", "UserPromptSubmit", "PreToolUse"
+        lesson_ids: list of lesson IDs that were injected
+        context: optional string (query snippet, tool name, etc.)
+    """
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """INSERT INTO hook_event_log (timestamp, session_id, hook_event, lesson_ids, context)
+           VALUES (?, ?, ?, ?, ?)""",
+        (now, session_id, hook_event, json.dumps(lesson_ids), context),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_hook_events(limit=50, offset=0, db_path=None):
+    """Get hook event log entries, most recent first.
+
+    Returns:
+        list of dicts with id, timestamp, session_id, hook_event, lesson_ids, context
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT * FROM hook_event_log ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
