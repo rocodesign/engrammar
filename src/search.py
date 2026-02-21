@@ -93,7 +93,58 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     )[:10]
 
     # 3. Reciprocal Rank Fusion
-    fused = _reciprocal_rank_fusion([vector_results, bm25_ranked])
+    # Scale k with lesson count so rank position carries real weight.
+    # k=60 (the default from web search) compresses 50 lessons into a
+    # ~15% spread; k=N/5 gives ~2x spread between rank 0 and rank 9.
+    rrf_k = max(1, len(lessons) // 5)
+    fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
+
+    # 3.1. Environment tag affinity boost
+    # Embed env tags and each lesson's prerequisite tags, then use cosine
+    # similarity as a multiplicative boost. This captures semantic relationships
+    # (e.g. typescript ~ javascript) that exact overlap misses.
+    # Lessons without prerequisite tags are treated as generic (neutral).
+    env_tags = env.get("tags", [])
+    if env_tags:
+        try:
+            env_tag_emb = embed_text(" ".join(env_tags))
+
+            boosted = []
+            for lid, score in fused:
+                lesson = lesson_map.get(lid)
+                if not lesson:
+                    boosted.append((lid, score))
+                    continue
+
+                prereqs = lesson.get("prerequisites")
+                if not prereqs:
+                    boosted.append((lid, score))
+                    continue
+
+                prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
+                lesson_tags = prereq_dict.get("tags", [])
+                if not lesson_tags:
+                    boosted.append((lid, score))
+                    continue
+
+                # Cosine similarity between env tag set and lesson tag set
+                lesson_tag_emb = embed_text(" ".join(lesson_tags))
+                import numpy as np
+                sim = float(np.dot(env_tag_emb, lesson_tag_emb) / (
+                    np.linalg.norm(env_tag_emb) * np.linalg.norm(lesson_tag_emb)
+                ))
+
+                # Map similarity to multiplier:
+                # sim ~0.65 (unrelated stack) → ~0.3x penalty
+                # sim ~0.80 (partial match)   → ~1.0x neutral
+                # sim ~0.95+ (same stack)     → ~1.7x boost
+                # Formula: clamp((sim - 0.65) / 0.30 * 1.4 + 0.3, 0.3, 1.7)
+                multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
+                boosted.append((lid, score * multiplier))
+
+            fused = sorted(boosted, key=lambda x: x[1], reverse=True)
+        except Exception:
+            pass
 
     # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
     env_tags = env.get("tags", [])
