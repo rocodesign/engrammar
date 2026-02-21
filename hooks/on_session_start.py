@@ -65,6 +65,13 @@ def main():
             for p in matching:
                 record_shown_lesson(session_id, p["id"], "SessionStart")
 
+        # Log event
+        try:
+            from engrammar.db import log_hook_event
+            log_hook_event(session_id, "SessionStart", [p["id"] for p in matching])
+        except Exception:
+            pass
+
         context = format_lessons_block(matching, show_categories=show_categories)
         output = make_hook_output("SessionStart", context)
         print(json.dumps(output))

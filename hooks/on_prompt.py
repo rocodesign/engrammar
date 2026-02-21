@@ -85,6 +85,14 @@ def main():
             for r in new_results:
                 record_shown_lesson(session_id, r["id"], "UserPromptSubmit")
 
+        # Log event
+        try:
+            from engrammar.db import log_hook_event
+            ctx = prompt[:80] if prompt else None
+            log_hook_event(session_id, "UserPromptSubmit", [r["id"] for r in new_results], context=ctx)
+        except Exception:
+            pass
+
         context = format_lessons_block(new_results, show_categories=show_categories)
         output = make_hook_output("UserPromptSubmit", context)
         print(json.dumps(output))

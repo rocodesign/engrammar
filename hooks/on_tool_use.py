@@ -94,6 +94,13 @@ def main():
             for r in new_results:
                 record_shown_lesson(session_id, r["id"], "PreToolUse")
 
+        # Log event
+        try:
+            from engrammar.db import log_hook_event
+            log_hook_event(session_id, "PreToolUse", [r["id"] for r in new_results], context=tool_name)
+        except Exception:
+            pass
+
         context = format_lessons_block(new_results, show_categories=show_categories)
         output = make_hook_output("PreToolUse", context)
         print(json.dumps(output))
