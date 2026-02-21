@@ -8,7 +8,7 @@ from rank_bm25 import BM25Okapi
 
 from .config import LAST_SEARCH_PATH, load_config
 from .db import get_all_active_lessons
-from .embeddings import embed_text, load_index, vector_search
+from .embeddings import embed_text, load_index, load_tag_index, vector_search
 from .environment import detect_environment
 
 
@@ -100,47 +100,61 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
     # 3.1. Environment tag affinity boost
-    # Embed env tags and each lesson's prerequisite tags, then use cosine
-    # similarity as a multiplicative boost. This captures semantic relationships
-    # (e.g. typescript ~ javascript) that exact overlap misses.
+    # Use precomputed tag embeddings for a vectorized cosine similarity
+    # instead of per-lesson embed calls. Falls back to per-lesson embedding
+    # if the tag index is unavailable.
     # Lessons without prerequisite tags are treated as generic (neutral).
     env_tags = env.get("tags", [])
     if env_tags:
         try:
+            import numpy as np
             env_tag_emb = embed_text(" ".join(env_tags))
 
-            boosted = []
-            for lid, score in fused:
-                lesson = lesson_map.get(lid)
-                if not lesson:
-                    boosted.append((lid, score))
-                    continue
+            # Try precomputed tag index first
+            tag_embeddings, tag_ids = load_tag_index()
+            if tag_embeddings is not None:
+                # Vectorized: compute all tag similarities at once
+                env_norm = env_tag_emb / (np.linalg.norm(env_tag_emb) + 1e-10)
+                tag_norms = np.linalg.norm(tag_embeddings, axis=1, keepdims=True) + 1e-10
+                tag_emb_norm = tag_embeddings / tag_norms
+                all_sims = tag_emb_norm @ env_norm
+                tag_sim_map = {int(tag_ids[i]): float(all_sims[i]) for i in range(len(tag_ids))}
 
-                prereqs = lesson.get("prerequisites")
-                if not prereqs:
-                    boosted.append((lid, score))
-                    continue
-
-                prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-                lesson_tags = prereq_dict.get("tags", [])
-                if not lesson_tags:
-                    boosted.append((lid, score))
-                    continue
-
-                # Cosine similarity between env tag set and lesson tag set
-                lesson_tag_emb = embed_text(" ".join(lesson_tags))
-                import numpy as np
-                sim = float(np.dot(env_tag_emb, lesson_tag_emb) / (
-                    np.linalg.norm(env_tag_emb) * np.linalg.norm(lesson_tag_emb)
-                ))
-
-                # Map similarity to multiplier:
-                # sim ~0.65 (unrelated stack) → ~0.3x penalty
-                # sim ~0.80 (partial match)   → ~1.0x neutral
-                # sim ~0.95+ (same stack)     → ~1.7x boost
-                # Formula: clamp((sim - 0.65) / 0.30 * 1.4 + 0.3, 0.3, 1.7)
-                multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
-                boosted.append((lid, score * multiplier))
+                boosted = []
+                for lid, score in fused:
+                    sim = tag_sim_map.get(lid)
+                    if sim is None:
+                        boosted.append((lid, score))
+                        continue
+                    # Map similarity to multiplier:
+                    # sim ~0.65 (unrelated stack) → ~0.3x penalty
+                    # sim ~0.80 (partial match)   → ~1.0x neutral
+                    # sim ~0.95+ (same stack)     → ~1.7x boost
+                    multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
+                    boosted.append((lid, score * multiplier))
+            else:
+                # Fallback: per-lesson embedding (no tag index built yet)
+                boosted = []
+                for lid, score in fused:
+                    lesson = lesson_map.get(lid)
+                    if not lesson:
+                        boosted.append((lid, score))
+                        continue
+                    prereqs = lesson.get("prerequisites")
+                    if not prereqs:
+                        boosted.append((lid, score))
+                        continue
+                    prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
+                    lesson_tags = prereq_dict.get("tags", [])
+                    if not lesson_tags:
+                        boosted.append((lid, score))
+                        continue
+                    lesson_tag_emb = embed_text(" ".join(lesson_tags))
+                    sim = float(np.dot(env_tag_emb, lesson_tag_emb) / (
+                        np.linalg.norm(env_tag_emb) * np.linalg.norm(lesson_tag_emb)
+                    ))
+                    multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
+                    boosted.append((lid, score * multiplier))
 
             fused = sorted(boosted, key=lambda x: x[1], reverse=True)
         except Exception:
