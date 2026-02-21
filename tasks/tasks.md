@@ -58,3 +58,6 @@ This file is the index. Detailed task writeups live under `tasks/`.
 ## Ideas
 
 - `tasks/ideas/session-end-reflection.md`
+- `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
+- `tasks/ideas/precompute-tag-embeddings.md` — Cache lesson tag embeddings to avoid per-search recomputation at scale
+- `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
