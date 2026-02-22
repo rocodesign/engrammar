@@ -127,10 +127,10 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
                         boosted.append((lid, score))
                         continue
                     # Map similarity to multiplier:
-                    # sim ~0.65 (unrelated stack) → ~0.3x penalty
-                    # sim ~0.80 (partial match)   → ~1.0x neutral
-                    # sim ~0.95+ (same stack)     → ~1.7x boost
-                    multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
+                    # sim ~0.65 (unrelated stack) → ~0.5x penalty
+                    # sim ~0.80 (partial match)   → ~0.9x neutral
+                    # sim ~0.95+ (same stack)     → ~1.3x boost
+                    multiplier = max(0.5, min(1.3, (sim - 0.65) / 0.30 * 0.8 + 0.5))
                     boosted.append((lid, score * multiplier))
             else:
                 # Fallback: per-engram embedding (no tag index built yet)
@@ -153,7 +153,7 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
                     sim = float(np.dot(env_tag_emb, engram_tag_emb) / (
                         np.linalg.norm(env_tag_emb) * np.linalg.norm(engram_tag_emb)
                     ))
-                    multiplier = max(0.3, min(1.7, (sim - 0.65) / 0.30 * 1.4 + 0.3))
+                    multiplier = max(0.5, min(1.3, (sim - 0.65) / 0.30 * 0.8 + 0.5))
                     boosted.append((lid, score * multiplier))
 
             fused = sorted(boosted, key=lambda x: x[1], reverse=True)
@@ -242,10 +242,139 @@ def _engram_has_all_tags(engram, required_tags):
     return required_tags.issubset(engram_tags)
 
 
+def _build_tool_query(tool_name, tool_input):
+    """Build a semantic search query from tool name and input.
+
+    Routes by tool type to extract the most meaningful keywords
+    rather than dumping raw parameters into the query.
+    """
+    if not isinstance(tool_input, dict):
+        return tool_name
+
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        parts = cmd.split()
+        if not parts:
+            return None  # skip empty commands
+
+        base_cmd = parts[0]
+
+        # Git commands — use subcommand for semantic search
+        if base_cmd == "git":
+            subcmd = parts[1] if len(parts) > 1 else ""
+            git_queries = {
+                "commit": "git commit conventions",
+                "push": "git push deploy",
+                "checkout": "git branch naming",
+                "branch": "git branch naming",
+                "rebase": "git rebase workflow",
+                "merge": "git merge workflow",
+            }
+            return git_queries.get(subcmd, f"git {subcmd}")
+
+        # GitHub CLI
+        if base_cmd == "gh":
+            subcmd = " ".join(parts[1:3]) if len(parts) > 2 else parts[1] if len(parts) > 1 else ""
+            gh_queries = {
+                "pr create": "pull request create description template",
+                "pr view": "pull request review",
+                "pr review": "pull request review feedback",
+                "pr merge": "pull request merge",
+                "issue create": "issue create",
+            }
+            return gh_queries.get(subcmd, f"github {subcmd}")
+
+        # Test runners
+        if base_cmd in ("jest", "pytest", "cypress", "vitest", "npx"):
+            test_hint = " ".join(parts[:3])
+            return f"testing {test_hint}"
+
+        # npm/yarn/pnpm scripts
+        if base_cmd in ("npm", "yarn", "pnpm"):
+            script = parts[1] if len(parts) > 1 else ""
+            if script in ("test", "t"):
+                return "testing npm test"
+            if script in ("run",) and len(parts) > 2:
+                return f"{parts[2]} script"
+            return f"{base_cmd} {script}"
+
+        # Package install
+        if base_cmd in ("pip", "uv"):
+            return f"python package {' '.join(parts[1:3])}"
+
+        # Generic — use first 3 words
+        return " ".join(parts[:3])
+
+    if tool_name == "Edit":
+        file_path = tool_input.get("file_path", "")
+        if not file_path:
+            return None
+
+        # Extract file extension and meaningful path segments
+        import os
+        basename = os.path.basename(file_path)
+        ext = os.path.splitext(basename)[1]
+
+        ext_context = {
+            ".tsx": "react typescript component",
+            ".ts": "typescript",
+            ".jsx": "react component",
+            ".js": "javascript",
+            ".py": "python",
+            ".css": "styling css",
+            ".scss": "styling scss",
+            ".md": "documentation markdown",
+        }
+
+        # Cypress/Storybook file patterns
+        if ".cy." in basename:
+            context = "cypress testing"
+        elif ".stories." in basename:
+            context = "storybook stories"
+        elif ".test." in basename or ".spec." in basename:
+            context = "unit testing"
+        else:
+            context = ext_context.get(ext, "")
+
+        # Use last 2-3 path segments for project context
+        path_parts = file_path.split("/")
+        path_context = "/".join(path_parts[-3:]) if len(path_parts) > 3 else file_path
+
+        return f"editing {context} {path_context}".strip()
+
+    if tool_name == "Write":
+        file_path = tool_input.get("file_path", "")
+        if not file_path:
+            return None
+        import os
+        basename = os.path.basename(file_path)
+        path_parts = file_path.split("/")
+        path_context = "/".join(path_parts[-3:]) if len(path_parts) > 3 else file_path
+        return f"writing {basename} {path_context}"
+
+    if tool_name == "Skill":
+        skill = tool_input.get("skill", "")
+        return f"{skill} skill" if skill else None
+
+    if tool_name == "Task":
+        # Task tool has a description field
+        desc = tool_input.get("description", "")
+        return desc if desc else None
+
+    # For other tools, use whatever params are available
+    keywords = [tool_name]
+    for key in ("file_path", "path", "pattern", "query"):
+        val = tool_input.get(key, "")
+        if val:
+            keywords.append(str(val)[:100])
+    return " ".join(keywords) if len(keywords) > 1 else None
+
+
 def search_for_tool_context(tool_name, tool_input, db_path=None):
     """Specialized search for PreToolUse hook.
 
-    Extracts keywords from tool_name + tool_input and runs hybrid search.
+    Builds a semantic query from tool name + input and runs hybrid search.
+    Returns empty list if the tool context is too shallow for useful search.
 
     Args:
         tool_name: name of the tool being used
@@ -257,25 +386,9 @@ def search_for_tool_context(tool_name, tool_input, db_path=None):
     config = load_config()
     max_results = config["display"]["max_engrams_per_tool"]
 
-    # Extract relevant keywords
-    keywords = [tool_name]
-
-    if isinstance(tool_input, dict):
-        # Extract file paths
-        for key in ("file_path", "path", "pattern", "command"):
-            val = tool_input.get(key, "")
-            if val:
-                keywords.append(str(val))
-
-        # Extract from command for Bash
-        if tool_name == "Bash":
-            cmd = tool_input.get("command", "")
-            # Extract first word (the actual command)
-            parts = cmd.split()
-            if parts:
-                keywords.append(parts[0])
-
-    query = " ".join(keywords)
+    query = _build_tool_query(tool_name, tool_input)
+    if not query:
+        return []
     results = search(query, top_k=max_results, db_path=db_path)
 
     # Apply minimum score threshold — tool context is shallow,
