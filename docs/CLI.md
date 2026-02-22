@@ -29,7 +29,7 @@ Now you can use: `engrammar status` instead of the full path.
 
 #### `setup`
 
-Initialize database, import existing engrams, and build embedding index.
+Initialize database, import existing engrams, and build embedding index (both content and tag embeddings).
 
 ```bash
 engrammar setup
@@ -37,7 +37,7 @@ engrammar setup
 
 #### `status`
 
-Show database stats, index health, and hook configuration.
+Show database stats, index health, tag index status, and hook configuration.
 
 ```bash
 engrammar status
@@ -47,8 +47,23 @@ engrammar status
 
 - Database path and engram count
 - Category breakdown
-- Embedding index status
+- Embedding index status (vector count and dimensions)
+- Tag index status (cached tag embeddings)
 - Hook configuration (enabled/disabled, skip tools)
+
+#### `detect-tags`
+
+Show the environment tags detected for the current directory.
+
+```bash
+engrammar detect-tags
+```
+
+**Output:**
+
+- Detected tags (from paths, git, files, deps, directory structure)
+- Current directory
+- Repository name
 
 ### Search & Browse
 
@@ -59,11 +74,14 @@ Search engrams using hybrid search (vector + BM25).
 ```bash
 engrammar search "inline styles"
 engrammar search "figma" --category tools
+engrammar search "state management" --tags react
+engrammar search "ui component" --tags acme,react,frontend
 ```
 
 **Options:**
 
 - `--category CATEGORY` - Filter by category prefix
+- `--tags tag1,tag2,...` - Filter by required tags (AND logic)
 
 **Output:**
 
@@ -78,6 +96,8 @@ List all active engrams with pagination.
 engrammar list
 engrammar list --offset 20 --limit 10
 engrammar list --category development/frontend
+engrammar list --verbose --sort score
+engrammar list -v --sort matched
 ```
 
 **Options:**
@@ -85,13 +105,43 @@ engrammar list --category development/frontend
 - `--offset N` - Skip first N engrams (default: 0)
 - `--limit N` - Show N engrams (default: 20)
 - `--category CATEGORY` - Filter by category
+- `--verbose` / `-v` - Show full details: per-tag relevance scores, repo stats, prerequisites, source transcripts (git-log style)
+- `--sort id|score|matched` - Sort order (default: `id`). `score` sorts by best tag relevance score, `matched` by times_matched
+
+**Output (default):**
+
+- Engram ID, category, and text preview
+- Pin status, prerequisites, match stats
+
+**Output (verbose):**
+
+- Full engram text, category, source, creation/update dates
+- Per-tag relevance scores with color coding (green positive, red negative)
+- Per-repo match statistics
+- Source transcript paths
+
+#### `log`
+
+Show the hook event log — what was injected, when, and by which hook.
+
+```bash
+engrammar log
+engrammar log --tail 50
+engrammar log --session abc12345
+engrammar log --hook UserPromptSubmit
+```
+
+**Options:**
+
+- `--tail N` - Number of events to show (default: 20)
+- `--session ID` - Filter by session ID prefix
+- `--hook HOOK` - Filter by hook name (SessionStart, UserPromptSubmit, PreToolUse)
 
 **Output:**
 
-- Engram ID, category, and text preview
-- Pin status (📌 if pinned)
-- Prerequisites (if set)
-- Match stats
+- Timestamp, hook event name, session ID
+- Injected engram IDs with text snippets
+- Context (query or tool name)
 
 ### Add & Update
 
@@ -101,15 +151,17 @@ Add a new engram.
 
 ```bash
 engrammar add "Never use inline styles in React components" --category development/frontend/styling
+engrammar add "Follow acme's React patterns" --category development/frontend --tags acme,react,frontend
 ```
 
 **Options:**
 
 - `--category CATEGORY` - Set engram category (default: "general")
+- `--tags tag1,tag2,...` - Set environment tags (stored as prerequisites)
 
 **Behavior:**
 
-- Automatically rebuilds embedding index
+- Automatically rebuilds embedding and tag indexes
 - Sets source to "manual"
 
 #### `update`
@@ -117,9 +169,9 @@ engrammar add "Never use inline styles in React components" --category developme
 Update a engram's text, category, or prerequisites.
 
 ```bash
-engrammar update 42 --text "Updated engram text"
-engrammar update 42 --category tools/figma
-engrammar update 42 --prereqs '{"repos": ["app-repo"]}'
+engrammar update ENGRAM_ID --text "Updated engram text"
+engrammar update ENGRAM_ID --category tools/figma
+engrammar update ENGRAM_ID --prereqs '{"repos": ["app-repo"]}'
 ```
 
 **Options:**
@@ -132,13 +184,14 @@ engrammar update 42 --prereqs '{"repos": ["app-repo"]}'
 
 - Syncs junction table when category changes
 - Rebuilds embedding index if text changed
+- Rebuilds tag index if prerequisites changed
 
 #### `deprecate`
 
 Soft-delete a engram (removes from active engrams, keeps in DB).
 
 ```bash
-engrammar deprecate 42
+engrammar deprecate ENGRAM_ID
 ```
 
 ### Categories
@@ -148,14 +201,14 @@ engrammar deprecate 42
 Add or remove categories from a engram (multi-category support).
 
 ```bash
-engrammar categorize 42 add development/frontend
-engrammar categorize 42 remove tools/figma
+engrammar categorize ENGRAM_ID add development/frontend
+engrammar categorize ENGRAM_ID remove tools/figma
 ```
 
 **Usage:**
 
-- `categorize LESSON_ID add CATEGORY` - Add category to engram
-- `categorize LESSON_ID remove CATEGORY` - Remove category from engram
+- `categorize ENGRAM_ID add CATEGORY` - Add category to engram
+- `categorize ENGRAM_ID remove CATEGORY` - Remove category from engram
 
 ### Pinning
 
@@ -164,7 +217,7 @@ engrammar categorize 42 remove tools/figma
 Pin a engram (always shown at session start when prerequisites match).
 
 ```bash
-engrammar pin 42
+engrammar pin ENGRAM_ID
 ```
 
 #### `unpin`
@@ -172,7 +225,7 @@ engrammar pin 42
 Unpin a engram.
 
 ```bash
-engrammar unpin 42
+engrammar unpin ENGRAM_ID
 ```
 
 ### Import & Export
@@ -193,7 +246,7 @@ engrammar import engrams.md
 
 **Behavior:**
 
-- Automatically rebuilds embedding index after import
+- Automatically rebuilds embedding and tag indexes after import
 
 #### `export`
 
@@ -203,44 +256,92 @@ Export all active engrams to markdown, grouped by category.
 engrammar export > engrams.md
 ```
 
-**Output format:**
-
-```markdown
-## development/frontend
-
-- Never use inline styles in React components
-- Always use CSS modules for component styling
-
-## tools/figma
-
-- Use Figma MCP server to fetch design tokens
-```
-
-### Maintenance
+### Extraction & Evaluation
 
 #### `extract`
 
-Extract engrams from Claude Code session facets (hook friction events).
+Extract engrams from Claude Code session transcripts.
 
 ```bash
 engrammar extract
+engrammar extract --limit 20
+engrammar extract --session UUID
 engrammar extract --dry-run
+engrammar extract --facets
 ```
 
 **Options:**
 
+- `--limit N` - Process at most N transcripts
+- `--session UUID` - Extract from a single session
 - `--dry-run` - Show what would be extracted without saving
+- `--facets` - Use facet-based extraction pipeline instead of transcript-based
 
 **Behavior:**
 
-- Scans `~/.claude/projects/` for session facets
-- Extracts friction events (hook failures, errors, corrections)
+- Scans `~/.claude/projects/` for session transcripts
+- Sends conversation to Haiku for friction analysis
 - Deduplicates and merges similar engrams
-- Runs automatically at session start via hook
+- Rebuilds index after extraction
+
+#### `evaluate`
+
+Run relevance evaluations for pending sessions or a specific session.
+
+```bash
+engrammar evaluate
+engrammar evaluate --limit 10
+engrammar evaluate --session UUID
+```
+
+**Options:**
+
+- `--limit N` - Process at most N sessions (default: 5)
+- `--session UUID` - Evaluate a specific session
+
+**Behavior:**
+
+- Reads transcript + shown engrams from session_audit
+- Haiku judges per-engram relevance
+- Updates tag relevance scores via EMA
+
+#### `backfill`
+
+Create audit records from past sessions for the evaluator pipeline.
+
+```bash
+engrammar backfill
+engrammar backfill --dry-run
+engrammar backfill --limit 50
+engrammar backfill --evaluate
+```
+
+Delegates to `backfill_stats.py` — all arguments are forwarded.
+
+#### `backfill-prereqs`
+
+Retroactively set prerequisites on existing engrams using keyword inference + session audit tags.
+
+```bash
+engrammar backfill-prereqs
+engrammar backfill-prereqs --dry-run
+```
+
+**Options:**
+
+- `--dry-run` - Show what would be changed without saving
+
+**Behavior:**
+
+- Infers prerequisites from engram text keywords
+- Enriches with tags from session audit records
+- Rebuilds tag index after updates
+
+### Maintenance
 
 #### `rebuild`
 
-Rebuild the embedding index from scratch.
+Rebuild embedding index (content + tag embeddings) from scratch.
 
 ```bash
 engrammar rebuild
@@ -252,59 +353,32 @@ engrammar rebuild
 - After bulk imports
 - If index becomes corrupted
 
-## Examples
+#### `reset-stats`
 
-### Daily Workflow
-
-```bash
-# Check system status
-engrammar status
-
-# Search for engrams about a topic
-engrammar search "react hooks"
-
-# Browse recent engrams
-engrammar list --limit 10
-
-# Add a new engram from experience
-engrammar add "Always use useCallback for event handlers in memoized components" --category development/frontend/react
-
-# Pin a critical engram
-engrammar pin 15
-
-# Update prerequisites for a repo-specific engram
-engrammar update 23 --prereqs '{"repos": ["app-repo"], "mcp_servers": ["figma"]}'
-```
-
-### Maintenance
+Reset all match statistics and pins to start fresh.
 
 ```bash
-# Export engrams for backup
-engrammar export > backup-$(date +%Y%m%d).md
-
-# Import engrams from another system
-engrammar import external-engrams.json
-
-# Rebuild index after manual DB work
-engrammar rebuild
-
-# Extract engrams from recent sessions
-engrammar extract
+engrammar reset-stats --confirm
 ```
 
-### Multi-Category Management
+**Requires `--confirm` flag.** Resets:
+
+- Unpins all engrams
+- Resets times_matched to 0
+- Clears per-repo match tracking
+- Preserves engram text, categories, and manual prerequisites
+
+#### `restore`
+
+List database backups and restore a selected one.
 
 ```bash
-# Add engram with primary category
-engrammar add "Use Figma tokens for spacing" --category design
-
-# Add additional categories
-engrammar categorize 50 add development/frontend
-engrammar categorize 50 add tools/figma
-
-# List engrams in a category
-engrammar list --category tools/figma
+engrammar restore --list    # List available backups
+engrammar restore           # Interactive selection
+engrammar restore 2         # Restore backup #2
 ```
+
+Looks for `engrams.db.backup-*` files in `~/.engrammar/`.
 
 ## Environment Variables
 
@@ -317,5 +391,6 @@ engrammar list --category tools/figma
 
 ## See Also
 
-- [README.md](../README.md) - System overview and architecture
-- [config.json](../.engrammar/config.json) - Configuration reference
+- [README.md](../README.md) - System overview
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical internals
+- [CHEATSHEET.md](CHEATSHEET.md) - Quick reference
