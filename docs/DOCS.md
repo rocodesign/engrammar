@@ -6,9 +6,10 @@
 |----------|-------------|
 | [README.md](../README.md) | Overview, quick start, features, installation |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System internals: search pipeline, database schema, embeddings, hooks, daemon |
-| [CLI.md](CLI.md) | All 19 CLI commands with usage and examples |
+| [CLI.md](CLI.md) | All 21 CLI commands with usage and examples |
 | [CHEATSHEET.md](CHEATSHEET.md) | Quick reference for CLI, MCP tools, tags, and common workflows |
 | [evaluation.md](evaluation.md) | Evaluation pipeline, EMA scoring, tag relevance filtering |
+| [STATUS.md](STATUS.md) | What works well, current pitfalls, future improvements |
 
 ## I want to...
 
