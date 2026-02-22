@@ -42,6 +42,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-005-incremental-embedding-index/task.md`
 - [ ] **#009 Richer tool-use context for PreToolUse search** `C2`
   - `tasks/open/[2]-009-richer-tool-use-context/task.md`
+- [ ] **#010 Promote engrams to generic when useful across repos** `C2`
+  - `tasks/open/[2]-010-tag-generalization/task.md`
 
 ## Completed Tasks
 
