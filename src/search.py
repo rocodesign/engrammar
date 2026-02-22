@@ -276,7 +276,15 @@ def search_for_tool_context(tool_name, tool_input, db_path=None):
                 keywords.append(parts[0])
 
     query = " ".join(keywords)
-    return search(query, top_k=max_results, db_path=db_path)
+    results = search(query, top_k=max_results, db_path=db_path)
+
+    # Apply minimum score threshold — tool context is shallow,
+    # so filter out low-confidence matches that would just be noise.
+    min_score = config["hooks"].get("min_score_tool", 0.025)
+    if min_score:
+        results = [r for r in results if r.get("score", 0) >= min_score]
+
+    return results
 
 
 def _save_last_search(query, results):

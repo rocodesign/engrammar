@@ -40,6 +40,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-004-llm-assisted-engram-merge/task.md`
 - [ ] **#005 Incremental embedding index update** `C2`
   - `tasks/open/[2]-005-incremental-embedding-index/task.md`
+- [ ] **#009 Richer tool-use context for PreToolUse search** `C2`
+  - `tasks/open/[2]-009-richer-tool-use-context/task.md`
 
 ## Completed Tasks
 

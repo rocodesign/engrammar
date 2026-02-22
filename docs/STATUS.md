@@ -19,7 +19,7 @@ Think of it as an automatic, searchable CLAUDE.md that learns which tips apply w
 - **Cold start** — it needs a few sessions to accumulate useful engrams. The first days are quiet.
 - **Extraction quality is hit or miss** — it uses Haiku to extract from transcripts, which sometimes pulls out low-value stuff. You'll want to prune with `engrammar list` and `engrammar deprecate` occasionally.
 - **Noise before the evaluator kicks in** — early on, engrams can show up in contexts where they don't belong. The tag relevance scoring fixes this over time but it takes sessions to converge.
-- **Shallow tool-use context** — the PreToolUse hook only sees the tool name and basic parameters, so it rarely finds useful engrams. Searching against the actual file content or diffs being written would make this much more relevant.
+- **Shallow tool-use context** — the PreToolUse hook only sees the tool name and basic parameters, so it rarely finds useful engrams. A minimum score threshold filters out the worst noise, but the root fix is richer context (file contents, diffs). Prompt and session-start hooks work well since they have full natural language to search against.
 - **Claude Code only** — currently only integrates with Claude Code via hooks and MCP. Support for other coding agents (Cursor, Windsurf, etc.) is planned but not there yet.
 - **Setup isn't turnkey yet** — requires Python 3.12+, a setup script, and configuring hooks in Claude Code settings. Not a one-click install.
 
