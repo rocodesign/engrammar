@@ -72,7 +72,7 @@ CREATE TABLE engram_tag_relevance (
 ### Reading Scores
 
 ```
-engrammar log --sort score
+engrammar list --verbose --sort score
 ```
 
 Each engram shows per-tag scores:
@@ -202,7 +202,7 @@ Pinned engrams go through:
 ### Check a engram's tag relevance
 
 ```bash
-engrammar log <id> --sort score
+engrammar list --verbose --sort score
 ```
 
 ### Check pending evaluations
@@ -227,7 +227,7 @@ Then `engrammar evaluate`.
 
 ### Why is a engram showing/not showing?
 
-1. Check structural prerequisites: `engrammar log <id>` → look at prerequisites
+1. Check structural prerequisites: `engrammar list --verbose` → look at prerequisites
 2. Check tag relevance: look at per-tag scores and eval counts
 3. If `avg < -0.1` with `>= 3` evals across current env tags → filtered out
 4. If no tag data → passes through (exploration)

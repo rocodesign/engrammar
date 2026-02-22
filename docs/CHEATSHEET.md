@@ -624,9 +624,11 @@ engrammar_feedback(engram_id=42, applicable=False, reason="why")
 ~/.engrammar/
 ├── engrams.db              # SQLite database
 ├── embeddings.npy          # Vector search index
+├── embedding_ids.npy       # Engram ID mapping for index
+├── tag_embeddings.npy      # Cached tag embeddings
+├── tag_embedding_ids.npy   # Engram ID mapping for tag index
 ├── config.json             # Configuration
-├── engrammar-cli           # CLI executable
-└── .session-shown.json     # Current session tracking
+└── engrammar-cli           # CLI executable
 ```
 
 ### Config File
@@ -634,15 +636,18 @@ engrammar_feedback(engram_id=42, applicable=False, reason="why")
 ```json
 {
   "hooks": {
-    "prompt_enabled": true,      # Show at session start
-    "tool_use_enabled": true,    # Show before tool use
-    "skip_tools": ["Read", "Glob"]  # Don't show for these tools
+    "prompt_enabled": true,
+    "tool_use_enabled": true,
+    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
   },
   "search": {
-    "top_k": 5                   # Default result count
+    "top_k": 3
   },
   "display": {
-    "max_engrams_per_tool": 2    # Max per tool use
+    "max_engrams_per_prompt": 3,
+    "max_engrams_per_tool": 2,
+    "show_scores": false,
+    "show_categories": true
   }
 }
 ```
