@@ -6,25 +6,6 @@ Engrammar automatically learns from your Claude Code sessions and surfaces relev
 
 Unlike CLAUDE.md files which require manual curation, Engrammar extracts learnings from friction moments in past conversations (user corrections, repeated struggles, discovered conventions) and learns which contexts each engram belongs in through an automated evaluation pipeline.
 
-## Quick Start
-
-```bash
-# Initialize database and build embedding index
-engrammar setup
-
-# Check system status and detected environment
-engrammar status
-
-# See what tags are detected for your current project
-engrammar detect-tags
-
-# Search your knowledge base
-engrammar search "component patterns"
-
-# Add a engram manually
-engrammar add "Use Tailwind for UI components" --category dev/frontend --tags acme,react
-```
-
 ## How It Works
 
 1. **Hooks** inject relevant engrams into your Claude Code sessions at the right moment
@@ -109,14 +90,26 @@ All 21 commands:
 
 See [docs/CLI.md](docs/CLI.md) for full usage details.
 
-## Installation
+## Getting Started
 
-Engrammar requires:
+Requires Python 3.12+ and Claude Code CLI. No API keys needed — embeddings run locally via `fastembed`. The AI evaluation and extraction features use Haiku and are optional (fail open).
 
-- Python 3.12+
-- Claude Code CLI
+```bash
+# Initialize database and build embedding index
+engrammar setup
 
-Core functionality works completely **without API keys** — embeddings use local `fastembed` (`BAAI/bge-small-en-v1.5`, 384 dimensions). The AI evaluation and extraction features use Haiku and are optional (fail open).
+# Check system status and detected environment
+engrammar status
+
+# See what tags are detected for your current project
+engrammar detect-tags
+
+# Search your knowledge base
+engrammar search "component patterns"
+
+# Add a engram manually
+engrammar add "Use Tailwind for UI components" --category dev/frontend --tags acme,react
+```
 
 ## Architecture
 
