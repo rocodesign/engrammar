@@ -131,4 +131,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE)
