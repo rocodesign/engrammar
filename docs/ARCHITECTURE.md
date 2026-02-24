@@ -237,19 +237,19 @@ See [evaluation.md](evaluation.md) for full details. Uses constants from `search
 ### Hook Lifecycle
 
 ```
-SessionStart -> UserPromptSubmit -> PreToolUse -> (tool execution) -> SessionEnd
+SessionStart -> UserPromptSubmit -> PreToolUse -> (tool execution) -> Stop
 ```
 
 | Hook | File | Trigger | Purpose |
 |------|------|---------|---------|
-| SessionStart | [`on_session_start.py`](../hooks/on_session_start.py) | Session begins | Inject pinned engrams, start daemon, run maintenance |
+| SessionStart | [`on_session_start.py`](../hooks/on_session_start.py) | Session begins | Inject pinned engrams, start daemon, run maintenance, clean up stale offsets |
 | UserPromptSubmit | [`on_prompt.py`](../hooks/on_prompt.py) | User sends a prompt | Search engrams relevant to the prompt |
 | PreToolUse | [`on_tool_use.py`](../hooks/on_tool_use.py) | Before tool execution | Search engrams relevant to the tool being used |
-| SessionEnd | [`on_session_end.py`](../hooks/on_session_end.py) | Session ends | Write audit record, trigger evaluation + extraction |
+| Stop | [`on_stop.py`](../hooks/on_stop.py) | After each assistant response | Write session audit, trigger per-turn extraction + evaluation |
 
 ### SessionStart
 
-Loads pinned engrams, hard-gates on structural prerequisites, soft-gates on tag relevance (filters if `evals >= 3` and `avg < -0.1`). Also starts the daemon and triggers maintenance jobs.
+Loads pinned engrams, hard-gates on structural prerequisites, soft-gates on tag relevance (filters if `evals >= 3` and `avg < -0.1`). Also starts the daemon, triggers maintenance jobs, and cleans up stale turn offset files (>24h old).
 
 ### UserPromptSubmit
 
@@ -259,9 +259,9 @@ Searches engrams relevant to the user's prompt text. Tries daemon for fast searc
 
 Extracts keywords from `tool_name` + `tool_input` (file paths, commands) and runs hybrid search. Skips tools in the `skip_tools` config list. Same daemon/fallback/dedup pattern as UserPromptSubmit.
 
-### SessionEnd
+### Stop
 
-Writes audit record (`session_audit` table) with shown engram IDs, env tags, repo, and transcript path. Triggers background evaluation and extraction via `subprocess.Popen`. Skips agent/subagent sessions (short task runs) for extraction.
+Fires after every assistant response for incremental, reliable extraction. Writes session audit record with shown engram IDs, env tags, and transcript path. Sends `process_turn` request to the daemon, which spawns a background `process-turn` CLI job. Falls back to direct `subprocess.Popen` if daemon is unavailable. Skips subagent sessions. Uses byte offsets to only process new transcript content since the last turn — see [Extraction Pipeline](#extraction-pipeline).
 
 ---
 
@@ -286,6 +286,7 @@ UserPromptSubmit / PreToolUse hook
 |------|---------|
 | `search` | Hybrid search for a query (used by UserPromptSubmit) |
 | `tool_context` | Tool-specific search (used by PreToolUse) |
+| `process_turn` | Per-turn extraction (used by Stop hook) — single-flight via `extract_proc` |
 | `run_maintenance` | Trigger background jobs (index rebuild, extraction) |
 
 The daemon listens on a Unix socket at `~/.engrammar/daemon.sock`. Auto-started by SessionStart hook. Hooks fall back to direct search if the daemon is unavailable.
@@ -441,7 +442,7 @@ The prompt instructs Haiku to **only** extract from friction patterns:
 
 Explicitly rejected: task instructions, build summaries, generic advice, implementation details.
 
-### Per-Transcript Pipeline
+### Per-Transcript Pipeline (Batch)
 
 ```
 For each transcript (oldest-first):
@@ -460,9 +461,30 @@ For each transcript (oldest-first):
     9. Rebuild embedding index (for next transcript's dedup)
 ```
 
+### Per-Turn Pipeline (Incremental)
+
+The Stop hook triggers `extract_from_turn()` after each assistant response, using byte offsets to process only new content:
+
+```
+Stop hook fires:
+    1. Read byte offset from ~/.engrammar/.turn_offsets/<session_id>
+    2. Read new messages from transcript JSONL starting at offset
+    3. Skip if transcript < 10KB or new content < 50 chars
+    4. Read ~2000 chars of prior context for continuity
+    5. Get metadata + env tags, write session_audit
+    6. Send [context + new content] to Haiku for extraction
+    7. Process results (dedup via find_similar_engram)
+    8. Rebuild index if new engrams added
+    9. Save new byte offset
+```
+
+**Concurrency**: The daemon's `_spawn_cli_job` provides single-flight behavior — only one `extract_proc` runs at a time. If the Stop hook fires while extraction is running, it returns `"already_running"`. The next Stop picks up from the last offset and catches all accumulated content.
+
+**State**: Turn offsets are stored as plain integers in `~/.engrammar/.turn_offsets/<session_id>`. Cleaned up by SessionStart hook (files >24h old).
+
 ### Automatic Extraction
 
-The SessionEnd hook triggers background extraction and evaluation for the current session via `subprocess.Popen`.
+The Stop hook triggers background extraction and evaluation after each assistant response via the daemon's `process_turn` handler. Falls back to direct `subprocess.Popen` if the daemon is unavailable.
 
 ---
 
@@ -482,7 +504,7 @@ The SessionEnd hook triggers background extraction and evaluation for the curren
    SessionStart/UserPromptSubmit/PreToolUse -> search() -> RRF -> tag affinity boost -> tag relevance filter -> results
 
 4. Tracking
-   SessionEnd -> record audit -> evaluator -> tag relevance scores (EMA)
+   Stop hook -> record audit -> evaluator -> tag relevance scores (EMA)
 
 5. Auto-Pin
    update_match_stats() -> find_auto_pin_tag_subsets() -> threshold reached -> pinned=1

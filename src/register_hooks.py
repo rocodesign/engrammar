@@ -20,7 +20,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
     session_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_start.py")}'
     prompt_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_prompt.py")}'
     tool_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_tool_use.py")}'
-    session_end_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_end.py")}'
+    stop_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_stop.py")}'
 
     settings = {}
     if os.path.exists(settings_path):
@@ -54,11 +54,11 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
         })
         print("Registered PreToolUse hook")
 
-    if not hook_exists("SessionEnd", session_end_hook_cmd):
-        hooks.setdefault("SessionEnd", []).append({
-            "hooks": [{"type": "command", "command": session_end_hook_cmd}]
+    if not hook_exists("Stop", stop_hook_cmd):
+        hooks.setdefault("Stop", []).append({
+            "hooks": [{"type": "command", "command": stop_hook_cmd}]
         })
-        print("Registered SessionEnd hook")
+        print("Registered Stop hook")
 
     # Auto-allow engrammar MCP tools
     permissions = settings.setdefault("permissions", {})
@@ -79,6 +79,20 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
         hooks[event_name] = [
             hg for hg in hooks[event_name] if hg.get("hooks")
         ]
+
+    # Remove old SessionEnd hook (replaced by Stop hook for per-turn extraction)
+    if "SessionEnd" in hooks:
+        for hook_group in hooks["SessionEnd"]:
+            hook_group["hooks"] = [
+                h for h in hook_group.get("hooks", [])
+                if "on_session_end.py" not in h.get("command", "")
+            ]
+        hooks["SessionEnd"] = [
+            hg for hg in hooks["SessionEnd"] if hg.get("hooks")
+        ]
+        if not hooks["SessionEnd"]:
+            del hooks["SessionEnd"]
+            print("Removed SessionEnd hook (replaced by Stop hook)")
 
     # Clean up mcpServers from settings.json (wrong location)
     if "mcpServers" in settings:

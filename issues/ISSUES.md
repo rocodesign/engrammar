@@ -52,8 +52,6 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-022-cli-update-category-level-drift/issue.md`
 - [ ] **#27 Tag relevance boost averages only known-tag rows** `[C1] low-hanging`
   - `issues/open/[3]-027-tag-relevance-average-sparse/issue.md`
-- [ ] **#31 Session-end tests can spawn real CLI jobs** `[C1] low-hanging`
-  - `issues/open/[3]-031-session-end-tests-spawn-real-cli/issue.md`
 
 ### Low
 - [ ] **#5 `sys.path.insert(0, ENGRAMMAR_HOME)` everywhere** `[C3]`
@@ -77,3 +75,4 @@ This file is the index. Detailed issue writeups live under `issues/`.
 - [x] **#21 Backfill used current environment for historical sessions**
 - [x] **#24 Session identity global/local UUID mapping issue**
 - [x] **#25 Evaluator transcript lookup weakly coupled to session IDs**
+- [x] **#31 Session-end tests can spawn real CLI jobs** (resolved by Stop hook architecture — delegates to daemon, tests mock client)

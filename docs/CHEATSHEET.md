@@ -628,7 +628,8 @@ engrammar_feedback(engram_id=42, applicable=False, reason="why")
 ├── tag_embeddings.npy      # Cached tag embeddings
 ├── tag_embedding_ids.npy   # Engram ID mapping for tag index
 ├── config.json             # Configuration
-└── engrammar-cli           # CLI executable
+├── engrammar-cli           # CLI executable
+└── .turn_offsets/           # Per-session byte offsets for incremental extraction
 ```
 
 ### Config File

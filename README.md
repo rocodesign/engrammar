@@ -58,7 +58,7 @@ Four hooks automatically surface engrams at the right moment:
 | **SessionStart** | Session begins | Inject pinned engrams, start daemon, run maintenance |
 | **UserPromptSubmit** | User sends a prompt | Search engrams relevant to the prompt |
 | **PreToolUse** | Before tool execution | Search engrams relevant to the tool being used |
-| **SessionEnd** | Session ends | Write audit record, trigger evaluation + extraction |
+| **Stop** | After each assistant response | Per-turn extraction + evaluation via daemon |
 
 ## CLI Commands
 
