@@ -50,6 +50,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[1]-006-dedup-engrams-per-session/task.md`
 - [x] **#007 Per-turn extraction via Stop hook** `C2`
   - `tasks/completed/[1]-007-session-end-extraction/task.md`
+- [x] **#011 Coalesce queued turn extraction requests** `C2`
+  - `tasks/completed/[1]-011-coalesced-turn-extraction-queue/task.md`
 
 ### Medium
 
@@ -66,3 +68,4 @@ This file is the index. Detailed task writeups live under `tasks/`.
 - `tasks/ideas/session-end-reflection.md`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
+- `tasks/ideas/engram-pipeline-throughput-and-reliability.md` — Split turn extraction/evaluation, add backlog coalescing, and stage low-confidence auto-extracted engrams before injection
