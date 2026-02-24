@@ -218,8 +218,8 @@ class TestToolUse:
 # ---------- Session End ----------
 
 
-class TestSessionEnd:
-    def test_writes_audit_clears_shown(self, test_db, monkeypatch, capsys):
+class TestStop:
+    def test_writes_audit_for_shown_engrams(self, test_db, monkeypatch, capsys):
         engram_id = add_engram(text="shown engram", category="general", db_path=test_db)
         record_shown_engram("sess-1", engram_id, "UserPromptSubmit", db_path=test_db)
 
@@ -230,15 +230,11 @@ class TestSessionEnd:
         with patch("src.environment.detect_environment", return_value={
                  "os": "darwin", "repo": "test", "cwd": "/tmp",
                  "tags": ["python"], "mcp_servers": [],
-             }):
-            from hooks.on_session_end import main
+             }), patch("src.client.send_request", return_value={"status": "ok"}):
+            from hooks.on_stop import main
             main()
 
-        # Shown engrams should be cleared
-        shown = get_shown_engram_ids("sess-1", db_path=test_db)
-        assert len(shown) == 0
-
-        # Audit record should exist
+        # Audit record should exist with shown engram
         conn = get_connection(test_db)
         audit = conn.execute(
             "SELECT * FROM session_audit WHERE session_id = ?", ("sess-1",)
@@ -247,10 +243,37 @@ class TestSessionEnd:
         assert audit is not None
         assert engram_id in json.loads(audit["shown_engram_ids"])
 
+    def test_sends_process_turn_to_daemon(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {
+            "session_id": "sess-2",
+            "transcript_path": "/tmp/transcript.jsonl",
+        })
+        mock_send = patch("src.client.send_request", return_value={"status": "ok"})
+        with mock_send as m:
+            from hooks.on_stop import main
+            main()
+
+        m.assert_called_once()
+        call_args = m.call_args[0][0]
+        assert call_args["type"] == "process_turn"
+        assert call_args["session_id"] == "sess-2"
+
     def test_no_session_id(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {})
-        from hooks.on_session_end import main
+        from hooks.on_stop import main
         main()
 
         captured = capsys.readouterr()
         assert captured.out == ""
+
+    def test_skips_subagent_sessions(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {
+            "session_id": "sess-3",
+            "transcript_path": "/tmp/subagents/transcript.jsonl",
+        })
+        mock_send = patch("src.client.send_request", return_value={"status": "ok"})
+        with mock_send as m:
+            from hooks.on_stop import main
+            main()
+
+        m.assert_not_called()

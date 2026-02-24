@@ -131,6 +131,17 @@ class EngrammarDaemon:
             self.running = False
             return {"status": "shutting_down"}
 
+        elif req_type == "process_turn":
+            session_id = data.get("session_id")
+            transcript_path = data.get("transcript_path")
+            if not session_id or not transcript_path:
+                return {"error": "missing session_id or transcript_path"}
+            result = self._spawn_cli_job("extract", [
+                "process-turn", "--session", session_id,
+                "--transcript", transcript_path,
+            ])
+            return {"status": "ok", "job": result}
+
         elif req_type == "run_maintenance":
             extract = self._spawn_cli_job("extract", ["extract"])
             evaluate_args = ["evaluate"]

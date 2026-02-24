@@ -27,11 +27,6 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ## Open Tasks
 
-### High
-
-- [ ] **#007 Extract engrams at session end** `C2`
-  - `tasks/open/[1]-007-session-end-extraction/task.md`
-
 ### Medium
 
 - [ ] **#003 Strengthen engram deduplication** `C2`
@@ -53,6 +48,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[1]-001-self-extraction-fake-session-ids/task.md`
 - [x] **#006 Deduplicate engram injection globally per session** `C1`
   - `tasks/completed/[1]-006-dedup-engrams-per-session/task.md`
+- [x] **#007 Per-turn extraction via Stop hook** `C2`
+  - `tasks/completed/[1]-007-session-end-extraction/task.md`
 
 ### Medium
 

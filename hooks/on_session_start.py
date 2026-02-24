@@ -26,6 +26,13 @@ def main():
             from engrammar.hook_utils import write_session_id
             write_session_id(session_id)
 
+        # Clean up stale turn offset files (older than 24h)
+        try:
+            from engrammar.extractor import cleanup_old_turn_offsets
+            cleanup_old_turn_offsets()
+        except Exception:
+            pass
+
         # Start daemon (if needed) and trigger maintenance jobs with single-flight behavior
         try:
             from engrammar.client import send_request

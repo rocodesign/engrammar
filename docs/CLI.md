@@ -284,6 +284,26 @@ engrammar extract --facets
 - Deduplicates and merges similar engrams
 - Rebuilds index after extraction
 
+#### `process-turn`
+
+Process a single turn — extract engrams from new transcript content and run evaluation. Used internally by the Stop hook via the daemon.
+
+```bash
+engrammar process-turn --session UUID --transcript PATH
+```
+
+**Options:**
+
+- `--session UUID` - Session ID (required)
+- `--transcript PATH` - Path to transcript JSONL file (required)
+
+**Behavior:**
+
+- Reads from the last byte offset for the session
+- Extracts engrams from new content only
+- Runs evaluation for shown engrams
+- Updates the byte offset for next turn
+
 #### `evaluate`
 
 Run relevance evaluations for pending sessions or a specific session.

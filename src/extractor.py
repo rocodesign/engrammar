@@ -968,6 +968,236 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
     return summary
 
 
+def _read_turn_offset(session_id):
+    """Read the byte offset for a session's last processed turn.
+
+    Returns:
+        int: byte offset (0 if no offset file exists)
+    """
+    offset_dir = os.path.join(
+        os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar")),
+        ".turn_offsets",
+    )
+    offset_file = os.path.join(offset_dir, session_id)
+    try:
+        with open(offset_file, "r") as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0
+
+
+def _write_turn_offset(session_id, offset):
+    """Write the byte offset for a session's last processed turn."""
+    offset_dir = os.path.join(
+        os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar")),
+        ".turn_offsets",
+    )
+    os.makedirs(offset_dir, exist_ok=True)
+    offset_file = os.path.join(offset_dir, session_id)
+    with open(offset_file, "w") as f:
+        f.write(str(offset))
+
+
+def _read_transcript_from_offset(jsonl_path, byte_offset, max_chars=8000):
+    """Read transcript messages starting from byte_offset.
+
+    Returns:
+        tuple of (formatted_text, new_byte_offset)
+    """
+    messages = []
+    try:
+        with open(jsonl_path, "rb") as f:
+            f.seek(byte_offset)
+            new_offset = byte_offset
+            for raw_line in f:
+                new_offset = f.tell()
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+
+                content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
+                role = message_obj.get("role", entry.get("type", ""))
+                if content:
+                    messages.append(f"{role}: {content[:500]}")
+    except Exception:
+        return "", byte_offset
+
+    result = "\n".join(messages)
+    if len(result) > max_chars:
+        result = result[-max_chars:]
+    return result, new_offset
+
+
+def _read_transcript_context(jsonl_path, byte_offset, max_chars=2000):
+    """Read prior context (tail of content before byte_offset) for continuity.
+
+    Returns:
+        str: formatted message text from before the offset
+    """
+    if byte_offset <= 0:
+        return ""
+
+    messages = []
+    try:
+        with open(jsonl_path, "rb") as f:
+            while f.tell() < byte_offset:
+                raw_line = f.readline()
+                if not raw_line:
+                    break
+                if f.tell() > byte_offset:
+                    break
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+
+                content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
+                role = message_obj.get("role", entry.get("type", ""))
+                if content:
+                    messages.append(f"{role}: {content[:500]}")
+    except Exception:
+        return ""
+
+    result = "\n".join(messages)
+    if len(result) > max_chars:
+        result = result[-max_chars:]
+    return result
+
+
+def cleanup_old_turn_offsets(max_age_hours=24):
+    """Delete turn offset files older than max_age_hours."""
+    offset_dir = os.path.join(
+        os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar")),
+        ".turn_offsets",
+    )
+    if not os.path.isdir(offset_dir):
+        return
+    now = datetime.now(timezone.utc).timestamp()
+    cutoff = now - (max_age_hours * 3600)
+    for fname in os.listdir(offset_dir):
+        fpath = os.path.join(offset_dir, fname)
+        try:
+            if os.path.getmtime(fpath) < cutoff:
+                os.unlink(fpath)
+        except OSError:
+            pass
+
+
+def extract_from_turn(session_id, transcript_path):
+    """Extract engrams from new transcript content since last turn.
+
+    Called by the Stop hook (via daemon) after each assistant response.
+    Uses byte offsets to only process new content.
+
+    Args:
+        session_id: the session UUID
+        transcript_path: path to the transcript JSONL
+
+    Returns:
+        dict with summary: {extracted, merged, skipped_reason}
+    """
+    if not transcript_path or not os.path.exists(transcript_path):
+        return {"extracted": 0, "merged": 0, "skipped_reason": "no_transcript"}
+
+    # Skip agent sessions (small transcripts < 10KB)
+    if os.path.getsize(transcript_path) < 10_000:
+        return {"extracted": 0, "merged": 0, "skipped_reason": "small_transcript"}
+
+    # Read byte offset
+    byte_offset = _read_turn_offset(session_id)
+
+    # Read new messages from offset
+    new_text, new_offset = _read_transcript_from_offset(transcript_path, byte_offset)
+
+    # Skip if no meaningful new content
+    if not new_text or len(new_text) < 50:
+        # Still update offset so we don't re-read non-message lines
+        if new_offset > byte_offset:
+            _write_turn_offset(session_id, new_offset)
+        return {"extracted": 0, "merged": 0, "skipped_reason": "too_short"}
+
+    # Read prior context for continuity
+    context = _read_transcript_context(transcript_path, byte_offset)
+
+    # Combine context + new content for extraction
+    if context:
+        full_text = f"[Prior context]\n{context}\n\n[New conversation]\n{new_text}"
+    else:
+        full_text = new_text
+
+    # Get metadata and env tags
+    metadata = _read_transcript_metadata(transcript_path)
+    env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
+
+    # Write session audit so _enrich_with_session_tags works
+    if env_tags:
+        write_session_audit(session_id, [], env_tags, metadata.get("repo", ""),
+                            transcript_path=transcript_path)
+
+    # Read existing instructions to avoid duplicating documented knowledge
+    existing_instructions = _read_existing_instructions(metadata.get("cwd"))
+
+    print(f"Extracting from turn (session {session_id[:12]}, offset {byte_offset}->{new_offset})...")
+    extracted = _call_claude_for_transcript_extraction(
+        full_text, session_id, existing_instructions=existing_instructions
+    )
+
+    if not extracted:
+        print("  No engrams extracted from turn.")
+        _write_turn_offset(session_id, new_offset)
+        return {"extracted": 0, "merged": 0}
+
+    added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
+
+    # Rebuild index so new engrams are immediately searchable
+    if added > 0:
+        engrams = get_all_active_engrams()
+        build_index(engrams)
+
+    # Save new offset
+    _write_turn_offset(session_id, new_offset)
+
+    print(f"  Turn done. Added: {added}, Merged: {merged}")
+    return {"extracted": added, "merged": merged}
+
+
 def _backfill_shown_engrams(projects_dir=None):
     """Populate shown_engram_ids in session_audit records.
 

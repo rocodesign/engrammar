@@ -792,6 +792,47 @@ def cmd_backfill_prereqs(args):
         print(f"Cached {nt} tag embeddings.")
 
 
+def cmd_process_turn(args):
+    """Process a single turn — extract engrams + run evaluation."""
+    session_id = None
+    transcript_path = None
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--session" and i + 1 < len(args):
+            session_id = args[i + 1]
+            i += 2
+        elif args[i] == "--transcript" and i + 1 < len(args):
+            transcript_path = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    if not session_id or not transcript_path:
+        print("Usage: engrammar process-turn --session UUID --transcript PATH")
+        return
+
+    # 1. Extract engrams from the new turn content
+    from engrammar.extractor import extract_from_turn
+
+    summary = extract_from_turn(session_id, transcript_path)
+    print(f"Turn extraction: {summary.get('extracted', 0)} added, {summary.get('merged', 0)} merged")
+
+    # 2. Run evaluation for shown engrams in this session
+    from engrammar.db import get_shown_engram_ids, write_session_audit
+    from engrammar.evaluator import run_evaluation_for_session
+
+    shown_ids = get_shown_engram_ids(session_id)
+    if shown_ids:
+        from engrammar.environment import detect_environment
+        env = detect_environment()
+        write_session_audit(
+            session_id, list(shown_ids), env.get("tags", []),
+            env.get("repo", ""), transcript_path=transcript_path,
+        )
+        run_evaluation_for_session(session_id)
+
+
 def cmd_log(args):
     """Show hook event log — what was injected, when, and by which hook."""
     from engrammar.db import get_hook_events, get_connection
@@ -979,6 +1020,7 @@ def main():
         print("  import       Import from file: import FILE")
         print("  export       Export all engrams to markdown")
         print("  extract      Extract engrams from transcripts: extract [--limit N] [--session UUID] [--dry-run] [--facets]")
+        print("  process-turn Process a single turn: process-turn --session UUID --transcript PATH")
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
@@ -1006,6 +1048,7 @@ def main():
         "import": cmd_import,
         "export": cmd_export,
         "extract": cmd_extract,
+        "process-turn": cmd_process_turn,
         "rebuild": cmd_rebuild,
         "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
