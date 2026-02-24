@@ -286,7 +286,7 @@ UserPromptSubmit / PreToolUse hook
 |------|---------|
 | `search` | Hybrid search for a query (used by UserPromptSubmit) |
 | `tool_context` | Tool-specific search (used by PreToolUse) |
-| `process_turn` | Per-turn extraction (used by Stop hook) — single-flight via `extract_proc` |
+| `process_turn` | Per-turn extraction (used by Stop hook) — coalescing queue with single-flight via `extract_proc` |
 | `run_maintenance` | Trigger background jobs (index rebuild, extraction) |
 
 The daemon listens on a Unix socket at `~/.engrammar/daemon.sock`. Auto-started by SessionStart hook. Hooks fall back to direct search if the daemon is unavailable.
@@ -478,7 +478,7 @@ Stop hook fires:
     9. Save new byte offset
 ```
 
-**Concurrency**: The daemon's `_spawn_cli_job` provides single-flight behavior — only one `extract_proc` runs at a time. If the Stop hook fires while extraction is running, it returns `"already_running"`. The next Stop picks up from the last offset and catches all accumulated content.
+**Concurrency**: The daemon maintains a coalescing queue (`_pending_turns`) for turn extraction. Only one `extract_proc` runs at a time. If the Stop hook fires while extraction is running, the request is queued (coalesced per session — latest transcript path wins). When extraction finishes, `_drain_pending_turns()` starts the next pending session. Drain runs after each connection and on 5s timeout polls. Byte offsets ensure each drain run catches all accumulated content since the last processed turn.
 
 **State**: Turn offsets are stored as plain integers in `~/.engrammar/.turn_offsets/<session_id>`. Cleaned up by SessionStart hook (files >24h old).
 

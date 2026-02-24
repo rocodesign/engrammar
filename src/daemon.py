@@ -39,6 +39,7 @@ class EngrammarDaemon:
         self.running = True
         self.extract_proc = None
         self.evaluate_proc = None
+        self._pending_turns = {}  # {session_id: transcript_path} — coalesced per session
 
     @staticmethod
     def _is_running(proc):
@@ -67,6 +68,28 @@ class EngrammarDaemon:
         setattr(self, proc_attr, new_proc)
         _log(f"Started {job_name} job (pid={new_proc.pid})")
         return {"started": True, "status": "started", "pid": new_proc.pid}
+
+    def _drain_pending_turns(self):
+        """If extraction finished and turns are pending, start the next one."""
+        if not self._pending_turns:
+            return
+        if self._is_running(self.extract_proc):
+            return
+
+        # Peek first pending session (dict preserves insertion order)
+        session_id, transcript_path = next(iter(self._pending_turns.items()))
+
+        try:
+            result = self._spawn_cli_job("extract", [
+                "process-turn", "--session", session_id,
+                "--transcript", transcript_path,
+            ])
+            # Only remove after successful spawn
+            del self._pending_turns[session_id]
+            self.last_activity = time.time()
+            _log(f"Drained turn for {session_id[:12]} (remaining: {len(self._pending_turns)}, {result.get('status')})")
+        except Exception as e:
+            _log(f"Drain spawn failed for {session_id[:12]}: {e}")
 
     def _warm_up(self):
         """Pre-load the embedding model so first search is fast."""
@@ -136,6 +159,13 @@ class EngrammarDaemon:
             transcript_path = data.get("transcript_path")
             if not session_id or not transcript_path:
                 return {"error": "missing session_id or transcript_path"}
+
+            # Try to start immediately; if busy, queue for later
+            if self._is_running(self.extract_proc):
+                self._pending_turns[session_id] = transcript_path
+                _log(f"Queued turn for {session_id[:12]} (pending: {len(self._pending_turns)})")
+                return {"status": "queued", "pending": len(self._pending_turns)}
+
             result = self._spawn_cli_job("extract", [
                 "process-turn", "--session", session_id,
                 "--transcript", transcript_path,
@@ -214,7 +244,11 @@ class EngrammarDaemon:
 
         try:
             while self.running:
-                if time.time() - self.last_activity > IDLE_TIMEOUT:
+                has_pending_work = (
+                    self._pending_turns
+                    or self._is_running(self.extract_proc)
+                )
+                if not has_pending_work and time.time() - self.last_activity > IDLE_TIMEOUT:
                     _log("Idle timeout reached, shutting down.")
                     break
 
@@ -222,9 +256,11 @@ class EngrammarDaemon:
                     conn, _ = server.accept()
                     self._handle_connection(conn)
                 except socket.timeout:
+                    self._drain_pending_turns()
                     continue
                 except OSError:
                     break
+                self._drain_pending_turns()
         finally:
             server.close()
             for path in (SOCKET_PATH, PID_PATH):
