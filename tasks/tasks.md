@@ -46,6 +46,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [ ] **#013 Batch processing for extracted engrams** `C2`
   - `tasks/open/[3]-013-batch-extracted-engram-processing/task.md`
+- [ ] **#014 Add extraction pipeline observability** `C1`
+  - `tasks/open/[3]-014-extraction-pipeline-observability/task.md`
 
 ## Completed Tasks
 
@@ -75,4 +77,3 @@ This file is the index. Detailed task writeups live under `tasks/`.
 - `tasks/ideas/session-end-reflection.md`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
-- `tasks/ideas/engram-pipeline-throughput-and-reliability.md` — Split turn extraction/evaluation, add backlog coalescing, and stage low-confidence auto-extracted engrams before injection
