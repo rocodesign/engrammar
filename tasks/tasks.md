@@ -39,6 +39,13 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-009-richer-tool-use-context/task.md`
 - [ ] **#010 Promote engrams to generic when useful across repos** `C2`
   - `tasks/open/[2]-010-tag-generalization/task.md`
+- [ ] **#012 Stage auto-extracted engrams before injection** `C3`
+  - `tasks/open/[2]-012-stage-auto-extracted-engrams/task.md`
+
+### Low
+
+- [ ] **#013 Batch processing for extracted engrams** `C2`
+  - `tasks/open/[3]-013-batch-extracted-engram-processing/task.md`
 
 ## Completed Tasks
 

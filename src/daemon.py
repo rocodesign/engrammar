@@ -87,6 +87,10 @@ class EngrammarDaemon:
             # Only remove after successful spawn
             del self._pending_turns[session_id]
             self.last_activity = time.time()
+            # Schedule evaluation on separate proc slot
+            self._spawn_cli_job("evaluate", [
+                "evaluate", "--session", session_id,
+            ])
             _log(f"Drained turn for {session_id[:12]} (remaining: {len(self._pending_turns)}, {result.get('status')})")
         except Exception as e:
             _log(f"Drain spawn failed for {session_id[:12]}: {e}")
@@ -160,17 +164,21 @@ class EngrammarDaemon:
             if not session_id or not transcript_path:
                 return {"error": "missing session_id or transcript_path"}
 
-            # Try to start immediately; if busy, queue for later
+            # Try to start extraction immediately; if busy, queue for later
             if self._is_running(self.extract_proc):
                 self._pending_turns[session_id] = transcript_path
                 _log(f"Queued turn for {session_id[:12]} (pending: {len(self._pending_turns)})")
                 return {"status": "queued", "pending": len(self._pending_turns)}
 
-            result = self._spawn_cli_job("extract", [
+            extract = self._spawn_cli_job("extract", [
                 "process-turn", "--session", session_id,
                 "--transcript", transcript_path,
             ])
-            return {"status": "ok", "job": result}
+            # Schedule evaluation on separate proc slot (runs concurrently)
+            evaluate = self._spawn_cli_job("evaluate", [
+                "evaluate", "--session", session_id,
+            ])
+            return {"status": "ok", "extract": extract, "evaluate": evaluate}
 
         elif req_type == "run_maintenance":
             extract = self._spawn_cli_job("extract", ["extract"])

@@ -64,7 +64,7 @@ def _make_daemon(monkeypatch, tmp_path, spawned):
     return EngrammarDaemon()
 
 
-def test_process_turn_starts_immediately_when_idle(monkeypatch, tmp_path):
+def test_process_turn_starts_extract_and_evaluate(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
@@ -75,17 +75,21 @@ def test_process_turn_starts_immediately_when_idle(monkeypatch, tmp_path):
     })
 
     assert result["status"] == "ok"
-    assert result["job"]["started"] is True
-    assert len(spawned) == 1
-    assert "--session" in spawned[0].cmd
+    assert result["extract"]["started"] is True
+    assert result["evaluate"]["started"] is True
+    # Two separate procs: extraction + evaluation
+    assert len(spawned) == 2
+    assert "process-turn" in spawned[0].cmd
     assert "sess-a" in spawned[0].cmd
+    assert "evaluate" in spawned[1].cmd
+    assert "sess-a" in spawned[1].cmd
 
 
 def test_process_turn_queues_when_busy(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
-    # First request starts extraction
+    # First request starts extraction + evaluation (2 procs)
     daemon._handle_request({
         "type": "process_turn",
         "session_id": "sess-a",
@@ -100,19 +104,21 @@ def test_process_turn_queues_when_busy(monkeypatch, tmp_path):
 
     assert result["status"] == "queued"
     assert result["pending"] == 1
-    assert len(spawned) == 1  # Only one process started
+    assert len(spawned) == 2  # Only first request's extract + evaluate
 
 
 def test_coalesces_same_session(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
-    # Start extraction
+    # Start extraction (spawns extract + evaluate)
     daemon._handle_request({
         "type": "process_turn",
         "session_id": "sess-a",
         "transcript_path": "/tmp/a.jsonl",
     })
+    assert len(spawned) == 2  # extract + evaluate for sess-a
+
     # Queue two turns for same session — should coalesce
     daemon._handle_request({
         "type": "process_turn",
@@ -134,7 +140,7 @@ def test_drain_starts_pending_after_finish(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
-    # Start extraction, queue another
+    # Start extraction (spawns extract + evaluate = 2 procs), queue another
     daemon._handle_request({
         "type": "process_turn",
         "session_id": "sess-a",
@@ -146,15 +152,15 @@ def test_drain_starts_pending_after_finish(monkeypatch, tmp_path):
         "transcript_path": "/tmp/b.jsonl",
     })
 
-    assert len(spawned) == 1
+    assert len(spawned) == 2  # extract + evaluate for sess-a
 
-    # Simulate extraction finishing
+    # Simulate extraction finishing (evaluate for sess-a still running)
     spawned[0].finish()
     daemon._drain_pending_turns()
 
-    # Pending session should now be running
-    assert len(spawned) == 2
-    assert "sess-b" in spawned[1].cmd
+    # Drain spawns extract for sess-b; evaluate is already_running from sess-a
+    assert len(spawned) == 3
+    assert "sess-b" in spawned[2].cmd  # extract
     assert len(daemon._pending_turns) == 0
 
 
@@ -173,10 +179,10 @@ def test_drain_noop_when_still_running(monkeypatch, tmp_path):
         "transcript_path": "/tmp/b.jsonl",
     })
 
-    # Drain while still running — should not start anything
+    # Drain while extract_proc still running — should not start anything
     daemon._drain_pending_turns()
 
-    assert len(spawned) == 1
+    assert len(spawned) == 2  # Only initial extract + evaluate
     assert len(daemon._pending_turns) == 1
 
 
@@ -184,7 +190,7 @@ def test_drain_processes_multiple_pending_sequentially(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
-    # Start extraction, queue two different sessions
+    # Start extraction (2 procs), queue two different sessions
     daemon._handle_request({
         "type": "process_turn",
         "session_id": "sess-a",
@@ -200,19 +206,23 @@ def test_drain_processes_multiple_pending_sequentially(monkeypatch, tmp_path):
         "session_id": "sess-c",
         "transcript_path": "/tmp/c.jsonl",
     })
+    assert len(spawned) == 2  # extract + evaluate for sess-a
 
-    # Finish first, drain picks up sess-b
+    # Finish extract for sess-a, drain picks up sess-b extract
+    # (evaluate may be already_running from sess-a)
     spawned[0].finish()
     daemon._drain_pending_turns()
-    assert len(spawned) == 2
-    assert "sess-b" in spawned[1].cmd
+    assert len(spawned) == 3  # +1 extract for sess-b
+    assert "sess-b" in spawned[2].cmd
     assert len(daemon._pending_turns) == 1
 
-    # Finish second, drain picks up sess-c
-    spawned[1].finish()
+    # Finish sess-b extract, drain picks up sess-c
+    spawned[2].finish()
     daemon._drain_pending_turns()
-    assert len(spawned) == 3
-    assert "sess-c" in spawned[2].cmd
+    # evaluate_proc from sess-a may have finished or not — count extract procs
+    extract_cmds = [s for s in spawned if "process-turn" in s.cmd]
+    assert len(extract_cmds) == 3  # sess-a, sess-b, sess-c
+    assert "sess-c" in spawned[-2].cmd or "sess-c" in spawned[-1].cmd
     assert len(daemon._pending_turns) == 0
 
 
@@ -221,7 +231,7 @@ def test_drain_spawn_failure_keeps_pending(monkeypatch, tmp_path):
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)
 
-    # Start extraction, queue another
+    # Start extraction (2 procs), queue another
     daemon._handle_request({
         "type": "process_turn",
         "session_id": "sess-a",
@@ -275,9 +285,9 @@ def test_idle_timeout_suppressed_while_pending(monkeypatch, tmp_path):
     assert has_pending is True
 
     # After draining all and finishing all procs, has_pending_work should be False
-    spawned[0].finish()
-    daemon._drain_pending_turns()
-    spawned[1].finish()
+    spawned[0].finish()  # extract for sess-a
+    daemon._drain_pending_turns()  # starts sess-b extract + evaluate
+    spawned[2].finish()  # extract for sess-b
     daemon._pending_turns.clear()
 
     has_pending = bool(daemon._pending_turns) or daemon._is_running(daemon.extract_proc)

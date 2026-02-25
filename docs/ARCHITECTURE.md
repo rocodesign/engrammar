@@ -245,7 +245,7 @@ SessionStart -> UserPromptSubmit -> PreToolUse -> (tool execution) -> Stop
 | SessionStart | [`on_session_start.py`](../hooks/on_session_start.py) | Session begins | Inject pinned engrams, start daemon, run maintenance, clean up stale offsets |
 | UserPromptSubmit | [`on_prompt.py`](../hooks/on_prompt.py) | User sends a prompt | Search engrams relevant to the prompt |
 | PreToolUse | [`on_tool_use.py`](../hooks/on_tool_use.py) | Before tool execution | Search engrams relevant to the tool being used |
-| Stop | [`on_stop.py`](../hooks/on_stop.py) | After each assistant response | Write session audit, trigger per-turn extraction + evaluation |
+| Stop | [`on_stop.py`](../hooks/on_stop.py) | After each assistant response | Write session audit, trigger per-turn extraction (+ evaluation on separate proc) |
 
 ### SessionStart
 
@@ -484,7 +484,7 @@ Stop hook fires:
 
 ### Automatic Extraction
 
-The Stop hook triggers background extraction and evaluation after each assistant response via the daemon's `process_turn` handler. Falls back to direct `subprocess.Popen` if the daemon is unavailable.
+The Stop hook triggers background extraction after each assistant response via the daemon's `process_turn` handler. Extraction runs on `extract_proc`, evaluation runs concurrently on `evaluate_proc`. Falls back to direct `subprocess.Popen` if the daemon is unavailable.
 
 ---
 
