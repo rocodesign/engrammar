@@ -286,7 +286,7 @@ engrammar extract --facets
 
 #### `process-turn`
 
-Process a single turn — extract engrams from new transcript content and run evaluation. Used internally by the Stop hook via the daemon.
+Process a single turn — extract engrams from new transcript content. Used internally by the Stop hook via the daemon. Evaluation runs separately on the daemon's `evaluate_proc` slot.
 
 ```bash
 engrammar process-turn --session UUID --transcript PATH
@@ -300,8 +300,7 @@ engrammar process-turn --session UUID --transcript PATH
 **Behavior:**
 
 - Reads from the last byte offset for the session
-- Extracts engrams from new content only
-- Runs evaluation for shown engrams
+- Extracts engrams from new content only (extraction-only, no evaluation)
 - Updates the byte offset for next turn
 
 #### `evaluate`
