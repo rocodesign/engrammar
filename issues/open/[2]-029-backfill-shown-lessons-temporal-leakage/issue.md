@@ -1,4 +1,4 @@
-# Issue #29: Shown-Engram Backfill Uses Present-Day Engram Set
+# Issue #29: Shown-Lesson Backfill Uses Present-Day Lesson Set
 
 - Severity: High
 - Complexity: C2 (Medium complexity)

@@ -29,10 +29,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ### Medium
 
-- [ ] **#003 Strengthen engram deduplication** `C2`
-  - `tasks/open/[2]-003-engram-dedup-too-weak/task.md`
-- [ ] **#004 LLM-assisted engram refinement on merge** `C2` `blocked-by: #003, #005`
-  - `tasks/open/[2]-004-llm-assisted-engram-merge/task.md`
+- [ ] **#003 LLM-assisted engram deduplication** `C2` `absorbs: #004`
+  - `tasks/open/[2]-003-lesson-dedup-too-weak/task.md`
 - [ ] **#005 Incremental embedding index update** `C2`
   - `tasks/open/[2]-005-incremental-embedding-index/task.md`
 - [ ] **#009 Richer tool-use context for PreToolUse search** `C2`
@@ -41,6 +39,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-010-tag-generalization/task.md`
 - [ ] **#012 Stage auto-extracted engrams before injection** `C3`
   - `tasks/open/[2]-012-stage-auto-extracted-engrams/task.md`
+- [ ] **#015 Daemon priority queue with background dedup** `C2` `blocked-by: #003`
+  - `tasks/open/[2]-015-daemon-priority-queue/task.md`
+- [ ] **#016 Adaptive transcript context for evaluation** `C2`
+  - `tasks/open/[2]-016-adaptive-evaluation-transcript-context/task.md`
 
 ### Low
 
@@ -55,8 +57,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [x] **#001 Fix self-extraction fake session IDs** `C1`
   - `tasks/completed/[1]-001-self-extraction-fake-session-ids/task.md`
-- [x] **#006 Deduplicate engram injection globally per session** `C1`
-  - `tasks/completed/[1]-006-dedup-engrams-per-session/task.md`
+- [x] **#006 Deduplicate lesson injection globally per session** `C1`
+  - `tasks/completed/[1]-006-dedup-lessons-per-session/task.md`
 - [x] **#007 Per-turn extraction via Stop hook** `C2`
   - `tasks/completed/[1]-007-session-end-extraction/task.md`
 - [x] **#011 Coalesce queued turn extraction requests** `C2`
@@ -77,3 +79,4 @@ This file is the index. Detailed task writeups live under `tasks/`.
 - `tasks/ideas/session-end-reflection.md`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
+- `tasks/ideas/tool-use-previous-turn-retrieval.md` — Give extraction LLM an on-demand tool to retrieve the previous turn for detecting inflection points
