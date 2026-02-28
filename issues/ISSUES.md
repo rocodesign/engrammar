@@ -22,9 +22,11 @@ This file is the index. Detailed issue writeups live under `issues/`.
 ## Open Issues by Severity
 
 ### Critical
+
 - None currently identified.
 
 ### High
+
 - [ ] **#19 Errors remain fail-open and mostly silent to users** `[C2]`
   - `issues/open/[2]-019-errors-silent-fail-open/issue.md`
 - [ ] **#23 Path prerequisite matching false-matches on prefixes** `[C1] low-hanging`
@@ -33,11 +35,13 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-026-pin-evidence-overcount/issue.md`
 - [ ] **#28 Pending evaluation processing has no claim/lock step** `[C3]`
   - `issues/open/[2]-028-evaluator-no-claim-lock/issue.md`
-- [ ] **#29 Shown-engram backfill uses present-day engram set** `[C2]`
-  - `issues/open/[2]-029-backfill-shown-engrams-temporal-leakage/issue.md`
+- [ ] **#29 Shown-lesson backfill uses present-day lesson set** `[C2]`
+  - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
 - [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
   - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
+
 ### Medium
+
 - [ ] **#7 Daemon is single-threaded** `[C3]`
   - `issues/open/[3]-007-single-threaded-daemon/issue.md`
 - [ ] **#8 Config cached per-process but daemon is long-lived** `[C1] low-hanging`
@@ -54,6 +58,7 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-027-tag-relevance-average-sparse/issue.md`
 
 ### Low
+
 - [ ] **#5 `sys.path.insert(0, ENGRAMMAR_HOME)` everywhere** `[C3]`
   - `issues/open/[4]-005-sys-path-insert/issue.md`
 - [ ] **#9 CLI argument parsing is hand-rolled** `[C2]`

@@ -1,4 +1,4 @@
-# Task: Deduplicate Engram Injection Globally Per Session
+# Task: Deduplicate Lesson Injection Globally Per Session
 
 - Priority: High
 - Complexity: C1 (low-hanging)
