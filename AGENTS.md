@@ -1,5 +1,11 @@
 In this repo refrain from using engrammar mcp, we are developing engrammar here and we want to determine how to automatically improve learning rather than just fixing the db state.
 
+## Deployment
+
+- **First install**: `bash setup.sh` — creates venv, copies files, initializes DB, registers hooks
+- **After code changes**: `bash deploy.sh` — copies src/, hooks/, cli.py to `~/.engrammar/`
+- **With daemon restart**: `bash deploy.sh --restart`
+
 ## Tracking Work
 
 Don't let ideas stay only in conversation — if it's worth discussing, it's worth writing down.
