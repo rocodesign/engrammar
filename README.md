@@ -127,6 +127,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ```bash
 # Run tests
 ~/.engrammar/venv/bin/python -m pytest tests/ -v
+
+# Deploy changes to ~/.engrammar after editing
+bash deploy.sh
+
+# Deploy and restart daemon
+bash deploy.sh --restart
 ```
 
 ## License
