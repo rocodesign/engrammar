@@ -27,6 +27,11 @@ for hook in on_session_start.py on_prompt.py on_tool_use.py on_stop.py; do
     fi
 done
 
+# Copy prompts
+echo "  prompts/"
+mkdir -p "$ENGRAMMAR_HOME/prompts"
+cp -r "$SOURCE_DIR"/prompts/* "$ENGRAMMAR_HOME/prompts/"
+
 # Copy CLI + scripts
 echo "  cli.py, engrammar-cli, backfill_stats.py"
 cp "$SOURCE_DIR/cli.py" "$ENGRAMMAR_HOME/cli.py"

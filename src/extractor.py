@@ -32,6 +32,7 @@ from .db import (
     write_session_audit,
 )
 from .embeddings import build_index, embed_batch
+from .prompt_loader import load_prompt
 
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30
@@ -42,100 +43,15 @@ KEYWORD_PREREQUISITES = {
     "figma server": {"mcp_servers": ["figma"]},
 }
 
-TRANSCRIPT_EXTRACTION_PROMPT = """You are analyzing a Claude Code conversation transcript to extract engrams from FRICTION — moments where the assistant got something wrong and the user had to intervene.
+# Prompts loaded from prompts/ directory (lazily cached)
+_prompt_cache = {}
 
-ONLY extract from these patterns:
-1. **User corrections**: The assistant tried approach A, then the user said "no, do B instead" or "that's wrong, use X". Capture the rule: "Do B, not A" or "Use X because Y".
-2. **Repeated struggle**: The assistant spent multiple turns on something that could have been avoided. Capture the shortcut or root cause.
-3. **Discovered conventions**: The user revealed a project rule the assistant didn't know (naming, architecture, workflow). Capture the rule.
-4. **Tooling gotchas**: A tool or API behaved unexpectedly and required a workaround. Capture the gotcha.
 
-CRITICAL — DO NOT extract:
-- User instructions or requests ("do X", "build Y", "add Z") — these are TASKS, not engrams
-- Summaries of what was built or discussed
-- Generic programming advice (validate inputs, write tests, use types)
-- Implementation details about specific functions
-- Anything that reads like a design decision rather than a correction
-- One-off data model quirks, API field mappings, or component-specific behaviors that only matter for a single task (e.g., "field X is empty, use field Y instead" or "component Z stores data in array A not field B")
-
-The test: if the engram is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a engram.
-
-Reusability test: would knowing this save time in a DIFFERENT task in the same project? If it only helps when repeating the exact same task, do NOT extract it.
-
-Good examples (notice the correction pattern):
-- "Use cy.contains('button', 'Text') not cy.get('button').contains('Text') — the latter yields the deepest element, not the button"
-- "In this monorepo, run codegen scoped to the app (nx run app:codegen), not workspace-wide"
-- "PR descriptions: max 50 words, no co-authored-by lines — the assistant kept adding verbose descriptions"
-
-Bad examples (these are just task summaries):
-- "Rebuild similarity index after each batch" (user instruction, not a correction)
-- "Validate input at system boundaries" (generic advice)
-- "Session IDs are provided by Claude infrastructure" (factual description, no friction)
-- "For CITY type profiles, the location field is empty — use onsiteLocations array" (one-off data model detail, only useful for that exact component)
-{existing_instructions}
-Session transcript:
-{transcript}
-
-Output a JSON array of objects, each with:
-- "category": hierarchical category path using these prefixes:
-    - "development/frontend" (styling, components, react, etc.)
-    - "development/backend" (APIs, databases, etc.)
-    - "development/git" (branching, PRs, commits)
-    - "development/testing" (test patterns, frameworks)
-    - "development/architecture" (project structure, patterns)
-    - "tools/<tool-name>" (figma, jira, playwright, claude-code, etc.)
-    - "workflow/<area>" (communication, setup, debugging)
-    - "general/<topic>" (catch-all for anything else)
-  Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
-- "engram": the specific, concrete engram (1-2 sentences max)
-- "source_sessions": ["{session_id}"]
-- "scope": "general" if the engram applies broadly, or "project-specific" if it only applies to a particular project/tool
-- "project_signals": list of project/tool names when scope is "project-specific". Empty list when scope is "general".
-
-If no engrams are worth extracting, output an empty array: []
-
-Output ONLY valid JSON, no markdown fences, no explanation."""
-
-EXTRACTION_PROMPT = """You are analyzing Claude Code session data to extract SPECIFIC, ACTIONABLE engrams.
-
-DO NOT extract:
-- Generic advice like "investigate methodically" or "ask for clarification"
-- Implementation details about specific functions/code internals (e.g. "function X has a gap" or "module Y does Z internally")
-- Bug descriptions or one-time fixes that won't recur
-- One-off data model quirks, API field mappings, or component-specific behaviors that only matter for a single task (e.g., "field X is empty, use field Y instead")
-
-Reusability test: would knowing this save time in a DIFFERENT task in the same project? If it only helps when repeating the exact same task, skip it.
-
-DO extract concrete, reusable knowledge like:
-- "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
-- "Figma MCP server must be connected before starting UI implementation — test with a simple figma tool call first"
-- "Branch naming convention: taps-NUMBER (lowercase), not TEAM-NUMBER or feature/taps-NUMBER"
-- "Never use inline styles in this codebase — use CSS classes or Tailwind component props"
-- "PR descriptions: max 50 words, no co-authored-by lines, no file-by-file changelog"
-
-Each engram should be a rule or pattern that saves time if known in advance — not a description of what happened.
-
-Here are the session summaries and friction details:
-
-{sessions}
-
-Output a JSON array of objects, each with:
-- "category": hierarchical category path using these prefixes:
-    - "development/frontend" (styling, components, react, etc.)
-    - "development/backend" (APIs, databases, etc.)
-    - "development/git" (branching, PRs, commits)
-    - "development/testing" (test patterns, frameworks)
-    - "development/architecture" (project structure, patterns)
-    - "tools/<tool-name>" (figma, jira, playwright, claude-code, etc.)
-    - "workflow/<area>" (communication, setup, debugging)
-    - "general/<topic>" (catch-all for anything else)
-  Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
-- "engram": the specific, concrete engram (1-2 sentences max)
-- "source_sessions": list of session IDs this was derived from
-- "scope": "general" if the engram applies to any project, or "project-specific" if it only applies to a particular project/tool/framework
-- "project_signals": list of project/tool names when scope is "project-specific" (e.g. ["Acme", "TEAM", "Tailwind", "Figma MCP", "Playwright"]). Empty list when scope is "general".
-
-Output ONLY valid JSON, no markdown fences, no explanation."""
+def _get_prompt(name):
+    """Load and cache a prompt from prompts/ directory."""
+    if name not in _prompt_cache:
+        _prompt_cache[name] = load_prompt(name)
+    return _prompt_cache[name]
 
 
 def _parse_json_array(raw):
@@ -348,7 +264,7 @@ def _format_sessions_for_prompt(sessions):
 def _call_claude_for_extraction(sessions):
     """Call claude CLI in headless mode to extract engrams from sessions."""
     session_text = _format_sessions_for_prompt(sessions)
-    prompt = EXTRACTION_PROMPT.format(sessions=session_text)
+    prompt = _get_prompt("extraction/facet.md").format(sessions=session_text)
 
     try:
         env = os.environ.copy()
@@ -674,12 +590,105 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
     return result
 
 
+def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_chars=4000, msg_max_chars=1500):
+    """Read a transcript JSONL and return overlapping chunks for extraction.
+
+    Reads all messages, then splits into chunks at message boundaries with overlap.
+    The overlap ensures friction patterns (wrong attempt -> user correction) spanning
+    a boundary are captured in at least one chunk.
+
+    Args:
+        jsonl_path: path to transcript JSONL
+        chunk_chars: target size per chunk (chars)
+        overlap_chars: overlap between consecutive chunks
+        msg_max_chars: per-message truncation limit (higher than default 500 to
+                       preserve assistant wrong attempts needed for friction detection)
+
+    Returns:
+        list of chunk strings, each ready to send to extraction
+    """
+    messages = []
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+
+                content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
+                role = message_obj.get("role", entry.get("type", ""))
+                if content:
+                    messages.append(f"{role}: {content[:msg_max_chars]}")
+    except Exception:
+        return []
+
+    if not messages:
+        return []
+
+    # Single chunk if small enough
+    full_text = "\n".join(messages)
+    if len(full_text) <= chunk_chars:
+        return [full_text]
+
+    # Split into overlapping chunks at message boundaries
+    chunks = []
+    start_idx = 0
+
+    while start_idx < len(messages):
+        # Accumulate messages until we hit chunk_chars
+        chunk_messages = []
+        chunk_len = 0
+        idx = start_idx
+
+        while idx < len(messages):
+            msg_len = len(messages[idx]) + 1  # +1 for newline
+            if chunk_len + msg_len > chunk_chars and chunk_messages:
+                break
+            chunk_messages.append(messages[idx])
+            chunk_len += msg_len
+            idx += 1
+
+        chunks.append("\n".join(chunk_messages))
+
+        if idx >= len(messages):
+            break
+
+        # Step back by overlap_chars worth of messages for the next chunk
+        overlap_len = 0
+        overlap_start = idx
+        while overlap_start > start_idx and overlap_len < overlap_chars:
+            overlap_start -= 1
+            overlap_len += len(messages[overlap_start]) + 1
+
+        start_idx = overlap_start if overlap_start > start_idx else idx
+
+    return chunks
+
+
 def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions=""):
     """Call claude CLI to extract engrams from a conversation transcript."""
     instructions_block = ""
     if existing_instructions:
         instructions_block = f"\nThe project already has these instructions documented — DO NOT extract engrams that restate this information:\n{existing_instructions}\n"
-    prompt = TRANSCRIPT_EXTRACTION_PROMPT.format(
+    prompt = _get_prompt("extraction/transcript.md").format(
         transcript=transcript_text,
         session_id=session_id,
         existing_instructions=instructions_block,
@@ -1371,8 +1380,8 @@ def reextract_engrams(category=None, limit=None, prune=False, dry_run=False):
             sessions_skipped.add(session_id)
             continue
 
-        transcript_text = _read_transcript_messages(transcript_path)
-        if not transcript_text or len(transcript_text) < 100:
+        chunks = _read_transcript_messages_chunked(transcript_path)
+        if not chunks:
             print(f"  Session {session_id[:12]}: too short — skipping")
             sessions_skipped.add(session_id)
             continue
@@ -1380,13 +1389,17 @@ def reextract_engrams(category=None, limit=None, prune=False, dry_run=False):
         metadata = _read_transcript_metadata(transcript_path)
         existing_instructions = _read_existing_instructions(metadata.get("cwd"))
 
-        print(f"  Session {session_id[:12]}: re-extracting...")
-        extracted = _call_claude_for_transcript_extraction(
-            transcript_text, session_id, existing_instructions=existing_instructions
-        )
+        print(f"  Session {session_id[:12]}: re-extracting ({len(chunks)} chunk(s))...")
+        texts = []
+        for ci, chunk in enumerate(chunks):
+            extracted = _call_claude_for_transcript_extraction(
+                chunk, session_id, existing_instructions=existing_instructions
+            )
+            chunk_texts = [item.get("engram", "") for item in extracted if item.get("engram")]
+            texts.extend(chunk_texts)
+            if len(chunks) > 1:
+                print(f"    chunk {ci + 1}/{len(chunks)}: {len(chunk_texts)} engram(s)")
 
-        # Collect just the text from re-extracted engrams
-        texts = [item.get("engram", "") for item in extracted if item.get("engram")]
         session_reextracted[session_id] = texts
         print(f"    got {len(texts)} engram(s) from current prompt")
 

@@ -17,67 +17,19 @@ from .db import (
     record_dedup_error,
 )
 from .embeddings import embed_batch, build_index, build_tag_index
+from .prompt_loader import load_prompt
 
-# --- Prompt constants ---
+# --- Prompt loading ---
 
-DEDUP_SYSTEM_PROMPT = """You are deduplicating "engrams" — short actionable lessons extracted from coding sessions.
+_prompt_cache = {}
 
-Your job:
-1) Identify true duplicate groups.
-2) Propose one canonical text per duplicate group.
-3) Report unmatched IDs according to mode-specific accounting rules.
 
-High precision is required. If uncertain, do NOT merge.
+def _get_prompt(name):
+    """Load and cache a prompt from prompts/ directory."""
+    if name not in _prompt_cache:
+        _prompt_cache[name] = load_prompt(name)
+    return _prompt_cache[name]
 
-Merge only when ALL are true:
-- Same core action/recommendation
-- Same expected outcome or rationale
-- Context constraints are compatible (same or overlapping domains)
-
-Do NOT merge when ANY are true:
-- They are topically related but prescribe different actions
-- One is broader/umbrella guidance and another is a specific sub-rule
-- Details conflict (commands, flags, file paths, versions, APIs)
-
-IMPORTANT: If two engrams express the same lesson but were learned in different
-project contexts (e.g., one from "toptal" and one from "engrammar"), MERGE them
-and GENERALIZE the canonical text to be context-independent. The tag/prerequisite
-system handles context filtering separately — your job is to produce the best
-universal phrasing of the lesson.
-
-Canonical text rules:
-- 1-2 sentences, concrete and actionable
-- Generalize across contexts when the core lesson is the same
-- Preserve important specifics from source items (commands, flags, paths, code spans)
-  but drop project-specific details that don't affect the lesson
-- Do not invent new facts not present in the input
-- Keep wording concise and implementation-neutral
-
-Output must be strict JSON matching the required schema. No markdown fences.
-If uncertain, return fewer groups and place IDs in no_match_ids."""
-
-INCREMENTAL_MODE_SNIPPET = """You are in INCREMENTAL mode.
-
-Input contains:
-- UNVERIFIED engrams that must be decided this pass
-- VERIFIED candidate engrams that may be merge targets/bridges
-
-Decision rules:
-1) For each unverified engram, decide if it duplicates any verified candidate.
-2) If a verified candidate bridges multiple unverified engrams, you may form one multi-ID group.
-3) Every unverified ID must appear exactly once: either in one group or in no_match_ids.
-4) Verified-only IDs must not appear in no_match_ids.
-5) Every group must include at least one unverified ID."""
-
-BOOTSTRAP_MODE_SNIPPET = """You are in BOOTSTRAP mode.
-
-Input may contain only unverified engrams (or mostly unverified).
-There is no stable verified pool yet.
-
-Decision rules:
-1) Use candidate_edges to reason globally and form duplicate groups.
-2) Every input ID must appear exactly once: either in one group or in no_match_ids.
-3) Groups may be formed from any IDs in the batch (no verified/unverified restriction)."""
 
 BOOTSTRAP_VERIFIED_THRESHOLD = 3
 
@@ -271,7 +223,7 @@ def call_dedup_llm(batch, mode="incremental", min_confidence=0.8, run_id=""):
     Returns:
         parsed response dict or None on failure.
     """
-    mode_snippet = INCREMENTAL_MODE_SNIPPET if mode == "incremental" else BOOTSTRAP_MODE_SNIPPET
+    mode_snippet = _get_prompt("dedup/incremental.md") if mode == "incremental" else _get_prompt("dedup/bootstrap.md")
 
     batch_id = f"{run_id}-batch{id(batch) % 10000}" if run_id else f"batch-{id(batch) % 10000}"
 
@@ -286,7 +238,7 @@ def call_dedup_llm(batch, mode="incremental", min_confidence=0.8, run_id=""):
         "candidate_edges": batch["candidate_edges"],
     }
 
-    system_prompt = DEDUP_SYSTEM_PROMPT + "\n\n" + mode_snippet
+    system_prompt = _get_prompt("dedup/system.md") + "\n\n" + mode_snippet
 
     prompt = f"""{system_prompt}
 
