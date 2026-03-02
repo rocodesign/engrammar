@@ -985,6 +985,71 @@ def cmd_restore_db(args):
     print(f"Done. Database restored.")
 
 
+def cmd_dedup(args):
+    """Deduplicate engrams using LLM-assisted similarity analysis."""
+    from engrammar.db import init_db
+    init_db()
+    scan_only = "--scan" in args
+    json_output = "--json" in args
+    single_pass = "--single-pass" in args
+    limit = None
+    batch_size = None
+    max_candidates = 8
+    min_sim = 0.50
+    engram_id = None
+    max_passes = 10
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--limit" and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif args[i] == "--batch-size" and i + 1 < len(args):
+            batch_size = int(args[i + 1])
+            i += 2
+        elif args[i] == "--max-candidates" and i + 1 < len(args):
+            max_candidates = int(args[i + 1])
+            i += 2
+        elif args[i] == "--min-sim" and i + 1 < len(args):
+            min_sim = float(args[i + 1])
+            i += 2
+        elif args[i] == "--id" and i + 1 < len(args):
+            engram_id = int(args[i + 1])
+            i += 2
+        elif args[i] == "--max-passes" and i + 1 < len(args):
+            max_passes = int(args[i + 1])
+            i += 2
+        elif args[i] in ("--scan", "--json", "--single-pass"):
+            i += 1
+        else:
+            i += 1
+
+    from engrammar.dedup import run_dedup
+
+    summary = run_dedup(
+        scan_only=scan_only,
+        limit=limit,
+        batch_size=batch_size,
+        max_candidates=max_candidates,
+        min_sim=min_sim,
+        max_passes=max_passes,
+        single_pass=single_pass,
+        engram_id=engram_id,
+        json_output=json_output,
+    )
+
+    if json_output:
+        print(json.dumps(summary, indent=2))
+    elif not scan_only:
+        print(f"\n=== Dedup Summary ===")
+        print(f"Passes:   {summary['passes']}")
+        print(f"Processed: {summary['processed']}")
+        print(f"Merged:    {summary['merged']}")
+        print(f"Verified:  {summary['verified']}")
+        print(f"Skipped:   {summary['skipped']}")
+        print(f"Failed:    {summary['failed']}")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -1011,6 +1076,7 @@ def main():
         print("  detect-tags  Show detected environment tags for current directory")
         print("  backfill-prereqs  Retroactively set prerequisites on existing engrams [--dry-run]")
         print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
+        print("  dedup        Deduplicate engrams: dedup [--scan] [--limit N] [--json] [--id N] [--single-pass]")
         return
 
     command = sys.argv[1]
@@ -1039,6 +1105,7 @@ def main():
         "detect-tags": cmd_detect_tags,
         "backfill-prereqs": cmd_backfill_prereqs,
         "restore": cmd_restore_db,
+        "dedup": cmd_dedup,
     }
 
     if command in commands:

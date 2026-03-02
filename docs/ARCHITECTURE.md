@@ -15,6 +15,7 @@ Comprehensive technical documentation for the Engrammar semantic knowledge syste
 - [MCP Integration](#mcp-integration)
 - [Performance](#performance)
 - [Extraction Pipeline](#extraction-pipeline)
+- [Dedup Pipeline](#dedup-pipeline)
 - [Data Flow](#data-flow)
 
 ---
@@ -318,7 +319,10 @@ CREATE TABLE engrams (
     updated_at TEXT,
     deprecated INTEGER DEFAULT 0,
     prerequisites TEXT DEFAULT NULL,
-    pinned INTEGER DEFAULT 0
+    pinned INTEGER DEFAULT 0,
+    dedup_verified INTEGER DEFAULT 0,
+    dedup_attempts INTEGER DEFAULT 0,
+    dedup_last_error TEXT DEFAULT NULL
 );
 ```
 
@@ -361,6 +365,10 @@ Category path tree. `path TEXT PRIMARY KEY`.
 #### `engram_categories`
 
 Junction table for multi-category engrams. `PRIMARY KEY (engram_id, category_path)`.
+
+#### `engram_merge_log`
+
+Audit log for dedup merges. Stores `run_id`, `survivor_id`, `absorbed_ids` (JSON array), `canonical_text`, `confidence`, `reason`, and `created_at`.
 
 ---
 
@@ -488,6 +496,95 @@ The Stop hook triggers background extraction after each assistant response via t
 
 ---
 
+## Dedup Pipeline
+
+> Source: [`src/dedup.py`](../src/dedup.py), [`src/db.py`](../src/db.py) — `merge_engram_group()`
+
+### Problem
+
+The inline dedup (`find_similar_engram` at 0.85 embedding / 0.70 word-overlap) only catches near-identical text. Conceptual duplicates — same lesson expressed differently across sessions — slip through.
+
+### Pipeline Flow
+
+```
+engrammar dedup
+    |
+1. Bootstrap Detection
+   Verified pool < 3? -> Bootstrap mode (all-vs-all)
+   Otherwise         -> Incremental mode (unverified-vs-verified)
+    |
+2. Candidate Finding (vectorized cosine similarity)
+   For each unverified engram, find top_k verified candidates above min_sim (0.50)
+    |
+3. Batch Building
+   Group unverified+candidate pairs into batches respecting character budget
+   Shared verified candidates across pairs give Haiku cross-pair visibility
+    |
+4. LLM Call (Haiku)
+   Send batch with system prompt + mode snippet + JSON payload
+   Returns: groups (ids, canonical_text, confidence, reason) + no_match_ids
+    |
+5. Strict Validation
+   All IDs exist, no duplicates, group size >= 2, confidence in [0,1]
+   Every unverified ID accounted for (in a group or no_match_ids)
+    |
+6. Merge Execution (transactional per group)
+   Update survivor text, merge stats, rewrite linked tables
+   Deprecate absorbed engrams
+    |
+7. Re-queue Survivor (dedup_verified = 0)
+   Changed text/embedding may enable further merges
+    |
+8. Multi-pass Loop
+   Rebuild embedding index, re-run until zero merges or max_passes
+```
+
+### Modes
+
+- **Incremental**: Unverified engrams are paired only against verified candidates. Prevents bridge destruction (if A and B are verified but don't match each other, unverified C and D matching A and B respectively stay independent).
+- **Bootstrap**: When the verified pool is too small, all active engrams are compared. Avoids "first processed wins" order sensitivity.
+
+### Merge Semantics
+
+Deterministic survivor selection: prefer verified > highest `occurrence_count` > lowest ID.
+
+All operations transactional on a single connection:
+
+| Table | Merge behavior |
+|-------|---------------|
+| `engrams` | Update text, sum occurrence_count, union sessions, re-queue |
+| `prerequisites.tags` | Intersection (AND-gated) |
+| `prerequisites.repos` | Union (OR semantics) |
+| `prerequisites.mcp_servers` | Intersection (AND semantics) |
+| `engram_categories` | Union |
+| `engram_repo_stats` | Sum per-repo counts |
+| `engram_tag_stats` | Sum per-tag-set counts |
+| `engram_tag_relevance` | Evidence-weighted average score, sum eval counters |
+| `session_shown_engrams` | Rewrite absorbed IDs to survivor |
+| `session_audit.shown_engram_ids` | JSON rewrite |
+| `hook_event_log.engram_ids` | JSON rewrite |
+| `engram_merge_log` | Audit log entry |
+
+### DB Columns
+
+Added to `engrams`:
+
+- `dedup_verified INTEGER DEFAULT 0` — processing state (0=pending, 1=verified)
+- `dedup_attempts INTEGER DEFAULT 0` — retry counter
+- `dedup_last_error TEXT` — last failure message
+
+Index: `idx_engrams_dedup_queue ON engrams(deprecated, dedup_verified, id)`
+
+### Invariants
+
+- Every merge is atomic (single transaction, rollback on failure).
+- Survivors are always re-queued after merge.
+- Absorbed engrams are deprecated + marked verified (never reprocessed).
+- The inline 0.85 threshold check at insertion time stays — dedup catches what it misses.
+- Failed LLM calls are retryable (increment attempts, preserve error).
+
+---
+
 ## Data Flow
 
 ### Engram Lifecycle
@@ -506,11 +603,14 @@ The Stop hook triggers background extraction after each assistant response via t
 4. Tracking
    Stop hook -> record audit -> evaluator -> tag relevance scores (EMA)
 
-5. Auto-Pin
+5. Dedup (CLI or scheduled)
+   engrammar dedup -> find candidates -> Haiku judgment -> merge duplicates -> rebuild index
+
+6. Auto-Pin
    update_match_stats() -> find_auto_pin_tag_subsets() -> threshold reached -> pinned=1
    OR: tag relevance avg > 0.6 with enough evidence -> auto-pin
 
-6. Filtering (next session)
+7. Filtering (next session)
    search() -> tag relevance scores filter strong negatives, boost positives
 ```
 

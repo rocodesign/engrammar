@@ -356,6 +356,56 @@ engrammar backfill-prereqs --dry-run
 - Enriches with tags from session audit records
 - Rebuilds tag index after updates
 
+### Deduplication
+
+#### `dedup`
+
+Deduplicate engrams using LLM-assisted similarity analysis. Finds conceptual duplicates that inline dedup (0.85 threshold) misses.
+
+```bash
+engrammar dedup                     # Full multi-pass dedup until convergence
+engrammar dedup --scan              # Dry run: show proposed merges without modifying DB
+engrammar dedup --scan --json       # Machine-readable scan output
+engrammar dedup --limit 5           # Process at most 5 unverified engrams
+engrammar dedup --id 52             # Process a specific engram
+engrammar dedup --single-pass       # Run one pass only (for debugging)
+engrammar dedup --json              # JSON summary output
+```
+
+**Options:**
+
+- `--scan` - Show proposed merge groups without modifying the database
+- `--limit N` - Process at most N unverified engrams
+- `--id N` - Process a specific engram
+- `--json` - Machine-readable JSON output
+- `--single-pass` - Run one pass only (default: multi-pass until convergence)
+- `--max-passes N` - Maximum number of passes (default: 10)
+- `--batch-size N` - Character budget per LLM batch (default: 6000)
+- `--max-candidates N` - Max verified candidates per unverified engram (default: 8)
+- `--min-sim F` - Minimum embedding similarity for candidates (default: 0.50)
+
+**Modes:**
+
+- **Incremental** (default): Pairs unverified engrams against the verified pool. Each unverified engram is either merged into a verified one or marked as verified itself.
+- **Bootstrap**: When the verified pool is too small (< 3), all active engrams are compared against each other to establish an initial canonical set.
+
+**Output (default):**
+
+- Per-pass progress: merged, verified, failed counts
+- Summary: total processed, merged, verified, skipped, failed
+
+**Output (`--scan`):**
+
+- Proposed groups with survivor ID, absorbed IDs, confidence, reason, and canonical text
+
+**Behavior:**
+
+- Multi-pass: merges may change embeddings, enabling further merges. Runs until a pass produces zero merges or `--max-passes` is reached.
+- Sends batched pairs to Haiku for judgment. Validates responses strictly before any DB mutation.
+- Merges are transactional across all linked tables (categories, repo stats, tag stats, tag relevance, session shown, audit JSON, hook event log).
+- Survivors are re-queued (`dedup_verified=0`) after merge so their new canonical text can be re-compared.
+- Failed LLM calls increment `dedup_attempts` and are retryable on next run.
+
 ### Maintenance
 
 #### `rebuild`
