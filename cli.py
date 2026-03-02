@@ -985,6 +985,41 @@ def cmd_restore_db(args):
     print(f"Done. Database restored.")
 
 
+def cmd_reextract(args):
+    """Re-extract from source sessions to identify low-quality engrams."""
+    category = None
+    limit = None
+    prune = "--prune" in args
+    dry_run = "--dry-run" in args
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--category" and i + 1 < len(args):
+            category = args[i + 1]
+            i += 2
+        elif args[i] == "--limit" and i + 1 < len(args):
+            try:
+                limit = int(args[i + 1])
+            except ValueError:
+                pass
+            i += 2
+        elif args[i] in ("--prune", "--dry-run"):
+            i += 1
+        else:
+            i += 1
+
+    from engrammar.extractor import reextract_engrams
+
+    summary = reextract_engrams(
+        category=category, limit=limit, prune=prune, dry_run=dry_run
+    )
+
+    if not dry_run:
+        print(f"\nSummary: {summary['confirmed']} confirmed, "
+              f"{summary['unconfirmed']} unconfirmed, "
+              f"{summary['skipped']} skipped")
+
+
 def cmd_dedup(args):
     """Deduplicate engrams using LLM-assisted similarity analysis."""
     from engrammar.db import init_db
@@ -1076,6 +1111,7 @@ def main():
         print("  detect-tags  Show detected environment tags for current directory")
         print("  backfill-prereqs  Retroactively set prerequisites on existing engrams [--dry-run]")
         print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
+        print("  reextract    Re-check engrams against current prompt: reextract [--category CAT] [--limit N] [--prune] [--dry-run]")
         print("  dedup        Deduplicate engrams: dedup [--scan] [--limit N] [--json] [--id N] [--single-pass]")
         return
 
@@ -1105,6 +1141,7 @@ def main():
         "detect-tags": cmd_detect_tags,
         "backfill-prereqs": cmd_backfill_prereqs,
         "restore": cmd_restore_db,
+        "reextract": cmd_reextract,
         "dedup": cmd_dedup,
     }
 
