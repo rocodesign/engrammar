@@ -20,6 +20,7 @@ _ENGRAMMAR_BLOCK_RE = re.compile(
 
 from .db import (
     add_engram,
+    deprecate_engram,
     find_similar_engram,
     get_all_active_engrams,
     get_connection,
@@ -30,7 +31,7 @@ from .db import (
     update_tag_relevance,
     write_session_audit,
 )
-from .embeddings import build_index
+from .embeddings import build_index, embed_batch
 
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30
@@ -1269,3 +1270,228 @@ def _backfill_shown_engrams(projects_dir=None):
             updated += 1
 
     print(f"  Updated {updated} audit record(s) with shown engrams.")
+
+
+def reextract_engrams(category=None, limit=None, prune=False, dry_run=False):
+    """Re-extract from source sessions and identify engrams the current prompt wouldn't extract.
+
+    Loads active auto-extracted engrams, groups by source session, re-runs extraction
+    with the current prompt, and compares via embedding similarity. Engrams that no
+    re-extracted engram matches are "unconfirmed" — optionally pruned.
+
+    Args:
+        category: only check engrams in this category (prefix match)
+        limit: max engrams to check
+        prune: if True, deprecate unconfirmed engrams
+        dry_run: if True, list what would be checked without calling Haiku
+
+    Returns:
+        dict with confirmed, unconfirmed, skipped counts and unconfirmed details
+    """
+    import numpy as np
+
+    projects_dir = os.path.expanduser("~/.claude/projects")
+
+    # 1. Load target engrams (active, auto-extracted only)
+    all_engrams = get_all_active_engrams()
+    target_engrams = [
+        e for e in all_engrams
+        if e.get("source") not in ("manual", "self-extracted")
+    ]
+
+    if category:
+        target_engrams = [
+            e for e in target_engrams
+            if (e.get("category") or "").startswith(category)
+        ]
+
+    if limit:
+        target_engrams = target_engrams[:limit]
+
+    if not target_engrams:
+        print("No eligible engrams to re-check.")
+        return {"confirmed": 0, "unconfirmed": 0, "skipped": 0, "unconfirmed_engrams": []}
+
+    print(f"Checking {len(target_engrams)} engram(s)...\n")
+
+    if dry_run:
+        for e in target_engrams:
+            sessions = json.loads(e.get("source_sessions") or "[]")
+            print(f"  #{e['id']}: [{e.get('category', 'general')}] {e['text'][:70]}...")
+            print(f"    source sessions: {len(sessions)}")
+        return {
+            "confirmed": 0,
+            "unconfirmed": 0,
+            "skipped": 0,
+            "would_check": len(target_engrams),
+            "unconfirmed_engrams": [],
+        }
+
+    # 2. Group engrams by source session
+    #    session_id -> list of engram dicts
+    session_to_engrams = {}
+    engrams_without_sessions = []
+    for e in target_engrams:
+        sessions = json.loads(e.get("source_sessions") or "[]")
+        if not sessions:
+            engrams_without_sessions.append(e)
+            continue
+        for sid in sessions:
+            session_to_engrams.setdefault(sid, []).append(e)
+
+    # 3. For each unique session, find transcript and re-extract
+    #    session_id -> list of re-extracted engram text strings
+    session_reextracted = {}
+    sessions_skipped = set()
+
+    conn = get_connection()
+    for session_id in session_to_engrams:
+        # Look up transcript path from session_audit
+        row = conn.execute(
+            "SELECT transcript_path FROM session_audit WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+
+        transcript_path = row["transcript_path"] if row and row["transcript_path"] else None
+
+        # Glob fallback if not in audit
+        if not transcript_path or not os.path.exists(transcript_path):
+            pattern = os.path.join(projects_dir, "*", f"{session_id}.jsonl")
+            matches = glob.glob(pattern)
+            transcript_path = matches[0] if matches else None
+
+        if not transcript_path or not os.path.exists(transcript_path):
+            print(f"  Session {session_id[:12]}: transcript not found — skipping")
+            sessions_skipped.add(session_id)
+            continue
+
+        # Skip tiny transcripts
+        if os.path.getsize(transcript_path) < 10_000:
+            print(f"  Session {session_id[:12]}: too small — skipping")
+            sessions_skipped.add(session_id)
+            continue
+
+        transcript_text = _read_transcript_messages(transcript_path)
+        if not transcript_text or len(transcript_text) < 100:
+            print(f"  Session {session_id[:12]}: too short — skipping")
+            sessions_skipped.add(session_id)
+            continue
+
+        metadata = _read_transcript_metadata(transcript_path)
+        existing_instructions = _read_existing_instructions(metadata.get("cwd"))
+
+        print(f"  Session {session_id[:12]}: re-extracting...")
+        extracted = _call_claude_for_transcript_extraction(
+            transcript_text, session_id, existing_instructions=existing_instructions
+        )
+
+        # Collect just the text from re-extracted engrams
+        texts = [item.get("engram", "") for item in extracted if item.get("engram")]
+        session_reextracted[session_id] = texts
+        print(f"    got {len(texts)} engram(s) from current prompt")
+
+    conn.close()
+
+    # 4. Compare each existing engram against re-extracted engrams via embedding similarity
+    confirmed = []
+    unconfirmed = []
+    skipped = []
+
+    # Collect all unique re-extracted texts for batch embedding
+    all_reextracted_texts = []
+    text_to_idx = {}
+    for texts in session_reextracted.values():
+        for t in texts:
+            if t not in text_to_idx:
+                text_to_idx[t] = len(all_reextracted_texts)
+                all_reextracted_texts.append(t)
+
+    # Batch embed all re-extracted texts
+    reextracted_embeddings = None
+    if all_reextracted_texts:
+        reextracted_embeddings = embed_batch(all_reextracted_texts)
+
+    # Embed all target engram texts
+    target_texts = [e["text"] for e in target_engrams]
+    target_embeddings = embed_batch(target_texts)
+
+    SIMILARITY_THRESHOLD = 0.80
+
+    for i, engram in enumerate(target_engrams):
+        sessions = json.loads(engram.get("source_sessions") or "[]")
+
+        if not sessions:
+            skipped.append(engram)
+            continue
+
+        # Check if ALL sessions were skipped (no data to compare)
+        relevant_sessions = [s for s in sessions if s not in sessions_skipped]
+        if not relevant_sessions:
+            skipped.append(engram)
+            continue
+
+        # An engram is confirmed if ANY session confirms it
+        is_confirmed = False
+        engram_emb = target_embeddings[i]
+        engram_norm = engram_emb / (np.linalg.norm(engram_emb) + 1e-10)
+
+        for sid in relevant_sessions:
+            texts = session_reextracted.get(sid, [])
+            if not texts:
+                continue
+
+            # Get indices of re-extracted texts for this session
+            indices = [text_to_idx[t] for t in texts if t in text_to_idx]
+            if not indices:
+                continue
+
+            session_embs = reextracted_embeddings[indices]
+            norms = np.linalg.norm(session_embs, axis=1, keepdims=True) + 1e-10
+            session_embs_normed = session_embs / norms
+
+            similarities = session_embs_normed @ engram_norm
+            max_sim = float(np.max(similarities))
+
+            if max_sim >= SIMILARITY_THRESHOLD:
+                is_confirmed = True
+                break
+
+        if is_confirmed:
+            confirmed.append(engram)
+        else:
+            unconfirmed.append(engram)
+
+    # 5. Report results
+    print(f"\n=== Re-extraction Results ===")
+    print(f"Confirmed:   {len(confirmed)} (current prompt still extracts these)")
+    print(f"Unconfirmed: {len(unconfirmed)} (current prompt would NOT extract these)")
+    print(f"Skipped:     {len(skipped)} (no transcript found or no sessions)")
+
+    if unconfirmed:
+        print(f"\nUnconfirmed engrams:")
+        for e in unconfirmed:
+            print(f"  #{e['id']}: [{e.get('category', 'general')}] {e['text'][:80]}...")
+
+    # 6. Prune if requested
+    if prune and unconfirmed:
+        print(f"\nDeprecating {len(unconfirmed)} unconfirmed engram(s)...")
+        for e in unconfirmed:
+            deprecate_engram(e["id"])
+            print(f"  Deprecated #{e['id']}")
+
+        # Rebuild index after deprecations
+        from .embeddings import build_index as rebuild_index, build_tag_index
+        remaining = get_all_active_engrams()
+        rebuild_index(remaining)
+        build_tag_index(remaining)
+        print("Index rebuilt.")
+
+    return {
+        "confirmed": len(confirmed),
+        "unconfirmed": len(unconfirmed),
+        "skipped": len(skipped),
+        "unconfirmed_engrams": [
+            {"id": e["id"], "category": e.get("category", "general"), "text": e["text"]}
+            for e in unconfirmed
+        ],
+    }
