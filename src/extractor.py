@@ -55,8 +55,11 @@ CRITICAL — DO NOT extract:
 - Generic programming advice (validate inputs, write tests, use types)
 - Implementation details about specific functions
 - Anything that reads like a design decision rather than a correction
+- One-off data model quirks, API field mappings, or component-specific behaviors that only matter for a single task (e.g., "field X is empty, use field Y instead" or "component Z stores data in array A not field B")
 
 The test: if the engram is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a engram.
+
+Reusability test: would knowing this save time in a DIFFERENT task in the same project? If it only helps when repeating the exact same task, do NOT extract it.
 
 Good examples (notice the correction pattern):
 - "Use cy.contains('button', 'Text') not cy.get('button').contains('Text') — the latter yields the deepest element, not the button"
@@ -67,6 +70,7 @@ Bad examples (these are just task summaries):
 - "Rebuild similarity index after each batch" (user instruction, not a correction)
 - "Validate input at system boundaries" (generic advice)
 - "Session IDs are provided by Claude infrastructure" (factual description, no friction)
+- "For CITY type profiles, the location field is empty — use onsiteLocations array" (one-off data model detail, only useful for that exact component)
 {existing_instructions}
 Session transcript:
 {transcript}
@@ -97,6 +101,9 @@ DO NOT extract:
 - Generic advice like "investigate methodically" or "ask for clarification"
 - Implementation details about specific functions/code internals (e.g. "function X has a gap" or "module Y does Z internally")
 - Bug descriptions or one-time fixes that won't recur
+- One-off data model quirks, API field mappings, or component-specific behaviors that only matter for a single task (e.g., "field X is empty, use field Y instead")
+
+Reusability test: would knowing this save time in a DIFFERENT task in the same project? If it only helps when repeating the exact same task, skip it.
 
 DO extract concrete, reusable knowledge like:
 - "Use mcp__plugin_playwright_playwright__browser_navigate to open URLs in the browser, not Bash commands"
@@ -353,6 +360,7 @@ def _call_claude_for_extraction(sessions):
             text=True,
             timeout=300,
             env=env,
+            stdin=subprocess.DEVNULL,
         )
 
         if result.returncode != 0:
@@ -687,6 +695,7 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
             text=True,
             timeout=300,
             env=env,
+            stdin=subprocess.DEVNULL,
         )
 
         if result.returncode != 0:
