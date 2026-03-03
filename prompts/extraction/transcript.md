@@ -16,60 +16,43 @@ used_by:
   - extractor._call_claude_for_transcript_extraction
   - extractor.reextract_engrams (via chunked extraction)
 ---
-You are analyzing a Claude Code conversation transcript to extract engrams from FRICTION — moments where the assistant got something wrong and the user had to intervene.
+You are analyzing a Claude Code conversation transcript to extract engrams — concrete rules learned from friction.
 
-ONLY extract from these patterns:
-1. **User corrections**: The assistant tried approach A, then the user said "no, do B instead" or "that's wrong, use X". Capture the rule: "Do B, not A" or "Use X because Y".
-2. **Repeated struggle**: The assistant spent multiple turns on something that could have been avoided. Capture the shortcut or root cause.
-3. **Discovered conventions**: The user revealed a project rule the assistant didn't know (naming, architecture, workflow). Capture the rule.
-4. **Tooling gotchas**: A tool or API behaved unexpectedly and required a workaround. Capture the gotcha.
-5. **User-established rules**: The user states a rule or preference using directive language ("always", "never", "make sure", "don't forget", "in this project we..."). Capture the rule even without prior friction — the user is encoding knowledge they expect to persist.
+Extract when the assistant got corrected, struggled, or the user revealed how things actually work:
+1. **Corrections**: Assistant tried A, user said "no, do B" → capture "Do B, not A because Y"
+2. **Struggled**: Multiple turns wasted on something avoidable → capture the shortcut or root cause
+3. **Conventions revealed**: User shared a project/team rule the assistant didn't know → capture the rule
+4. **API/library gotchas**: A component, hook, library, or tool behaved unexpectedly → capture the gotcha
+5. **User directives**: User states a persistent rule ("always", "never", "make sure", "in this project we...") → capture it
 
-CRITICAL — DO NOT extract:
-- User instructions or requests ("do X", "build Y", "add Z") — these are TASKS, not engrams
+DO NOT extract:
+- Task instructions ("do X", "build Y") — these are requests, not learnings
 - Summaries of what was built or discussed
-- Generic programming advice (validate inputs, write tests, use types)
-- Implementation details about specific functions
-- Anything that reads like a design decision rather than a correction
-- One-off data model quirks, API field mappings, or component-specific behaviors that only matter for a single task (e.g., "field X is empty, use field Y instead" or "component Z stores data in array A not field B")
+- Generic advice (validate inputs, write tests, check existing code first)
+- One-off data mappings only useful for one specific task ("field X is empty, use field Y")
 
-The test: if the engram is something the user TOLD the assistant to do (not something the assistant got WRONG), it is NOT a engram — UNLESS the user is establishing a persistent rule using directive language.
+**The key test**: would a future assistant working on a *different* task in this project benefit from knowing this? Gotchas about libraries, design system components, build tools, testing frameworks, and project conventions all pass this test. One-off field mappings and task-specific data details do not.
 
-Reusability test: would knowing this save time in a future task in the same project or similar projects? Project conventions, team workflow rules, and API/framework gotchas are reusable even if project-specific. Non-obvious API details about shared/library components (components in lib/, packages/, shared/ directories that are used across multiple features) ARE reusable — anyone using that component benefits. Only filter out details about single-use page-level code. If it only helps when repeating the exact same task, do NOT extract it.
-
-Good examples (notice the correction/convention pattern):
-- "Use cy.contains('button', 'Text') not cy.get('button').contains('Text') — the latter yields the deepest element, not the button"
+Good engrams (concrete, reusable):
+- "The `sortable` prop expects a comparator function, not a boolean — passing `true` silently disables sorting"
+- "When mocking the router in tests, also mock useSearchParams — it throws outside RouterProvider"
 - "In this monorepo, run codegen scoped to the app (nx run app:codegen), not workspace-wide"
-- "PR descriptions: max 50 words, no co-authored-by lines — the assistant kept adding verbose descriptions"
-- "Verify packages exist in package.json before importing — don't assume packages are installed"
-- "Always use absolute imports in this project, never relative"
-- "SkillTag component uses `main` boolean prop (not rating='main') to display main skills with arrow icon" (shared library component API — reusable across features)
+- "Import order matters — group external imports before internal or CI lint fails"
 
-Bad examples (these are just task summaries or one-off details):
+Bad engrams (task summaries, generic, one-off):
 - "Rebuild similarity index after each batch" (user instruction, not a correction)
-- "Validate input at system boundaries" (generic advice)
-- "Session IDs are provided by Claude infrastructure" (factual description, no friction)
-- "For CITY type profiles, the location field is empty — use onsiteLocations array" (one-off data model detail, only useful for that exact component)
-- "The API returns data in the 'results' key" (one-off field mapping, not a reusable pattern)
+- "Before building a component, check if one exists" (generic process advice)
+- "The location field is empty for CITY profiles — use onsiteLocations array" (one-off data detail)
 {existing_instructions}
 Session transcript:
 {transcript}
 
 Output a JSON array of objects, each with:
-- "category": hierarchical category path using these prefixes:
-    - "development/frontend" (styling, components, react, etc.)
-    - "development/backend" (APIs, databases, etc.)
-    - "development/git" (branching, PRs, commits)
-    - "development/testing" (test patterns, frameworks)
-    - "development/architecture" (project structure, patterns)
-    - "tools/<tool-name>" (figma, jira, playwright, claude-code, etc.)
-    - "workflow/<area>" (communication, setup, debugging)
-    - "general/<topic>" (catch-all for anything else)
-  Be specific: "development/frontend/styling" not "tool-usage", "tools/playwright" not "tools/figma" for browser testing.
-- "engram": the specific, concrete engram (1-2 sentences max)
+- "category": hierarchical path — "development/frontend", "development/testing", "tools/<name>", "workflow/<area>", "general/<topic>". Be specific.
+- "engram": the concrete rule (1-2 sentences max)
 - "source_sessions": ["{session_id}"]
-- "scope": "general" if the engram applies broadly, or "project-specific" if it only applies to a particular project/tool
-- "project_signals": list of project/tool names when scope is "project-specific". Empty list when scope is "general".
+- "scope": "general" or "project-specific"
+- "project_signals": project/tool names when scope is "project-specific", else []
 
 If no engrams are worth extracting, output an empty array: []
 
