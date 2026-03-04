@@ -108,7 +108,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
 def _register_mcp_server(engrammar_home, python_bin):
     """Register MCP server in ~/.claude.json (where Claude Code reads mcpServers)."""
     claude_json_path = os.path.expanduser("~/.claude.json")
-    mcp_server_script = os.path.join(engrammar_home, "engrammar", "mcp_server.py")
+    mcp_server_script = os.path.join(engrammar_home, "engrammar", "infra", "mcp_server.py")
 
     claude_config = {}
     if os.path.exists(claude_json_path):

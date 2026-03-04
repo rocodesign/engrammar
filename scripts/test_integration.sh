@@ -29,7 +29,7 @@ echo ""
 echo "── Step 2: Current state ──"
 "$VENV" -c "
 import sys, json; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_engram_count, get_pinned_engrams, get_connection, get_all_active_engrams
+from engrammar.core.db import get_engram_count, get_pinned_engrams, get_connection, get_all_active_engrams
 
 count = get_engram_count()
 pinned = get_pinned_engrams()
@@ -73,7 +73,7 @@ echo ""
 echo "── Step 4: Post-extraction state ──"
 "$VENV" -c "
 import sys, json; sys.path.insert(0, '$ENGRAMMAR_HOME')
-from engrammar.db import get_engram_count, get_pinned_engrams, get_all_active_engrams, get_connection
+from engrammar.core.db import get_engram_count, get_pinned_engrams, get_all_active_engrams, get_connection
 
 count = get_engram_count()
 pinned = get_pinned_engrams()
