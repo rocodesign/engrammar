@@ -39,8 +39,6 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
 - [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
   - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
-- [ ] **#32 Evaluator transcript truncation can exceed max_chars** `[C1] low-hanging`
-  - `issues/open/[2]-032-evaluator-transcript-truncation-overflow/issue.md`
 
 ### Medium
 
@@ -83,3 +81,4 @@ This file is the index. Detailed issue writeups live under `issues/`.
 - [x] **#24 Session identity global/local UUID mapping issue**
 - [x] **#25 Evaluator transcript lookup weakly coupled to session IDs**
 - [x] **#31 Session-end tests can spawn real CLI jobs** (resolved by Stop hook architecture — delegates to daemon, tests mock client)
+- [x] **#32 Evaluator transcript truncation can exceed max_chars** (fixed: subtract ellipsis length from half-window calculation)

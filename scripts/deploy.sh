@@ -58,7 +58,7 @@ if [ "$1" = "--restart" ]; then
         fi
     fi
     echo "Starting daemon..."
-    "$ENGRAMMAR_HOME/venv/bin/python" "$ENGRAMMAR_HOME/engrammar/daemon.py" &
+    "$ENGRAMMAR_HOME/venv/bin/python" "$ENGRAMMAR_HOME/engrammar/infra/daemon.py" &
     sleep 1
     if [ -f "$PIDFILE" ]; then
         echo "Daemon started (PID $(cat "$PIDFILE"))"
