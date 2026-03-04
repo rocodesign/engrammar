@@ -11,7 +11,7 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def main():
-    from engrammar.hook_utils import log_error, parse_hook_input, format_engrams_block, make_hook_output
+    from engrammar.infra.hook_utils import log_error, parse_hook_input, format_engrams_block, make_hook_output
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
@@ -23,27 +23,27 @@ def main():
 
         # Persist session_id so MCP server can auto-capture it for self-extracted engrams
         if session_id:
-            from engrammar.hook_utils import write_session_id
+            from engrammar.infra.hook_utils import write_session_id
             write_session_id(session_id)
 
         # Clean up stale turn offset files (older than 24h)
         try:
-            from engrammar.extractor import cleanup_old_turn_offsets
+            from engrammar.pipeline.extractor import cleanup_old_turn_offsets
             cleanup_old_turn_offsets()
         except Exception:
             pass
 
         # Start daemon (if needed) and trigger maintenance jobs with single-flight behavior
         try:
-            from engrammar.client import send_request
+            from engrammar.infra.client import send_request
             send_request({"type": "run_maintenance"})
         except Exception as e:
             log_error("SessionStart", "start daemon/maintenance", e)
 
         # Get pinned engrams
-        from engrammar.config import load_config
-        from engrammar.db import get_pinned_engrams, get_tag_relevance_with_evidence
-        from engrammar.environment import check_structural_prerequisites, detect_environment
+        from engrammar.core.config import load_config
+        from engrammar.core.db import get_pinned_engrams, get_tag_relevance_with_evidence
+        from engrammar.search.environment import check_structural_prerequisites, detect_environment
 
         config = load_config()
         env = detect_environment()
@@ -68,13 +68,13 @@ def main():
 
         # Record shown pinned engrams to avoid re-showing in prompt/tool hooks
         if session_id:
-            from engrammar.db import record_shown_engram
+            from engrammar.core.db import record_shown_engram
             for p in matching:
                 record_shown_engram(session_id, p["id"], "SessionStart")
 
         # Log event
         try:
-            from engrammar.db import log_hook_event
+            from engrammar.core.db import log_hook_event
             log_hook_event(session_id, "SessionStart", [p["id"] for p in matching])
         except Exception:
             pass

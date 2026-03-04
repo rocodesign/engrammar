@@ -6,9 +6,9 @@ import re
 
 from rank_bm25 import BM25Okapi
 
-from .config import LAST_SEARCH_PATH, load_config
-from .db import get_all_active_engrams
-from .embeddings import embed_text, load_index, load_tag_index, vector_search
+from engrammar.core.config import LAST_SEARCH_PATH, load_config
+from engrammar.core.db import get_all_active_engrams
+from engrammar.core.embeddings import embed_text, load_index, load_tag_index, vector_search
 from .environment import detect_environment
 
 
@@ -163,7 +163,7 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
     env_tags = env.get("tags", [])
     if env_tags:
-        from .db import get_tag_relevance_with_evidence
+        from engrammar.core.db import get_tag_relevance_with_evidence
         MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
         NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
         RELEVANCE_WEIGHT = 0.01          # boost weight (RRF range ~0.014-0.033)
@@ -182,7 +182,7 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:
-        from .db import get_connection
+        from engrammar.core.db import get_connection
         conn = get_connection(db_path)
         rows = conn.execute(
             "SELECT engram_id, category_path FROM engram_categories WHERE category_path LIKE ?",

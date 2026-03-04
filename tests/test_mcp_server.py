@@ -5,7 +5,7 @@ import json
 import pytest
 from unittest.mock import patch
 
-from src.mcp_server import (
+from src.infra.mcp_server import (
     engrammar_add,
     engrammar_search,
     engrammar_update,
@@ -14,7 +14,7 @@ from src.mcp_server import (
     engrammar_unpin,
     engrammar_list,
 )
-from src.db import add_engram, get_all_active_engrams, get_connection
+from src.core.db import add_engram, get_all_active_engrams, get_connection
 
 pytestmark = pytest.mark.usefixtures("mock_build_index")
 
@@ -32,7 +32,7 @@ def test_add_basic(test_db):
 def test_add_captures_session_id(test_db, monkeypatch):
     """engrammar_add auto-reads session_id from file and stores it in source_sessions."""
     real_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: real_uuid)
+    monkeypatch.setattr("src.infra.hook_utils.read_session_id", lambda: real_uuid)
 
     result = engrammar_add(text="self-extracted engram", category="dev", source="self-extracted")
     assert "Added engram" in result
@@ -46,7 +46,7 @@ def test_add_captures_session_id(test_db, monkeypatch):
 
 def test_add_ignores_fake_session_id(test_db, monkeypatch):
     """engrammar_add rejects non-UUID session IDs (e.g. 'current-sess')."""
-    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: "current-sess")
+    monkeypatch.setattr("src.infra.hook_utils.read_session_id", lambda: "current-sess")
 
     result = engrammar_add(text="engram", category="dev")
     assert "Added engram" in result
@@ -60,7 +60,7 @@ def test_add_ignores_fake_session_id(test_db, monkeypatch):
 
 def test_add_no_session_file(test_db, monkeypatch):
     """engrammar_add works when no session file exists."""
-    monkeypatch.setattr("src.hook_utils.read_session_id", lambda: None)
+    monkeypatch.setattr("src.infra.hook_utils.read_session_id", lambda: None)
 
     result = engrammar_add(text="engram", category="dev")
     assert "Added engram" in result
@@ -114,7 +114,7 @@ def test_add_invalid_prereqs(test_db):
 
 
 def test_search_results(test_db):
-    with patch("src.search.search") as mock_search:
+    with patch("src.search.engine.search") as mock_search:
         mock_search.return_value = [
             {"id": 1, "text": "use hooks", "category": "dev", "score": 0.9}
         ]
@@ -124,7 +124,7 @@ def test_search_results(test_db):
 
 
 def test_search_no_results(test_db):
-    with patch("src.search.search") as mock_search:
+    with patch("src.search.engine.search") as mock_search:
         mock_search.return_value = []
         result = engrammar_search(query="nonexistent")
     assert "No matching engrams found." in result

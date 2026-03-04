@@ -2,7 +2,7 @@
 
 import time
 
-from src.daemon import EngrammarDaemon
+from src.infra.daemon import EngrammarDaemon
 
 
 class _FakeProc:
@@ -32,8 +32,8 @@ def test_run_maintenance_single_flight(monkeypatch, tmp_path):
         spawned.append(proc)
         return proc
 
-    monkeypatch.setattr("src.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
-    monkeypatch.setattr("src.daemon.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("src.infra.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
+    monkeypatch.setattr("src.infra.daemon.subprocess.Popen", fake_popen)
 
     daemon = EngrammarDaemon()
 
@@ -59,8 +59,8 @@ def _make_daemon(monkeypatch, tmp_path, spawned):
         spawned.append(proc)
         return proc
 
-    monkeypatch.setattr("src.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
-    monkeypatch.setattr("src.daemon.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("src.infra.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
+    monkeypatch.setattr("src.infra.daemon.subprocess.Popen", fake_popen)
     return EngrammarDaemon()
 
 
@@ -249,7 +249,7 @@ def test_drain_spawn_failure_keeps_pending(monkeypatch, tmp_path):
     # Make Popen raise on next spawn
     def failing_popen(cmd, **kwargs):
         raise OSError("spawn failed")
-    monkeypatch.setattr("src.daemon.subprocess.Popen", failing_popen)
+    monkeypatch.setattr("src.infra.daemon.subprocess.Popen", failing_popen)
 
     daemon._drain_pending_turns()
 
@@ -260,7 +260,7 @@ def test_drain_spawn_failure_keeps_pending(monkeypatch, tmp_path):
 
 def test_idle_timeout_suppressed_while_pending(monkeypatch, tmp_path):
     """P2: Daemon should not idle-shutdown while turns are pending or extraction is running."""
-    import src.daemon as daemon_mod
+    import src.infra.daemon as daemon_mod
 
     spawned = []
     daemon = _make_daemon(monkeypatch, tmp_path, spawned)

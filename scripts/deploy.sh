@@ -1,14 +1,17 @@
 #!/bin/bash
 # Deploy Engrammar from repo to ~/.engrammar (development workflow)
-# Usage: bash deploy.sh [--restart]
+# Usage: bash scripts/deploy.sh [--restart]
 #   --restart  Also restart the daemon after deploying
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+SOURCE_DIR="$(get_repo_root)"
+
 ENGRAMMAR_HOME="$HOME/.engrammar"
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -d "$ENGRAMMAR_HOME" ]; then
-    echo "ERROR: $ENGRAMMAR_HOME not found. Run setup.sh first for initial install."
+    error "ERROR: $ENGRAMMAR_HOME not found. Run scripts/setup.sh first for initial install."
     exit 1
 fi
 
@@ -16,8 +19,9 @@ echo "Deploying from $SOURCE_DIR -> $ENGRAMMAR_HOME"
 
 # Copy source package
 echo "  src/ -> engrammar/"
-rm -rf "$ENGRAMMAR_HOME/engrammar/__pycache__"
-cp "$SOURCE_DIR"/src/*.py "$ENGRAMMAR_HOME/engrammar/"
+rm -rf "$ENGRAMMAR_HOME/engrammar"
+cp -r "$SOURCE_DIR/src" "$ENGRAMMAR_HOME/engrammar"
+find "$ENGRAMMAR_HOME/engrammar" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 # Copy hooks
 echo "  hooks/"
@@ -33,11 +37,12 @@ mkdir -p "$ENGRAMMAR_HOME/prompts"
 cp -r "$SOURCE_DIR"/prompts/* "$ENGRAMMAR_HOME/prompts/"
 
 # Copy CLI + scripts
-echo "  cli.py, engrammar-cli, backfill_stats.py"
+echo "  cli.py, engrammar, backfill_stats.py"
 cp "$SOURCE_DIR/cli.py" "$ENGRAMMAR_HOME/cli.py"
-cp "$SOURCE_DIR/engrammar" "$ENGRAMMAR_HOME/engrammar-cli"
+mkdir -p "$ENGRAMMAR_HOME/bin"
+cp "$SOURCE_DIR/engrammar" "$ENGRAMMAR_HOME/bin/engrammar"
 cp "$SOURCE_DIR/backfill_stats.py" "$ENGRAMMAR_HOME/backfill_stats.py"
-chmod +x "$ENGRAMMAR_HOME/engrammar-cli"
+chmod +x "$ENGRAMMAR_HOME/bin/engrammar"
 chmod +x "$ENGRAMMAR_HOME/backfill_stats.py"
 
 # Restart daemon if requested

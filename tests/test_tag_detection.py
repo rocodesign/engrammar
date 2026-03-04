@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.tag_detectors import (
+from src.search.tag_detectors import (
     detect_tags,
     _detect_from_git,
     _detect_from_files,

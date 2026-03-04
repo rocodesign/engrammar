@@ -17,9 +17,9 @@ import os
 
 import pytest
 
-from src.db import init_db, get_connection, add_engram
-from src.search import search
-from src.environment import detect_environment
+from src.core.db import init_db, get_connection, add_engram
+from src.search.engine import search
+from src.search.environment import detect_environment
 
 
 @pytest.fixture
@@ -60,8 +60,8 @@ class TestBackfillEnvironmentBug:
         # Simulate current environment (personal project, no acme tag)
         monkeypatch.setattr(os, 'getcwd', lambda: '/Users/user/work/personal/my-app')
 
-        from src.embeddings import build_index
-        from src.db import get_all_active_engrams
+        from src.core.embeddings import build_index
+        from src.core.db import get_all_active_engrams
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)
 
@@ -95,9 +95,9 @@ class TestBackfillEnvironmentBug:
         conn.commit()
         conn.close()
 
-        from src.search import search
-        from src.embeddings import build_index
-        from src.db import get_all_active_engrams
+        from src.search.engine import search
+        from src.core.embeddings import build_index
+        from src.core.db import get_all_active_engrams
 
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)
@@ -137,9 +137,9 @@ class TestBackfillEnvironmentBug:
 
         # This test shows the inverse: engrams without prerequisites always match
         # regardless of environment, which is correct behavior
-        from src.search import search
-        from src.embeddings import build_index
-        from src.db import get_all_active_engrams
+        from src.search.engine import search
+        from src.core.embeddings import build_index
+        from src.core.db import get_all_active_engrams
 
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)

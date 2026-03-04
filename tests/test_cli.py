@@ -15,7 +15,7 @@ from cli import (
     cmd_list,
     cmd_detect_tags,
 )
-from src.db import add_engram, get_all_active_engrams, get_connection
+from src.core.db import add_engram, get_all_active_engrams, get_connection
 
 pytestmark = pytest.mark.usefixtures("mock_build_index")
 
@@ -51,7 +51,7 @@ def test_cmd_add_no_args(test_db, capsys):
 
 
 def test_cmd_search_results(test_db, capsys):
-    with patch("src.search.search") as mock_search:
+    with patch("src.search.engine.search") as mock_search:
         mock_search.return_value = [
             {
                 "id": 1,
@@ -69,7 +69,7 @@ def test_cmd_search_results(test_db, capsys):
 
 
 def test_cmd_search_no_results(test_db, capsys):
-    with patch("src.search.search") as mock_search:
+    with patch("src.search.engine.search") as mock_search:
         mock_search.return_value = []
         cmd_search(["nonexistent query"])
     captured = capsys.readouterr()
@@ -136,7 +136,7 @@ def test_cmd_list(test_db, capsys):
 
 
 def test_cmd_detect_tags(test_db, capsys):
-    with patch("src.environment.detect_environment") as mock_env:
+    with patch("src.search.environment.detect_environment") as mock_env:
         mock_env.return_value = {
             "os": "darwin",
             "repo": "engrammar",

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.db import (
+from src.core.db import (
     init_db,
     write_session_audit,
     get_unprocessed_audit_sessions,

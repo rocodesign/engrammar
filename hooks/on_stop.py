@@ -16,7 +16,7 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 
 def main():
-    from engrammar.hook_utils import log_error, parse_hook_input
+    from engrammar.infra.hook_utils import log_error, parse_hook_input
 
     try:
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
@@ -36,11 +36,11 @@ def main():
 
         # Write session audit (shown engrams + env tags) for evaluation
         try:
-            from engrammar.db import get_shown_engram_ids, write_session_audit
+            from engrammar.core.db import get_shown_engram_ids, write_session_audit
 
             shown_ids = get_shown_engram_ids(session_id)
             if shown_ids:
-                from engrammar.environment import detect_environment
+                from engrammar.search.environment import detect_environment
                 env = detect_environment()
                 write_session_audit(
                     session_id, list(shown_ids),
@@ -53,7 +53,7 @@ def main():
         # Send extraction request to daemon (non-blocking)
         if transcript_path:
             try:
-                from engrammar.client import send_request
+                from engrammar.infra.client import send_request
 
                 send_request({
                     "type": "process_turn",
@@ -63,7 +63,7 @@ def main():
             except Exception:
                 # Fallback: spawn CLI directly if daemon unavailable
                 try:
-                    cli_path = os.path.join(ENGRAMMAR_HOME, "engrammar-cli")
+                    cli_path = os.path.join(ENGRAMMAR_HOME, "bin", "engrammar")
                     subprocess.Popen(
                         [cli_path, "process-turn",
                          "--session", session_id,

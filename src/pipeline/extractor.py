@@ -18,7 +18,7 @@ _ENGRAMMAR_BLOCK_RE = re.compile(
     r"\[ENGRAMMAR_V1\].*?\[/ENGRAMMAR_V1\]", re.DOTALL
 )
 
-from .db import (
+from engrammar.core.db import (
     add_engram,
     deprecate_engram,
     find_similar_engram,
@@ -31,8 +31,8 @@ from .db import (
     update_tag_relevance,
     write_session_audit,
 )
-from .embeddings import build_index, embed_batch
-from .prompt_loader import load_prompt
+from engrammar.core.embeddings import build_index, embed_batch
+from engrammar.core.prompt_loader import load_prompt
 
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
 MAX_LESSONS_PER_BATCH = 30

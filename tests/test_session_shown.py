@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.db import (
+from src.core.db import (
     init_db,
     record_shown_engram,
     get_shown_engram_ids,

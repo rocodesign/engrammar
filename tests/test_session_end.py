@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.db import init_db, get_connection, update_match_stats
-from src.environment import detect_environment
+from src.core.db import init_db, get_connection, update_match_stats
+from src.search.environment import detect_environment
 
 
 @pytest.fixture

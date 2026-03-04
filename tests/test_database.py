@@ -4,7 +4,7 @@ import pytest
 import tempfile
 import os
 import json
-from src.db import (
+from src.core.db import (
     init_db, add_engram, get_all_active_engrams, deprecate_engram,
     get_engram_categories, add_engram_category, remove_engram_category,
     update_match_stats, get_connection, AUTO_PIN_THRESHOLD
@@ -77,7 +77,7 @@ def test_junction_table_sync_on_category_update():
         assert "tools/figma" in cats_before
 
         # Update category (simulating engrammar_update)
-        from src.db import remove_engram_category, add_engram_category
+        from src.core.db import remove_engram_category, add_engram_category
         conn = get_connection(db_path)
 
         # This is what engrammar_update now does:

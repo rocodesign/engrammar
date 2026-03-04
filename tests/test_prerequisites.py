@@ -1,7 +1,7 @@
 """Tests for prerequisite checking logic."""
 
 import pytest
-from src.environment import check_prerequisites
+from src.search.environment import check_prerequisites
 
 
 def test_no_prerequisites_always_passes():
