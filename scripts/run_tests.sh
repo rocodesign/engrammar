@@ -4,17 +4,19 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+source "$SCRIPT_DIR/lib.sh"
+SOURCE_DIR="$(get_repo_root)"
+detect_os
 
 # Use deployed venv if available, otherwise look for local venv
 if [ -d "$HOME/.engrammar/venv" ]; then
-    PYTHON="$HOME/.engrammar/venv/bin/python"
-    PYTEST="$HOME/.engrammar/venv/bin/pytest"
-elif [ -d "venv" ]; then
-    PYTHON="venv/bin/python"
-    PYTEST="venv/bin/pytest"
+    PYTHON="$(get_venv_bin "$HOME/.engrammar/venv")/python"
+    PYTEST="$(get_venv_bin "$HOME/.engrammar/venv")/pytest"
+elif [ -d "$SOURCE_DIR/venv" ]; then
+    PYTHON="$(get_venv_bin "$SOURCE_DIR/venv")/python"
+    PYTEST="$(get_venv_bin "$SOURCE_DIR/venv")/pytest"
 else
-    echo "Error: No virtualenv found. Run setup.sh first."
+    echo "Error: No virtualenv found. Run scripts/setup.sh first."
     exit 1
 fi
 
@@ -28,7 +30,7 @@ echo "=== Running Engrammar Tests ==="
 echo
 
 # Run tests with pytest
-"$PYTEST" tests/ "$@"
+"$PYTEST" "$SOURCE_DIR/tests/" "$@"
 
 echo
 echo "=== Tests Complete ==="

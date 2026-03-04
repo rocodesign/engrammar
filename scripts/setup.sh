@@ -1,9 +1,12 @@
 #!/bin/bash
-# Install Engrammar — run: bash setup.sh
+# Install Engrammar — run: bash scripts/setup.sh
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+SOURCE_DIR="$(get_repo_root)"
+
 ENGRAMMAR_HOME="$HOME/.engrammar"
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "=== Installing Engrammar ==="
 echo ""
@@ -11,20 +14,11 @@ echo ""
 # 1. Create directory structure
 echo "Creating directory structure..."
 mkdir -p "$ENGRAMMAR_HOME/hooks"
+mkdir -p "$ENGRAMMAR_HOME/bin"
 
-# 2. Create venv with Python 3.12+ (MCP SDK requires 3.10+)
-PYTHON_BIN=""
-for py in python3.13 python3.12 python3.11 python3.10; do
-    if command -v "$py" &> /dev/null; then
-        PYTHON_BIN="$py"
-        break
-    fi
-done
-
-if [ -z "$PYTHON_BIN" ]; then
-    echo "ERROR: Python 3.10+ required (for MCP SDK). Install via: brew install python@3.12"
-    exit 1
-fi
+# 2. Detect OS + find Python 3.10+
+detect_os
+find_python || exit 1
 
 if [ ! -d "$ENGRAMMAR_HOME/venv" ]; then
     echo "Creating Python virtual environment ($PYTHON_BIN)..."
@@ -33,9 +27,11 @@ else
     echo "Virtual environment already exists."
 fi
 
+VENV_BIN="$(get_venv_bin "$ENGRAMMAR_HOME/venv")"
+
 # 3. Install dependencies
 echo "Installing dependencies..."
-"$ENGRAMMAR_HOME/venv/bin/pip" install -q -r "$SOURCE_DIR/requirements.txt"
+"$VENV_BIN/pip" install -q -r "$SOURCE_DIR/requirements.txt"
 
 # 4. Copy source files
 echo "Copying source files..."
@@ -47,8 +43,8 @@ cp "$SOURCE_DIR/hooks/on_tool_use.py" "$ENGRAMMAR_HOME/hooks/on_tool_use.py"
 cp "$SOURCE_DIR/hooks/on_stop.py" "$ENGRAMMAR_HOME/hooks/on_stop.py"
 cp "$SOURCE_DIR/cli.py" "$ENGRAMMAR_HOME/cli.py"
 cp "$SOURCE_DIR/backfill_stats.py" "$ENGRAMMAR_HOME/backfill_stats.py"
-cp "$SOURCE_DIR/engrammar" "$ENGRAMMAR_HOME/engrammar-cli"
-chmod +x "$ENGRAMMAR_HOME/engrammar-cli"
+cp "$SOURCE_DIR/engrammar" "$ENGRAMMAR_HOME/bin/engrammar"
+chmod +x "$ENGRAMMAR_HOME/bin/engrammar"
 chmod +x "$ENGRAMMAR_HOME/backfill_stats.py"
 
 # 5. Copy config (only if not exists — don't overwrite user customizations)
@@ -62,24 +58,31 @@ fi
 # 6. Initialize DB + import existing engrams + build index
 echo ""
 echo "Running setup..."
-"$ENGRAMMAR_HOME/venv/bin/python" "$ENGRAMMAR_HOME/cli.py" setup
+"$VENV_BIN/python" "$ENGRAMMAR_HOME/cli.py" setup
 
 # 7. Register hooks in Claude Code settings
 echo ""
 echo "Registering hooks..."
-"$ENGRAMMAR_HOME/venv/bin/python" "$ENGRAMMAR_HOME/engrammar/register_hooks.py"
+"$VENV_BIN/python" "$ENGRAMMAR_HOME/engrammar/infra/register_hooks.py"
+
+# 8. Add CLI to ~/.local/bin
+mkdir -p "$HOME/.local/bin"
+ln -sf "$ENGRAMMAR_HOME/bin/engrammar" "$HOME/.local/bin/engrammar" 2>/dev/null || \
+    cp "$ENGRAMMAR_HOME/bin/engrammar" "$HOME/.local/bin/engrammar"
 
 echo ""
 echo "=== Engrammar installed ==="
 echo "Home:    $ENGRAMMAR_HOME"
+echo "CLI:     ~/.local/bin/engrammar"
 echo ""
 echo "CLI commands:"
-echo "  $ENGRAMMAR_HOME/engrammar-cli status"
-echo "  $ENGRAMMAR_HOME/engrammar-cli search \"query\""
-echo "  $ENGRAMMAR_HOME/engrammar-cli list"
+echo "  engrammar status"
+echo "  engrammar search \"query\""
+echo "  engrammar list"
 echo ""
-echo "To use 'engrammar' from anywhere, add to your ~/.zshrc:"
-echo "  export PATH=\"\$HOME/.engrammar:\$PATH\""
-echo "  alias engrammar=\"\$HOME/.engrammar/engrammar-cli\""
-echo ""
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
+    echo "Note: ~/.local/bin is not on your PATH. Add to your shell config:"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+fi
 echo "MCP server + hooks will activate on your next Claude Code session."

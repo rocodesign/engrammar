@@ -4,10 +4,10 @@ The Engrammar CLI provides command-line access to all engram management operatio
 
 ## Installation
 
-After running `bash setup.sh`, the CLI is available at:
+After running `bash scripts/setup.sh`, the CLI is available at:
 
 ```bash
-~/.engrammar/engrammar-cli
+~/.engrammar/bin/engrammar
 ```
 
 ### Adding to PATH (optional)
@@ -15,8 +15,7 @@ After running `bash setup.sh`, the CLI is available at:
 For convenient access from anywhere, add to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-export PATH="$HOME/.engrammar:$PATH"
-alias engrammar="$HOME/.engrammar/engrammar-cli"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Then reload: `source ~/.zshrc`

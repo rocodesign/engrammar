@@ -97,7 +97,7 @@ class EngrammarDaemon:
 
     def _warm_up(self):
         """Pre-load the embedding model so first search is fast."""
-        from engrammar.embeddings import get_model
+        from engrammar.core.embeddings import get_model
 
         _log("Warming up model...")
         t0 = time.perf_counter()
@@ -111,7 +111,7 @@ class EngrammarDaemon:
         req_type = data.get("type", "")
 
         if req_type == "search":
-            from engrammar.search import search
+            from engrammar.search.engine import search
 
             results = search(
                 data.get("query", ""),
@@ -121,7 +121,7 @@ class EngrammarDaemon:
             return {"results": _serialize(results)}
 
         elif req_type == "tool_context":
-            from engrammar.search import search_for_tool_context
+            from engrammar.search.engine import search_for_tool_context
 
             results = search_for_tool_context(
                 data.get("tool_name", ""),
@@ -130,8 +130,8 @@ class EngrammarDaemon:
             return {"results": _serialize(results)}
 
         elif req_type == "pinned":
-            from engrammar.db import get_pinned_engrams, get_tag_relevance_with_evidence
-            from engrammar.environment import check_structural_prerequisites, detect_environment
+            from engrammar.core.db import get_pinned_engrams, get_tag_relevance_with_evidence
+            from engrammar.search.environment import check_structural_prerequisites, detect_environment
 
             env = detect_environment()
             env_tags = env.get("tags", [])

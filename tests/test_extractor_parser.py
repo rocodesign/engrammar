@@ -1,6 +1,6 @@
 """Tests for robust JSON array parsing in extractor output."""
 
-from src.extractor import _parse_json_array
+from src.pipeline.extractor import _parse_json_array
 
 
 def test_parse_json_array_skips_prefix_bracket_reference():

@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from src.db import (
+from src.core.db import (
     init_db,
     add_engram,
     write_session_audit,
     get_connection,
 )
-from src.evaluator import (
+from src.pipeline.evaluator import (
     run_evaluation_for_session,
     run_pending_evaluations,
     _mark_session_status,
@@ -44,7 +44,7 @@ class TestRunEvaluation:
         lid = _setup_session(test_db)
 
         mock_result = [{"engram_id": lid, "tag_scores": {"frontend": 0.8, "react": 0.5}}]
-        with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result):
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=mock_result):
             success = run_evaluation_for_session("sess-1", db_path=test_db)
 
         assert success is True
@@ -61,7 +61,7 @@ class TestRunEvaluation:
         """Should mark session as failed when claude returns nothing."""
         _setup_session(test_db)
 
-        with patch("src.evaluator._call_claude_for_evaluation", return_value=[]):
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=[]):
             success = run_evaluation_for_session("sess-1", db_path=test_db)
 
         assert success is False
@@ -98,8 +98,8 @@ class TestRunEvaluation:
         lid = _setup_session(test_db, transcript_path=str(transcript_file))
 
         mock_result = [{"engram_id": lid, "tag_scores": {"frontend": 0.9}}]
-        with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result) as mock_call:
-            with patch("src.evaluator._find_transcript_excerpt") as mock_glob:
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=mock_result) as mock_call:
+            with patch("src.pipeline.evaluator._find_transcript_excerpt") as mock_glob:
                 success = run_evaluation_for_session("sess-1", db_path=test_db)
 
         assert success is True
@@ -146,7 +146,7 @@ class TestRetryBehavior:
         """Retries should increment retry_count."""
         _setup_session(test_db)
 
-        with patch("src.evaluator._call_claude_for_evaluation", return_value=[]):
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=[]):
             run_evaluation_for_session("sess-1", db_path=test_db)
             run_evaluation_for_session("sess-1", db_path=test_db)
 
@@ -172,7 +172,7 @@ class TestRetryBehavior:
         conn.close()
 
         # Should process 0 sessions
-        with patch("src.evaluator._call_claude_for_evaluation") as mock_call:
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation") as mock_call:
             results = run_pending_evaluations(db_path=test_db)
 
         mock_call.assert_not_called()
@@ -187,7 +187,7 @@ class TestPendingEvaluations:
             write_session_audit(f"sess-{i}", [lid], ["test"], "repo", db_path=test_db)
 
         mock_result = [{"engram_id": 1, "tag_scores": {"test": 0.5}}]
-        with patch("src.evaluator._call_claude_for_evaluation", return_value=mock_result):
+        with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=mock_result):
             results = run_pending_evaluations(limit=5, db_path=test_db)
 
         assert results["total"] == 3

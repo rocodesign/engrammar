@@ -92,12 +92,19 @@ See [docs/CLI.md](docs/CLI.md) for full usage details.
 
 ## Getting Started
 
-Requires Python 3.12+ and Claude Code CLI. No API keys needed — embeddings run locally via `fastembed`. The AI evaluation and extraction features use Haiku and are optional (fail open).
+### One-liner install
 
 ```bash
-# Initialize database and build embedding index
-engrammar setup
+curl -fsSL https://raw.githubusercontent.com/rocodesign/engrammar/main/scripts/install.sh | bash
+```
 
+The installer walks you through what Engrammar does, checks prerequisites, and lets you configure settings interactively.
+
+Requires Python 3.10+ and Claude Code CLI. No API keys needed — embeddings run locally via `fastembed`. The AI evaluation and extraction features use Haiku and are optional (fail open).
+
+### After install
+
+```bash
 # Check system status and detected environment
 engrammar status
 
@@ -129,10 +136,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive technical doc
 ~/.engrammar/venv/bin/python -m pytest tests/ -v
 
 # Deploy changes to ~/.engrammar after editing
-bash deploy.sh
+bash scripts/deploy.sh
 
 # Deploy and restart daemon
-bash deploy.sh --restart
+bash scripts/deploy.sh --restart
 ```
 
 ## License

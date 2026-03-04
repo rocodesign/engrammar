@@ -2,10 +2,15 @@
 # Integration test: backup DB, run backfill + eval, then probe hook injections
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+SOURCE_DIR="$(get_repo_root)"
+detect_os
+
 ENGRAMMAR_HOME="${ENGRAMMAR_HOME:-$HOME/.engrammar}"
 DB="$ENGRAMMAR_HOME/engrams.db"
 BACKUP="$ENGRAMMAR_HOME/engrams.db.backup-$(date +%Y%m%d-%H%M%S)"
-VENV="$ENGRAMMAR_HOME/venv/bin/python"
+VENV="$(get_venv_bin "$ENGRAMMAR_HOME/venv")/python"
 REPORT_DIR="/tmp/engrammar-integration-$(date +%Y%m%d-%H%M%S)"
 
 mkdir -p "$REPORT_DIR"
@@ -56,12 +61,12 @@ echo ""
 
 # ── Step 3: Extract engrams from transcripts ─────────────────────
 echo "── Step 3: Extracting engrams from conversation transcripts ──"
-"$VENV" "$(dirname "$0")/cli.py" extract --limit 10 2>&1 | tee "$REPORT_DIR/03-extract.log"
+"$VENV" "$SOURCE_DIR/cli.py" extract --limit 10 2>&1 | tee "$REPORT_DIR/03-extract.log"
 echo ""
 
 # ── Step 3b: Backfill prerequisites ──────────────────────────────
 echo "── Step 3b: Backfilling prerequisites on engrams ──"
-"$VENV" "$(dirname "$0")/cli.py" backfill-prereqs 2>&1 | tee "$REPORT_DIR/03b-prereqs.log"
+"$VENV" "$SOURCE_DIR/cli.py" backfill-prereqs 2>&1 | tee "$REPORT_DIR/03b-prereqs.log"
 echo ""
 
 # ── Step 4: Post-extraction state ─────────────────────────────────

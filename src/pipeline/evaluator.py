@@ -12,8 +12,8 @@ import subprocess
 import sys
 from datetime import datetime
 
-from .db import get_connection, get_unprocessed_audit_sessions
-from .prompt_loader import load_prompt
+from engrammar.core.db import get_connection, get_unprocessed_audit_sessions
+from engrammar.core.prompt_loader import load_prompt
 
 _prompt_cache = {}
 
@@ -259,7 +259,7 @@ def run_evaluation_for_session(session_id, db_path=None):
 
     # Accumulate scores (import here to avoid circular dependency in Commit D)
     try:
-        from .db import update_tag_relevance
+        from engrammar.core.db import update_tag_relevance
         for ev in evaluations:
             engram_id = ev.get("engram_id")
             tag_scores = ev.get("tag_scores", {})

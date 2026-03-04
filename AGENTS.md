@@ -2,9 +2,9 @@ In this repo refrain from using engrammar mcp, we are developing engrammar here 
 
 ## Deployment
 
-- **First install**: `bash setup.sh` — creates venv, copies files, initializes DB, registers hooks
-- **After code changes**: `bash deploy.sh` — copies src/, hooks/, cli.py to `~/.engrammar/`
-- **With daemon restart**: `bash deploy.sh --restart`
+- **First install**: `bash scripts/setup.sh` — creates venv, copies files, initializes DB, registers hooks
+- **After code changes**: `bash scripts/deploy.sh` — copies src/, hooks/, cli.py to `~/.engrammar/`
+- **With daemon restart**: `bash scripts/deploy.sh --restart`
 
 ## Tracking Work
 

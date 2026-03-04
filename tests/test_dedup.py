@@ -7,14 +7,14 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.db import (
+from src.core.db import (
     init_db, add_engram, get_connection, get_all_active_engrams,
     get_unverified_engrams, get_verified_engrams, mark_dedup_verified,
     record_dedup_error, merge_engram_group, write_session_audit,
     log_hook_event, record_shown_engram, update_tag_relevance,
     update_match_stats,
 )
-from src.dedup import (
+from src.pipeline.dedup import (
     find_candidates_for_unverified,
     find_candidates_bootstrap,
     build_batches,
@@ -552,8 +552,8 @@ def _mock_llm_response(groups, no_match_ids=None):
 
 class TestIntegration:
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_full_dedup_pass_known_clusters(self, mock_embed, mock_llm, db_path):
         """Feed known duplicate clusters, verify collapse (incremental mode)."""
         import numpy as np
@@ -607,8 +607,8 @@ class TestIntegration:
         conn.close()
         assert deprecated >= 2
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_dedup_idempotent_after_convergence(self, mock_embed, mock_llm, db_path):
         """Second run after convergence produces zero merges."""
         import numpy as np
@@ -626,8 +626,8 @@ class TestIntegration:
         summary = run_dedup(single_pass=True, db_path=db_path)
         assert summary["merged"] == 0
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_dedup_scan_only_no_mutations(self, mock_embed, mock_llm, db_path):
         """--scan doesn't modify DB."""
         import numpy as np
@@ -672,8 +672,8 @@ class TestIntegration:
         assert len(before) == len(after)
         assert summary["merged"] == 0
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_bootstrap_mode_all_unverified(self, mock_embed, mock_llm, db_path):
         """Triggers bootstrap when pool is empty."""
         import numpy as np
@@ -710,10 +710,10 @@ class TestIntegration:
         summary = run_dedup(single_pass=True, db_path=db_path)
         assert summary["merged"] == 1
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
-    @patch("src.dedup.build_index")
-    @patch("src.dedup.build_tag_index")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
+    @patch("src.pipeline.dedup.build_index")
+    @patch("src.pipeline.dedup.build_tag_index")
     def test_multi_pass_convergence(self, mock_tag_idx, mock_idx, mock_embed, mock_llm, db_path):
         """Merges in pass 1 enable further merges in pass 2."""
         import numpy as np
@@ -776,8 +776,8 @@ class TestIntegration:
         assert summary["merged"] >= 2
         assert summary["passes"] >= 2
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_error_handling_retry(self, mock_embed, mock_llm, db_path):
         """LLM failure increments attempts, retryable next run."""
         import numpy as np
@@ -827,8 +827,8 @@ class TestIntegration:
 
 class TestCLI:
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_cmd_dedup_scan_output(self, mock_embed, mock_llm, db_path, capsys):
         """Verify human-readable scan format."""
         import numpy as np
@@ -870,8 +870,8 @@ class TestCLI:
         assert "canonical_text" in group
         assert "confidence" in group
 
-    @patch("src.dedup.call_dedup_llm")
-    @patch("src.dedup.embed_batch")
+    @patch("src.pipeline.dedup.call_dedup_llm")
+    @patch("src.pipeline.dedup.embed_batch")
     def test_cmd_dedup_json_output(self, mock_embed, mock_llm, db_path):
         """Verify JSON summary structure."""
         import numpy as np

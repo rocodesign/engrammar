@@ -3,8 +3,8 @@
 import pytest
 import tempfile
 import os
-from src.db import init_db, add_engram
-from src.search import search, _reciprocal_rank_fusion
+from src.core.db import init_db, add_engram
+from src.search.engine import search, _reciprocal_rank_fusion
 
 
 def test_rrf_fusion():
@@ -85,7 +85,7 @@ def test_search_filters_by_tag_relevance():
         db_path = os.path.join(tmpdir, "test.db")
         init_db(db_path)
 
-        from src.db import get_connection, update_tag_relevance
+        from src.core.db import get_connection, update_tag_relevance
 
         # Add two engrams about the same topic
         good_id = add_engram(text="Good testing engram", category="test", db_path=db_path)

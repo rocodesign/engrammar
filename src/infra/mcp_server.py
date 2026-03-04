@@ -66,7 +66,7 @@ def engrammar_search(query: str, category: str | None = None, tags: list[str] | 
         tags: Optional list of required tags (engrams must have ALL specified tags)
         top_k: Number of results to return (default 5)
     """
-    from engrammar.search import search
+    from engrammar.search.engine import search
 
     results = search(query, category_filter=category, tag_filter=tags, top_k=top_k)
 
@@ -132,11 +132,11 @@ def engrammar_add(
     if not category:
         return "Error: category must contain at least one segment."
 
-    from engrammar.db import add_engram, get_all_active_engrams
-    from engrammar.embeddings import build_index
+    from engrammar.core.db import add_engram, get_all_active_engrams
+    from engrammar.core.embeddings import build_index
 
     # Auto-capture session_id from file written by SessionStart hook
-    from engrammar.hook_utils import read_session_id
+    from engrammar.infra.hook_utils import read_session_id
     session_id = read_session_id()
     source_sessions = []
     if session_id and _UUID_RE.match(session_id):
@@ -185,8 +185,8 @@ def engrammar_deprecate(engram_id: int, reason: str = "") -> str:
         engram_id: The engram ID to deprecate
         reason: Why this engram is being deprecated
     """
-    from engrammar.db import deprecate_engram, get_connection, get_all_active_engrams
-    from engrammar.embeddings import build_index
+    from engrammar.core.db import deprecate_engram, get_connection, get_all_active_engrams
+    from engrammar.core.embeddings import build_index
 
     # Verify engram exists
     conn = get_connection()
@@ -228,8 +228,8 @@ def engrammar_feedback(
         add_prerequisites: Optional prerequisites dict or JSON string to add
             (e.g. {"mcp_servers":["figma"],"repos":["app-repo"]})
     """
-    from engrammar.db import get_connection, update_tag_relevance
-    from engrammar.environment import detect_environment
+    from engrammar.core.db import get_connection, update_tag_relevance
+    from engrammar.search.environment import detect_environment
     from datetime import datetime
 
     conn = get_connection()
@@ -353,8 +353,8 @@ def engrammar_update(
         if not category:
             return "Error: category must contain at least one segment."
 
-    from engrammar.db import get_connection, get_all_active_engrams
-    from engrammar.embeddings import build_index
+    from engrammar.core.db import get_connection, get_all_active_engrams
+    from engrammar.core.embeddings import build_index
     from datetime import datetime
 
     conn = get_connection()
@@ -375,7 +375,7 @@ def engrammar_update(
     if category is not None:
         # Sync junction table: remove old primary category, add new one
         old_category = row["category"]
-        from engrammar.db import remove_engram_category, add_engram_category
+        from engrammar.core.db import remove_engram_category, add_engram_category
         if old_category:
             remove_engram_category(engram_id, old_category)
         add_engram_category(engram_id, category)
@@ -442,7 +442,7 @@ def engrammar_categorize(engram_id: int, add: str | None = None, remove: str | N
         add: Category path to add (e.g. "development/frontend/styling")
         remove: Category path to remove
     """
-    from engrammar.db import get_engram_categories, add_engram_category, remove_engram_category, get_connection
+    from engrammar.core.db import get_engram_categories, add_engram_category, remove_engram_category, get_connection
 
     conn = get_connection()
     row = conn.execute("SELECT id FROM engrams WHERE id = ?", (engram_id,)).fetchone()
@@ -482,7 +482,7 @@ def engrammar_pin(engram_id: int, prerequisites: dict | str | None = None) -> st
         prerequisites: Optional prerequisites dict or JSON string for when to show this engram
             (e.g. {"paths":["~/work/acme"]} or {"repos":["app-repo"]})
     """
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
     from datetime import datetime
 
     conn = get_connection()
@@ -528,7 +528,7 @@ def engrammar_unpin(engram_id: int) -> str:
     Args:
         engram_id: The engram ID to unpin
     """
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
     from datetime import datetime
 
     conn = get_connection()
@@ -560,7 +560,7 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
         limit: Max number of engrams to return (0 = all)
         offset: Number of engrams to skip (for pagination)
     """
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection()
     if include_deprecated:
@@ -603,7 +603,7 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
         if l.get("prerequisites"):
             prereqs = f" | prereqs: {l['prerequisites']}"
         # Show additional categories from junction table
-        from engrammar.db import get_engram_categories
+        from engrammar.core.db import get_engram_categories
         extra_cats = get_engram_categories(l["id"])
         extra_cats = [c for c in extra_cats if c != l.get("category")]
         cats_str = f" | also in: {', '.join(extra_cats)}" if extra_cats else ""
@@ -619,8 +619,8 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
 @mcp.tool()
 def engrammar_status() -> str:
     """Show Engrammar system status — engram count, categories, index health."""
-    from engrammar.db import get_engram_count, get_category_stats
-    from engrammar.config import DB_PATH, INDEX_PATH
+    from engrammar.core.db import get_engram_count, get_category_stats
+    from engrammar.core.config import DB_PATH, INDEX_PATH
 
     lines = ["=== Engrammar Status ===\n"]
 
@@ -643,7 +643,7 @@ def engrammar_status() -> str:
         lines.append("\nIndex: NOT BUILT")
 
     # Show environment
-    from engrammar.environment import detect_environment
+    from engrammar.search.environment import detect_environment
     env = detect_environment()
     lines.append(f"\nEnvironment:")
     lines.append(f"  OS: {env['os']}")

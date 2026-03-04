@@ -123,7 +123,7 @@ def _infer_env_from_transcript(session_data):
     Returns:
         list of tag strings
     """
-    from engrammar.tag_patterns import GIT_REMOTE_PATTERNS
+    from engrammar.search.tag_patterns import GIT_REMOTE_PATTERNS
 
     tags = set()
 
@@ -138,7 +138,7 @@ def _infer_env_from_transcript(session_data):
 
 def _has_existing_audit(session_id, db_path=None):
     """Check if a session_audit record already exists."""
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection(db_path)
     row = conn.execute(
@@ -163,7 +163,7 @@ def backfill_session(session_data, dry_run=False, verbose=False, db_path=None):
     Returns:
         dict: {'shown': int, 'audit_created': bool, 'engram_ids': [ids]}
     """
-    from engrammar.search import search
+    from engrammar.search.engine import search
 
     session_id = session_data['session_id']
 
@@ -206,7 +206,7 @@ def backfill_session(session_data, dry_run=False, verbose=False, db_path=None):
             print(f"    Engram #{lid}: {all_engrams[lid]['text'][:60]}...")
 
     if not dry_run:
-        from engrammar.db import write_session_audit
+        from engrammar.core.db import write_session_audit
 
         env_tags = _infer_env_from_transcript(session_data)
         write_session_audit(session_id, engram_ids, env_tags, repo, db_path=db_path)
@@ -298,7 +298,7 @@ def main():
     # Optionally run evaluator
     if args.evaluate and not args.dry_run and audits_created > 0:
         print("\nRunning evaluator...")
-        from engrammar.evaluator import run_pending_evaluations
+        from engrammar.pipeline.evaluator import run_pending_evaluations
 
         results = run_pending_evaluations(limit=audits_created)
         print(f"  Completed: {results['completed']}")

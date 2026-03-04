@@ -12,22 +12,22 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 
 def cmd_setup(args):
     """Initialize database + build index."""
-    from engrammar.config import DB_PATH, ENGRAMMAR_HOME
-    from engrammar.db import init_db, get_engram_count
+    from engrammar.core.config import DB_PATH, ENGRAMMAR_HOME
+    from engrammar.core.db import init_db, get_engram_count
 
     print("Initializing database...")
     init_db()
 
     count = get_engram_count()
     if count == 0:
-        print("Empty database. Run 'engrammar-cli extract' to populate from transcripts.")
+        print("Empty database. Run 'engrammar extract' to populate from transcripts.")
     else:
         print(f"Database has {count} engrams.")
 
     # Build embedding index
     print("Building embedding index...")
-    from engrammar.db import get_all_active_engrams
-    from engrammar.embeddings import build_index, build_tag_index
+    from engrammar.core.db import get_all_active_engrams
+    from engrammar.core.embeddings import build_index, build_tag_index
 
     engrams = get_all_active_engrams()
     if engrams:
@@ -43,8 +43,8 @@ def cmd_setup(args):
 
 def cmd_status(args):
     """Show database stats, index health, hook config."""
-    from engrammar.config import DB_PATH, INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, CONFIG_PATH, load_config
-    from engrammar.db import get_engram_count, get_category_stats
+    from engrammar.core.config import DB_PATH, INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, CONFIG_PATH, load_config
+    from engrammar.core.db import get_engram_count, get_category_stats
 
     config = load_config()
 
@@ -110,7 +110,7 @@ def cmd_search(args):
         if idx + 1 < len(args):
             tags = args[idx + 1].split(",")
 
-    from engrammar.search import search
+    from engrammar.search.engine import search
 
     results = search(query, category_filter=category, tag_filter=tags, top_k=5)
 
@@ -144,8 +144,8 @@ def cmd_add(args):
         if idx + 1 < len(args):
             tags = args[idx + 1].split(",")
 
-    from engrammar.db import add_engram, get_all_active_engrams
-    from engrammar.embeddings import build_index, build_tag_index
+    from engrammar.core.db import add_engram, get_all_active_engrams
+    from engrammar.core.embeddings import build_index, build_tag_index
 
     prereqs = {"tags": sorted(tags)} if tags else None
     engram_id = add_engram(text=text, category=category, source="manual", prerequisites=prereqs)
@@ -174,8 +174,8 @@ def cmd_import(args):
         print(f"File not found: {filepath}")
         return
 
-    from engrammar.db import import_from_state_file, add_engram, get_all_active_engrams
-    from engrammar.embeddings import build_index, build_tag_index
+    from engrammar.core.db import import_from_state_file, add_engram, get_all_active_engrams
+    from engrammar.core.embeddings import build_index, build_tag_index
 
     if filepath.endswith(".json"):
         imported = import_from_state_file(filepath)
@@ -203,7 +203,7 @@ def cmd_import(args):
 
 def cmd_export(args):
     """Export all engrams to markdown."""
-    from engrammar.db import get_all_active_engrams
+    from engrammar.core.db import get_all_active_engrams
 
     engrams = get_all_active_engrams()
     if not engrams:
@@ -235,7 +235,7 @@ def cmd_extract(args):
             session_id = args[idx + 1]
 
     if session_id:
-        from engrammar.extractor import extract_from_single_session
+        from engrammar.pipeline.extractor import extract_from_single_session
 
         summary = extract_from_single_session(session_id)
         if not dry_run:
@@ -243,7 +243,7 @@ def cmd_extract(args):
         return
 
     if use_facets:
-        from engrammar.extractor import extract_from_sessions
+        from engrammar.pipeline.extractor import extract_from_sessions
 
         summary = extract_from_sessions(dry_run=dry_run)
 
@@ -252,7 +252,7 @@ def cmd_extract(args):
                   f"{summary['with_friction']} with friction, "
                   f"{summary['extracted']} added, {summary['merged']} merged")
     else:
-        from engrammar.extractor import extract_from_transcripts
+        from engrammar.pipeline.extractor import extract_from_transcripts
 
         # Parse --limit N
         limit = None
@@ -274,8 +274,8 @@ def cmd_extract(args):
 
 def cmd_rebuild(args):
     """Rebuild the embedding index."""
-    from engrammar.db import get_all_active_engrams
-    from engrammar.embeddings import build_index, build_tag_index
+    from engrammar.core.db import get_all_active_engrams
+    from engrammar.core.embeddings import build_index, build_tag_index
 
     print("Loading engrams...")
     engrams = get_all_active_engrams()
@@ -292,7 +292,7 @@ def cmd_rebuild(args):
 
 def cmd_list(args):
     """List all engrams with optional pagination. Use --verbose for full details."""
-    from engrammar.db import get_all_active_engrams
+    from engrammar.core.db import get_all_active_engrams
 
     offset = 0
     limit = 20
@@ -327,7 +327,7 @@ def cmd_list(args):
         if verbose:
             engrams = [l for l in engrams if l.get("category", "").startswith(category)]
         else:
-            from engrammar.db import get_connection
+            from engrammar.core.db import get_connection
             conn = get_connection()
             rows = conn.execute(
                 "SELECT engram_id FROM engram_categories WHERE category_path LIKE ?",
@@ -362,7 +362,7 @@ def cmd_list(args):
 
 def _list_verbose(engrams, sort_by="id", category=None):
     """Show full engram details with tags/scores (git-log style)."""
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection()
 
@@ -494,8 +494,8 @@ def cmd_update(args):
         else:
             i += 1
 
-    from engrammar.db import get_connection, get_all_active_engrams, remove_engram_category, add_engram_category
-    from engrammar.embeddings import build_index, build_tag_index
+    from engrammar.core.db import get_connection, get_all_active_engrams, remove_engram_category, add_engram_category
+    from engrammar.core.embeddings import build_index, build_tag_index
 
     conn = get_connection()
 
@@ -565,7 +565,7 @@ def cmd_deprecate(args):
 
     engram_id = int(args[0])
 
-    from engrammar.db import deprecate_engram
+    from engrammar.core.db import deprecate_engram
 
     deprecate_engram(engram_id)
     print(f"Deprecated engram {engram_id}")
@@ -579,7 +579,7 @@ def cmd_pin(args):
 
     engram_id = int(args[0])
 
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection()
     conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
@@ -597,7 +597,7 @@ def cmd_unpin(args):
 
     engram_id = int(args[0])
 
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection()
     conn.execute("UPDATE engrams SET pinned = 0 WHERE id = ?", (engram_id,))
@@ -617,7 +617,7 @@ def cmd_categorize(args):
     action = args[1]
     category = args[2]
 
-    from engrammar.db import add_engram_category, remove_engram_category
+    from engrammar.core.db import add_engram_category, remove_engram_category
 
     if action == "add":
         add_engram_category(engram_id, category)
@@ -641,7 +641,7 @@ def cmd_reset_stats(args):
         print("Run with --confirm to proceed: engrammar reset-stats --confirm")
         return
 
-    from engrammar.db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection()
 
@@ -697,7 +697,7 @@ def cmd_evaluate(args):
         else:
             i += 1
 
-    from engrammar.evaluator import run_evaluation_for_session, run_pending_evaluations
+    from engrammar.pipeline.evaluator import run_evaluation_for_session, run_pending_evaluations
 
     if session_id:
         print(f"Evaluating session {session_id[:12]}...")
@@ -715,8 +715,8 @@ def cmd_backfill_prereqs(args):
     """Retroactively set prerequisites on existing engrams using keyword inference + session audit tags."""
     dry_run = "--dry-run" in args
 
-    from engrammar.db import get_all_active_engrams, get_connection, get_env_tags_for_sessions
-    from engrammar.extractor import _infer_prerequisites
+    from engrammar.core.db import get_all_active_engrams, get_connection, get_env_tags_for_sessions
+    from engrammar.pipeline.extractor import _infer_prerequisites
 
     engrams = get_all_active_engrams()
     if not engrams:
@@ -785,7 +785,7 @@ def cmd_backfill_prereqs(args):
 
     # Rebuild tag index after prerequisite changes
     if not dry_run and updated > 0:
-        from engrammar.embeddings import build_tag_index
+        from engrammar.core.embeddings import build_tag_index
         print("Rebuilding tag index...")
         engrams = get_all_active_engrams()
         nt = build_tag_index(engrams)
@@ -812,7 +812,7 @@ def cmd_process_turn(args):
         print("Usage: engrammar process-turn --session UUID --transcript PATH")
         return
 
-    from engrammar.extractor import extract_from_turn
+    from engrammar.pipeline.extractor import extract_from_turn
 
     summary = extract_from_turn(session_id, transcript_path)
     print(f"Turn extraction: {summary.get('extracted', 0)} added, {summary.get('merged', 0)} merged")
@@ -820,7 +820,7 @@ def cmd_process_turn(args):
 
 def cmd_log(args):
     """Show hook event log — what was injected, when, and by which hook."""
-    from engrammar.db import get_hook_events, get_connection
+    from engrammar.core.db import get_hook_events, get_connection
 
     # Parse args
     tail = 20
@@ -908,7 +908,7 @@ def cmd_log(args):
 
 def cmd_detect_tags(args):
     """Show detected environment tags for the current directory."""
-    from engrammar.environment import detect_environment
+    from engrammar.search.environment import detect_environment
 
     env = detect_environment()
     tags = env.get("tags", [])
@@ -929,7 +929,7 @@ def cmd_restore_db(args):
     import glob
     import shutil
 
-    from engrammar.config import DB_PATH, ENGRAMMAR_HOME
+    from engrammar.core.config import DB_PATH, ENGRAMMAR_HOME
 
     pattern = os.path.join(ENGRAMMAR_HOME, "engrams.db.backup-*")
     backups = sorted(glob.glob(pattern))
@@ -1008,7 +1008,7 @@ def cmd_reextract(args):
         else:
             i += 1
 
-    from engrammar.extractor import reextract_engrams
+    from engrammar.pipeline.extractor import reextract_engrams
 
     summary = reextract_engrams(
         category=category, limit=limit, prune=prune, dry_run=dry_run
@@ -1022,7 +1022,7 @@ def cmd_reextract(args):
 
 def cmd_dedup(args):
     """Deduplicate engrams using LLM-assisted similarity analysis."""
-    from engrammar.db import init_db
+    from engrammar.core.db import init_db
     init_db()
     scan_only = "--scan" in args
     json_output = "--json" in args
@@ -1059,7 +1059,7 @@ def cmd_dedup(args):
         else:
             i += 1
 
-    from engrammar.dedup import run_dedup
+    from engrammar.pipeline.dedup import run_dedup
 
     summary = run_dedup(
         scan_only=scan_only,

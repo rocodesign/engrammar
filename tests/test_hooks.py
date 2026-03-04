@@ -7,7 +7,7 @@ import pytest
 from io import StringIO
 from unittest.mock import patch
 
-from src.db import (
+from src.core.db import (
     add_engram,
     get_connection,
     record_shown_engram,
@@ -50,12 +50,12 @@ class TestSessionStart:
         conn.close()
 
         _set_stdin(monkeypatch, {"session_id": "sess-1"})
-        with patch("src.client.send_request"), \
-             patch("src.environment.detect_environment", return_value={
+        with patch("src.infra.client.send_request"), \
+             patch("src.search.environment.detect_environment", return_value={
                  "os": "darwin", "repo": "test", "cwd": "/tmp",
                  "tags": [], "mcp_servers": [],
              }), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_session_start import main
             main()
 
@@ -88,13 +88,13 @@ class TestSessionStart:
         conn.close()
 
         _set_stdin(monkeypatch, {"session_id": "sess-1"})
-        with patch("src.client.send_request"), \
-             patch("src.environment.detect_environment", return_value={
+        with patch("src.infra.client.send_request"), \
+             patch("src.search.environment.detect_environment", return_value={
                  "os": "darwin", "repo": "my-repo", "cwd": "/tmp",
                  "tags": [], "mcp_servers": [],
              }), \
-             patch("src.environment.check_structural_prerequisites", return_value=False), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.search.environment.check_structural_prerequisites", return_value=False), \
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_session_start import main
             main()
 
@@ -110,13 +110,13 @@ class TestSessionStart:
         conn.close()
 
         _set_stdin(monkeypatch, {"session_id": "sess-1"})
-        with patch("src.client.send_request"), \
-             patch("src.environment.detect_environment", return_value={
+        with patch("src.infra.client.send_request"), \
+             patch("src.search.environment.detect_environment", return_value={
                  "os": "darwin", "repo": "test", "cwd": "/tmp",
                  "tags": ["python"], "mcp_servers": [],
              }), \
-             patch("src.db.get_tag_relevance_with_evidence", return_value=(-0.5, 5)), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.core.db.get_tag_relevance_with_evidence", return_value=(-0.5, 5)), \
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_session_start import main
             main()
 
@@ -130,10 +130,10 @@ class TestSessionStart:
 class TestPrompt:
     def test_returns_engrams(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"prompt": "How to use react hooks?", "session_id": "sess-1"})
-        with patch("src.client.send_request", return_value={
+        with patch("src.infra.client.send_request", return_value={
                  "results": [{"id": 1, "text": "Use hooks correctly", "category": "dev"}],
              }), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_prompt import main
             main()
 
@@ -149,7 +149,7 @@ class TestPrompt:
             "hooks": {**_DEFAULT_CONFIG["hooks"], "prompt_enabled": False},
         }
         _set_stdin(monkeypatch, {"prompt": "test query", "session_id": "sess-1"})
-        with patch("src.config.load_config", return_value=disabled):
+        with patch("src.core.config.load_config", return_value=disabled):
             from hooks.on_prompt import main
             main()
 
@@ -169,10 +169,10 @@ class TestPrompt:
         record_shown_engram("sess-1", 42, "SessionStart", db_path=test_db)
 
         _set_stdin(monkeypatch, {"prompt": "show me something", "session_id": "sess-1"})
-        with patch("src.client.send_request", return_value={
+        with patch("src.infra.client.send_request", return_value={
                  "results": [{"id": 42, "text": "Already shown", "category": "dev"}],
              }), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_prompt import main
             main()
 
@@ -190,10 +190,10 @@ class TestToolUse:
             "tool_input": {"command": "npm test"},
             "session_id": "sess-1",
         })
-        with patch("src.client.send_request", return_value={
+        with patch("src.infra.client.send_request", return_value={
                  "results": [{"id": 1, "text": "Run tests with --verbose", "category": "dev"}],
              }), \
-             patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_tool_use import main
             main()
 
@@ -207,7 +207,7 @@ class TestToolUse:
             "tool_input": {"path": "/tmp/file"},
             "session_id": "sess-1",
         })
-        with patch("src.config.load_config", return_value=_DEFAULT_CONFIG):
+        with patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_tool_use import main
             main()
 
@@ -227,10 +227,10 @@ class TestStop:
             "session_id": "sess-1",
             "transcript_path": "/tmp/transcript.jsonl",
         })
-        with patch("src.environment.detect_environment", return_value={
+        with patch("src.search.environment.detect_environment", return_value={
                  "os": "darwin", "repo": "test", "cwd": "/tmp",
                  "tags": ["python"], "mcp_servers": [],
-             }), patch("src.client.send_request", return_value={"status": "ok"}):
+             }), patch("src.infra.client.send_request", return_value={"status": "ok"}):
             from hooks.on_stop import main
             main()
 
@@ -248,7 +248,7 @@ class TestStop:
             "session_id": "sess-2",
             "transcript_path": "/tmp/transcript.jsonl",
         })
-        mock_send = patch("src.client.send_request", return_value={"status": "ok"})
+        mock_send = patch("src.infra.client.send_request", return_value={"status": "ok"})
         with mock_send as m:
             from hooks.on_stop import main
             main()
@@ -271,7 +271,7 @@ class TestStop:
             "session_id": "sess-3",
             "transcript_path": "/tmp/subagents/transcript.jsonl",
         })
-        mock_send = patch("src.client.send_request", return_value={"status": "ok"})
+        mock_send = patch("src.infra.client.send_request", return_value={"status": "ok"})
         with mock_send as m:
             from hooks.on_stop import main
             main()

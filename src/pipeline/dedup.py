@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from .db import (
+from engrammar.core.db import (
     get_connection,
     get_unverified_engrams,
     get_verified_engrams,
@@ -16,8 +16,8 @@ from .db import (
     merge_engram_group,
     record_dedup_error,
 )
-from .embeddings import embed_batch, build_index, build_tag_index
-from .prompt_loader import load_prompt
+from engrammar.core.embeddings import embed_batch, build_index, build_tag_index
+from engrammar.core.prompt_loader import load_prompt
 
 # --- Prompt loading ---
 
@@ -497,7 +497,7 @@ def run_dedup(
 
         # Rebuild index between passes
         if pass_result["merged"] > 0:
-            from .db import get_all_active_engrams
+            from engrammar.core.db import get_all_active_engrams
             engrams = get_all_active_engrams(db_path=db_path)
             if engrams:
                 build_index(engrams)
@@ -522,7 +522,7 @@ def _run_single_pass(
     # Load pools
     if engram_id:
         # --id mode: load all active engrams, target is the specified one
-        from .db import get_all_active_engrams
+        from engrammar.core.db import get_all_active_engrams
         all_active = get_all_active_engrams(db_path=db_path)
         target = [e for e in all_active if e["id"] == engram_id]
         if not target:

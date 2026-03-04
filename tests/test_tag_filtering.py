@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from src.environment import check_prerequisites, check_structural_prerequisites
-from src.search import search, _engram_has_all_tags
-from src.db import init_db, add_engram, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
-from src.embeddings import build_index
+from src.search.environment import check_prerequisites, check_structural_prerequisites
+from src.search.engine import search, _engram_has_all_tags
+from src.core.db import init_db, add_engram, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
+from src.core.embeddings import build_index
 
 
 @pytest.fixture
@@ -178,7 +178,7 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_engrams
+        from src.core.db import get_all_active_engrams
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)
 
@@ -205,7 +205,7 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_engrams
+        from src.core.db import get_all_active_engrams
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)
 
@@ -228,7 +228,7 @@ class TestSearchWithTagFilter:
         conn.close()
 
         # Build index
-        from src.db import get_all_active_engrams
+        from src.core.db import get_all_active_engrams
         engrams = get_all_active_engrams(test_db)
         build_index(engrams)
 

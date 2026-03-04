@@ -39,6 +39,8 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
 - [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
   - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
+- [ ] **#32 Evaluator transcript truncation can exceed max_chars** `[C1] low-hanging`
+  - `issues/open/[2]-032-evaluator-transcript-truncation-overflow/issue.md`
 
 ### Medium
 

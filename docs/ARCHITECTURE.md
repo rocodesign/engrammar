@@ -47,7 +47,7 @@ The **tag subset algorithm** enables cross-project learning:
 
 ### 1. Environment Detection
 
-> Source: [`src/environment.py`](../src/environment.py), [`src/tag_detectors.py`](../src/tag_detectors.py), [`src/tag_patterns.py`](../src/tag_patterns.py)
+> Source: [`src/search/environment.py`](../src/search/environment.py), [`src/search/tag_detectors.py`](../src/search/tag_detectors.py), [`src/search/tag_patterns.py`](../src/search/tag_patterns.py)
 
 Returns `{os, repo, cwd, mcp_servers, tags}` by combining five detection sources:
 
@@ -61,7 +61,7 @@ Returns `{os, repo, cwd, mcp_servers, tags}` by combining five detection sources
 
 ### 2. Database Layer
 
-> Source: [`src/db.py`](../src/db.py)
+> Source: [`src/core/db.py`](../src/core/db.py)
 
 SQLite with WAL mode for concurrent access. Key functions:
 
@@ -72,13 +72,13 @@ SQLite with WAL mode for concurrent access. Key functions:
 
 ### 3. Search Engine
 
-> Source: [`src/search.py`](../src/search.py)
+> Source: [`src/search/engine.py`](../src/search/engine.py)
 
 Hybrid search combining vector similarity and BM25. See [Search Architecture](#search-architecture) for the full pipeline.
 
 ### 4. Embeddings
 
-> Source: [`src/embeddings.py`](../src/embeddings.py)
+> Source: [`src/core/embeddings.py`](../src/core/embeddings.py)
 
 Uses `BAAI/bge-small-en-v1.5` (384 dimensions) via `fastembed` for local, API-free embedding. The model is lazy-loaded and cached after first call.
 
@@ -128,7 +128,7 @@ Stored in `engrams.prerequisites` as JSON:
 
 **Two types of prerequisites:**
 
-- **Structural** (`os`, `repos`, `paths`, `mcp_servers`) — hard-gated via `check_structural_prerequisites()` in [`src/environment.py`](../src/environment.py). Physical constraints that are always enforced.
+- **Structural** (`os`, `repos`, `paths`, `mcp_servers`) — hard-gated via `check_structural_prerequisites()` in [`src/search/environment.py`](../src/search/environment.py). Physical constraints that are always enforced.
 - **Tags** — **not hard-gated**. Tag relevance scoring handles context filtering dynamically. A engram with `{"tags": ["acme"]}` can appear anywhere; the evaluator learns where it's relevant.
 
 See [evaluation.md](evaluation.md) for how tag relevance scores work.
@@ -137,7 +137,7 @@ See [evaluation.md](evaluation.md) for how tag relevance scores work.
 
 ## Auto-Pin Algorithm
 
-> Source: [`src/db.py`](../src/db.py) — `find_auto_pin_tag_subsets()`, `update_match_stats()`
+> Source: [`src/core/db.py`](../src/core/db.py) — `find_auto_pin_tag_subsets()`, `update_match_stats()`
 
 ### Problem
 
@@ -177,7 +177,7 @@ Called from `update_match_stats()` after incrementing per-tag-set counters. If a
 
 ## Search Architecture
 
-> Source: [`src/search.py`](../src/search.py)
+> Source: [`src/search/engine.py`](../src/search/engine.py)
 
 ### Query Flow
 
@@ -268,7 +268,7 @@ Fires after every assistant response for incremental, reliable extraction. Write
 
 ## Daemon System
 
-> Source: [`src/daemon.py`](../src/daemon.py), [`src/client.py`](../src/client.py)
+> Source: [`src/infra/daemon.py`](../src/infra/daemon.py), [`src/infra/client.py`](../src/infra/client.py)
 
 Keeps the embedding model warm in memory for fast hook searches.
 
@@ -296,7 +296,7 @@ The daemon listens on a Unix socket at `~/.engrammar/daemon.sock`. Auto-started 
 
 ## Database Schema
 
-> Source: [`src/db.py`](../src/db.py) — `init_db()`
+> Source: [`src/core/db.py`](../src/core/db.py) — `init_db()`
 
 ### Tables
 
@@ -374,7 +374,7 @@ Audit log for dedup merges. Stores `run_id`, `survivor_id`, `absorbed_ids` (JSON
 
 ## MCP Integration
 
-> Source: [`src/mcp_server.py`](../src/mcp_server.py)
+> Source: [`src/infra/mcp_server.py`](../src/infra/mcp_server.py)
 
 ### Server Configuration
 
@@ -435,7 +435,7 @@ Audit log for dedup merges. Stores `run_id`, `survivor_id`, `absorbed_ids` (JSON
 
 ## Extraction Pipeline
 
-> Source: [`src/extractor.py`](../src/extractor.py)
+> Source: [`src/pipeline/extractor.py`](../src/pipeline/extractor.py)
 
 Engrams are automatically extracted from Claude Code conversation transcripts (JSONL files in `~/.claude/projects/`). The extractor sends conversation content to Haiku for analysis, looking specifically for **friction moments** — not task summaries.
 
@@ -498,7 +498,7 @@ The Stop hook triggers background extraction after each assistant response via t
 
 ## Dedup Pipeline
 
-> Source: [`src/dedup.py`](../src/dedup.py), [`src/db.py`](../src/db.py) — `merge_engram_group()`
+> Source: [`src/pipeline/dedup.py`](../src/pipeline/dedup.py), [`src/core/db.py`](../src/core/db.py) — `merge_engram_group()`
 
 ### Problem
 

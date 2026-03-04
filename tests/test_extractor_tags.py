@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from src.db import (
+from src.core.db import (
     add_engram,
     get_connection,
     get_env_tags_for_sessions,
     init_db,
     write_session_audit,
 )
-from src.extractor import _enrich_with_session_tags
+from src.pipeline.extractor import _enrich_with_session_tags
 
 
 @pytest.fixture
@@ -104,8 +104,8 @@ def test_enrich_no_audit_none_stays_none(test_db):
 
 def test_backfill_prereqs_adds_audit_tags(test_db, monkeypatch, capsys):
     """Backfill command picks up session audit tags for engrams."""
-    import src.config as config
-    import src.db as db_mod
+    import src.core.config as config
+    import src.core.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
@@ -138,8 +138,8 @@ def test_backfill_prereqs_adds_audit_tags(test_db, monkeypatch, capsys):
 
 def test_backfill_prereqs_merges_into_existing(test_db, monkeypatch, capsys):
     """Backfill merges audit tags into engrams that already have prerequisites."""
-    import src.config as config
-    import src.db as db_mod
+    import src.core.config as config
+    import src.core.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
@@ -174,8 +174,8 @@ def test_backfill_prereqs_merges_into_existing(test_db, monkeypatch, capsys):
 
 def test_backfill_prereqs_no_change_skips(test_db, monkeypatch, capsys):
     """Backfill skips engrams where audit tags are already present."""
-    import src.config as config
-    import src.db as db_mod
+    import src.core.config as config
+    import src.core.db as db_mod
 
     monkeypatch.setattr(config, "DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "DB_PATH", test_db)
