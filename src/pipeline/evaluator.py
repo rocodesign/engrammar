@@ -92,8 +92,9 @@ def _find_transcript_excerpt(session_id, max_chars=6000):
     # Take head + tail to cover both early and late interactions
     result = "\n".join(messages)
     if len(result) > max_chars:
-        half = max_chars // 2
-        result = result[:half] + "\n\n[... middle of session omitted ...]\n\n" + result[-half:]
+        ellipsis = "\n\n[...]\n\n"
+        half = (max_chars - len(ellipsis)) // 2
+        result = result[:half] + ellipsis + result[-half:]
     return result
 
 
@@ -136,8 +137,9 @@ def _read_transcript_file(transcript_path, max_chars=6000):
 
     result = "\n".join(messages)
     if len(result) > max_chars:
-        half = max_chars // 2
-        result = result[:half] + "\n\n[... middle of session omitted ...]\n\n" + result[-half:]
+        ellipsis = "\n\n[...]\n\n"
+        half = (max_chars - len(ellipsis)) // 2
+        result = result[:half] + ellipsis + result[-half:]
     return result
 
 
