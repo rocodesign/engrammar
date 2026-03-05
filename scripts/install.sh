@@ -142,14 +142,7 @@ if [ -z "$PYTHON_BIN" ]; then
     fi
 
     if [ -n "$INSTALL_CMD" ]; then
-        # Show a clean package manager name in the prompt
-        PKG_NAME="your package manager"
-        command -v brew &>/dev/null && PKG_NAME="Homebrew"
-        command -v apt-get &>/dev/null && PKG_NAME="apt"
-        command -v dnf &>/dev/null && PKG_NAME="dnf"
-        command -v pacman &>/dev/null && PKG_NAME="pacman"
-        command -v apk &>/dev/null && PKG_NAME="apk"
-        ask_yn "  Install Python 3.12 now via $PKG_NAME?" "y" INSTALL_PYTHON
+        ask_yn "  Install Python 3.12 now?" "y" INSTALL_PYTHON
         if [ "$INSTALL_PYTHON" = "true" ]; then
             echo ""
             info "  Running: $INSTALL_CMD"
