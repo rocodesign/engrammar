@@ -1020,6 +1020,22 @@ def cmd_reextract(args):
               f"{summary['skipped']} skipped")
 
 
+def cmd_register(args):
+    """Register engrammar with a tool. Usage: engrammar register claude"""
+    if not args:
+        print("Usage: engrammar register <tool>")
+        print("  claude    Register hooks and MCP server with Claude Code")
+        return
+
+    target = args[0]
+    if target == "claude":
+        from engrammar.infra.register_hooks import register_hooks
+        register_hooks()
+    else:
+        print(f"Unknown target: {target}")
+        print("Available: claude")
+
+
 def cmd_dedup(args):
     """Deduplicate engrams using LLM-assisted similarity analysis."""
     from engrammar.core.db import init_db
@@ -1112,6 +1128,7 @@ def main():
         print("  backfill-prereqs  Retroactively set prerequisites on existing engrams [--dry-run]")
         print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
         print("  reextract    Re-check engrams against current prompt: reextract [--category CAT] [--limit N] [--prune] [--dry-run]")
+        print("  register     Register with a tool: register claude")
         print("  dedup        Deduplicate engrams: dedup [--scan] [--limit N] [--json] [--id N] [--single-pass]")
         return
 
@@ -1142,6 +1159,7 @@ def main():
         "backfill-prereqs": cmd_backfill_prereqs,
         "restore": cmd_restore_db,
         "reextract": cmd_reextract,
+        "register": cmd_register,
         "dedup": cmd_dedup,
     }
 

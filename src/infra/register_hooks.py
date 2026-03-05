@@ -100,6 +100,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
     if "mcpServers" in settings:
         del settings["mcpServers"]
 
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
