@@ -132,7 +132,7 @@ if [ -z "$PYTHON_BIN" ]; then
     if [ "$OS" = "Darwin" ] && command -v brew &> /dev/null; then
         INSTALL_CMD="brew install python@3.12"
     elif command -v apt-get &> /dev/null; then
-        INSTALL_CMD="${SUDO}apt-get update -qq && ${SUDO}apt-get install -y python3.12 python3.12-venv"
+        INSTALL_CMD="DEBIAN_FRONTEND=noninteractive ${SUDO}apt-get update -qq && DEBIAN_FRONTEND=noninteractive ${SUDO}apt-get install -y python3.12 python3.12-venv"
     elif command -v dnf &> /dev/null; then
         INSTALL_CMD="${SUDO}dnf install -y python3.12"
     elif command -v pacman &> /dev/null; then
@@ -142,7 +142,14 @@ if [ -z "$PYTHON_BIN" ]; then
     fi
 
     if [ -n "$INSTALL_CMD" ]; then
-        ask_yn "  Install Python now? ($INSTALL_CMD)" "y" INSTALL_PYTHON
+        # Show a clean package manager name in the prompt
+        PKG_NAME="your package manager"
+        command -v brew &>/dev/null && PKG_NAME="Homebrew"
+        command -v apt-get &>/dev/null && PKG_NAME="apt"
+        command -v dnf &>/dev/null && PKG_NAME="dnf"
+        command -v pacman &>/dev/null && PKG_NAME="pacman"
+        command -v apk &>/dev/null && PKG_NAME="apk"
+        ask_yn "  Install Python 3.12 now via $PKG_NAME?" "y" INSTALL_PYTHON
         if [ "$INSTALL_PYTHON" = "true" ]; then
             echo ""
             info "  Running: $INSTALL_CMD"
