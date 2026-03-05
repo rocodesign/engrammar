@@ -124,16 +124,21 @@ if [ -z "$PYTHON_BIN" ]; then
 
     # Detect package manager and offer to install
     INSTALL_CMD=""
+    SUDO=""
+    if [ "$(id -u)" -ne 0 ] && command -v sudo &> /dev/null; then
+        SUDO="sudo "
+    fi
+
     if [ "$OS" = "Darwin" ] && command -v brew &> /dev/null; then
         INSTALL_CMD="brew install python@3.12"
     elif command -v apt-get &> /dev/null; then
-        INSTALL_CMD="sudo apt-get install -y python3.12 python3.12-venv"
+        INSTALL_CMD="${SUDO}apt-get update -qq && ${SUDO}apt-get install -y python3.12 python3.12-venv"
     elif command -v dnf &> /dev/null; then
-        INSTALL_CMD="sudo dnf install -y python3.12"
+        INSTALL_CMD="${SUDO}dnf install -y python3.12"
     elif command -v pacman &> /dev/null; then
-        INSTALL_CMD="sudo pacman -S --noconfirm python"
+        INSTALL_CMD="${SUDO}pacman -S --noconfirm python"
     elif command -v apk &> /dev/null; then
-        INSTALL_CMD="sudo apk add python3"
+        INSTALL_CMD="${SUDO}apk add python3"
     fi
 
     if [ -n "$INSTALL_CMD" ]; then
