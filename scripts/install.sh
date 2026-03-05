@@ -290,8 +290,13 @@ echo "  Initializing database and building embedding index..."
 
 # ─── Register hooks ─────────────────────────────────────────────────────────
 echo ""
-echo "  Registering hooks with Claude Code..."
-"$VENV_BIN/python" "$ENGRAMMAR_HOME/engrammar/infra/register_hooks.py"
+if command -v claude &> /dev/null; then
+    echo "  Registering hooks with Claude Code..."
+    "$VENV_BIN/python" "$ENGRAMMAR_HOME/engrammar/infra/register_hooks.py"
+else
+    echo "  Claude Code not found — skipping hook registration."
+    echo "  Run 'engrammar register claude' after installing Claude Code."
+fi
 
 # ─── Add to PATH ────────────────────────────────────────────────────────────
 if [ "$ADD_TO_PATH" = "true" ]; then

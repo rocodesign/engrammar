@@ -62,8 +62,13 @@ echo "Running setup..."
 
 # 7. Register hooks in Claude Code settings
 echo ""
-echo "Registering hooks..."
-"$VENV_BIN/python" "$ENGRAMMAR_HOME/engrammar/infra/register_hooks.py"
+if command -v claude &> /dev/null; then
+    echo "Registering hooks..."
+    "$VENV_BIN/python" "$ENGRAMMAR_HOME/engrammar/infra/register_hooks.py"
+else
+    echo "Claude Code not found — skipping hook registration."
+    echo "Run 'engrammar register claude' after installing Claude Code."
+fi
 
 # 8. Add CLI to ~/.local/bin
 mkdir -p "$HOME/.local/bin"
