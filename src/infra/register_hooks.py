@@ -7,7 +7,9 @@ import os
 def register_hooks():
     """Add Engrammar hooks to ~/.claude/settings.json and MCP server to ~/.claude.json."""
     engrammar_home = os.path.expanduser("~/.engrammar")
-    python_bin = os.path.join(engrammar_home, "venv", "bin", "python")
+    # OS-aware venv path
+    venv_bin = os.path.join(engrammar_home, "venv", "Scripts") if os.name == "nt" else os.path.join(engrammar_home, "venv", "bin")
+    python_bin = os.path.join(venv_bin, "python")
 
     _register_hooks_in_settings(engrammar_home, python_bin)
     _register_mcp_server(engrammar_home, python_bin)
