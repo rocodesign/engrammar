@@ -119,14 +119,56 @@ for py in python3.13 python3.12 python3.11 python3.10 python3 python; do
 done
 
 if [ -z "$PYTHON_BIN" ]; then
-    error "  Python 3.10+ is required but not found."
+    warn "  Python 3.10+ is required but not found."
     echo ""
-    echo "  Install via:"
-    echo "    macOS:  brew install python@3.12"
-    echo "    Linux:  sudo apt install python3.12"
-    echo "    Windows: https://www.python.org/downloads/"
-    echo ""
-    exit 1
+
+    # Detect package manager and offer to install
+    INSTALL_CMD=""
+    if [ "$OS" = "Darwin" ] && command -v brew &> /dev/null; then
+        INSTALL_CMD="brew install python@3.12"
+    elif command -v apt-get &> /dev/null; then
+        INSTALL_CMD="sudo apt-get install -y python3.12 python3.12-venv"
+    elif command -v dnf &> /dev/null; then
+        INSTALL_CMD="sudo dnf install -y python3.12"
+    elif command -v pacman &> /dev/null; then
+        INSTALL_CMD="sudo pacman -S --noconfirm python"
+    elif command -v apk &> /dev/null; then
+        INSTALL_CMD="sudo apk add python3"
+    fi
+
+    if [ -n "$INSTALL_CMD" ]; then
+        ask_yn "  Install Python now? ($INSTALL_CMD)" "y" INSTALL_PYTHON
+        if [ "$INSTALL_PYTHON" = "true" ]; then
+            echo ""
+            info "  Running: $INSTALL_CMD"
+            eval "$INSTALL_CMD"
+            echo ""
+            # Re-detect Python after install
+            for py in python3.13 python3.12 python3.11 python3.10 python3 python; do
+                if command -v "$py" &> /dev/null; then
+                    PY_VER=$("$py" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+                    PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
+                    PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
+                    if [ "$PY_MAJOR" -ge 3 ] && [ "$PY_MINOR" -ge 10 ] 2>/dev/null; then
+                        PYTHON_BIN="$py"
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+
+    if [ -z "$PYTHON_BIN" ]; then
+        error "  Python 3.10+ is still not available."
+        echo ""
+        echo "  Install manually:"
+        echo "    macOS:   brew install python@3.12"
+        echo "    Ubuntu:  sudo apt install python3.12 python3.12-venv"
+        echo "    Fedora:  sudo dnf install python3.12"
+        echo "    Windows: https://www.python.org/downloads/"
+        echo ""
+        exit 1
+    fi
 fi
 PY_VERSION=$("$PYTHON_BIN" --version 2>&1)
 success "  Found $PY_VERSION"
