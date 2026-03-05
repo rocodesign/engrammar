@@ -256,12 +256,14 @@ if [ -d "$SOURCE_DIR/prompts" ]; then
 fi
 
 # ─── Write config ───────────────────────────────────────────────────────────
-echo "  Writing configuration..."
-
 # Convert booleans for JSON
 json_bool() { [ "$1" = "true" ] && echo "true" || echo "false"; }
 
-cat > "$ENGRAMMAR_HOME/config.json" << EOF
+if [ -f "$ENGRAMMAR_HOME/config.json" ]; then
+    echo "  Config already exists, keeping user customizations."
+else
+    echo "  Writing configuration..."
+    cat > "$ENGRAMMAR_HOME/config.json" << EOF
 {
   "search": {
     "top_k": $MAX_PER_PROMPT
@@ -279,6 +281,7 @@ cat > "$ENGRAMMAR_HOME/config.json" << EOF
   }
 }
 EOF
+fi
 
 # ─── Initialize DB + build index ────────────────────────────────────────────
 echo ""
