@@ -27,6 +27,17 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ## Open Tasks
 
+### High
+
+- [ ] **#020 Extract tags from user prompt for dynamic tag affinity** `C2`
+  - `tasks/open/[1]-020-prompt-derived-tags/task.md`
+- [ ] **#017 Add minimum score threshold for prompt search** `C1`
+  - `tasks/open/[1]-017-reduce-injection-noise/task.md`
+- [ ] **#018 Widen tag affinity penalty range** `C1`
+  - `tasks/open/[1]-018-widen-tag-penalty/task.md`
+- [ ] **#019 Lower tag relevance evidence threshold** `C1`
+  - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
+
 ### Medium
 
 - [ ] **#003 LLM-assisted engram deduplication** `C2` `absorbs: #004`
@@ -77,6 +88,6 @@ This file is the index. Detailed task writeups live under `tasks/`.
 ## Ideas
 
 - `tasks/ideas/session-end-reflection.md`
-- `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries
+- `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries `→ see #017`
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
 - `tasks/ideas/tool-use-previous-turn-retrieval.md` — Give extraction LLM an on-demand tool to retrieve the previous turn for detecting inflection points

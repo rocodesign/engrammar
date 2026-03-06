@@ -101,7 +101,7 @@ def engrammar_add(
         prerequisites: Optional requirements dict or JSON string (e.g. {"repos":["app-repo"],"os":["darwin"]})
         source: How this engram was discovered. Use "self-extracted" for engrams you
             proactively identify during a session. Other values: "manual" (user explicitly
-            asked to save), "auto-extracted" (from facet pipeline), "feedback" (from feedback loop).
+            asked to save), "auto-extracted" (from transcript extraction), "feedback" (from feedback loop).
     """
     # Validate inputs
     if not text or not text.strip():
