@@ -37,7 +37,15 @@ def _reciprocal_rank_fusion(ranked_lists, k=60):
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=None, skip_prerequisites=False):
+def search(
+    query,
+    category_filter=None,
+    tag_filter=None,
+    top_k=None,
+    db_path=None,
+    skip_prerequisites=False,
+    enforce_prerequisites=False,
+):
     """Main hybrid search entry point.
 
     Args:
@@ -47,6 +55,8 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         top_k: number of results (defaults to config value)
         db_path: optional database path override
         skip_prerequisites: if True, skip environment prerequisite filtering (used by backfill)
+        enforce_prerequisites: if True, apply min_score_prompt threshold from config
+            (used by prompt/tool hooks to filter low-confidence matches)
 
     Returns:
         list of dicts with engram data + score
@@ -67,6 +77,10 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
 
     engrams = all_engrams
 
+    if not engrams:
+        _save_last_search(query, [])
+        return []
+
     # Build engram lookup
     engram_map = {l["id"]: l for l in engrams}
 
@@ -77,6 +91,8 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
         embeddings, ids = load_index()
         if embeddings is not None:
             vector_results = vector_search(query_embedding, embeddings, ids, top_k=10)
+            allowed_ids = set(engram_map.keys())
+            vector_results = [(lid, score) for lid, score in vector_results if lid in allowed_ids]
     except Exception:
         pass  # Fall back to BM25 only
 
@@ -86,11 +102,20 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
     query_tokens = _tokenize(query)
     bm25_scores = bm25.get_scores(query_tokens)
 
+    query_token_set = set(query_tokens)
     bm25_ranked = sorted(
-        [(engrams[i]["id"], float(bm25_scores[i])) for i in range(len(engrams))],
+        [
+            (engrams[i]["id"], float(bm25_scores[i]))
+            for i in range(len(engrams))
+            if query_token_set.intersection(corpus[i])
+        ],
         key=lambda x: x[1],
         reverse=True,
     )[:10]
+
+    if not vector_results and not bm25_ranked:
+        _save_last_search(query, [])
+        return []
 
     # 3. Reciprocal Rank Fusion
     # Scale k with engram count so rank position carries real weight.
@@ -209,13 +234,19 @@ def search(query, category_filter=None, tag_filter=None, top_k=None, db_path=Non
             if lid in engram_map and _engram_has_all_tags(engram_map[lid], required_tags)
         ]
 
-    # 5. Take top_k results (no threshold for RRF - it's rank-based, not similarity-based)
+    # 5. Take top_k results
     results = []
     for engram_id, score in fused[:top_k]:
         if engram_id in engram_map:
             result = dict(engram_map[engram_id])
             result["score"] = round(score, 4)
             results.append(result)
+
+    # 5.5. Apply min score threshold for hook injection
+    if enforce_prerequisites:
+        min_score = config["hooks"].get("prerequisites_min_score", 0.02)
+        if min_score:
+            results = [r for r in results if r.get("score", 0) >= min_score]
 
     # Save last search for introspection
     _save_last_search(query, results)
@@ -370,7 +401,7 @@ def _build_tool_query(tool_name, tool_input):
     return " ".join(keywords) if len(keywords) > 1 else None
 
 
-def search_for_tool_context(tool_name, tool_input, db_path=None):
+def search_for_tool_context(tool_name, tool_input, db_path=None, enforce_prerequisites=False):
     """Specialized search for PreToolUse hook.
 
     Builds a semantic query from tool name + input and runs hybrid search.
@@ -379,6 +410,7 @@ def search_for_tool_context(tool_name, tool_input, db_path=None):
     Args:
         tool_name: name of the tool being used
         tool_input: dict of tool parameters
+        enforce_prerequisites: if True, apply min_score_prompt threshold
 
     Returns:
         list of matching engrams (top 2)
@@ -389,7 +421,12 @@ def search_for_tool_context(tool_name, tool_input, db_path=None):
     query = _build_tool_query(tool_name, tool_input)
     if not query:
         return []
-    results = search(query, top_k=max_results, db_path=db_path)
+    results = search(
+        query,
+        top_k=max_results,
+        db_path=db_path,
+        enforce_prerequisites=enforce_prerequisites,
+    )
 
     # Apply minimum score threshold — tool context is shallow,
     # so filter out low-confidence matches that would just be noise.

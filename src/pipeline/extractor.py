@@ -31,7 +31,7 @@ from engrammar.core.db import (
     update_tag_relevance,
     write_session_audit,
 )
-from engrammar.core.embeddings import build_index, embed_batch
+from engrammar.core.embeddings import build_index, build_tag_index, embed_batch
 from engrammar.core.prompt_loader import load_prompt
 
 FACETS_DIR = Path.home() / ".claude" / "usage-data" / "facets"
@@ -414,6 +414,7 @@ def extract_from_sessions(dry_run=False):
         print("  Rebuilding embedding index...")
         engrams = get_all_active_engrams()
         build_index(engrams)
+        build_tag_index(engrams)
         print(f"  Indexed {len(engrams)} engrams.")
 
     # Mark all new sessions as processed
@@ -683,11 +684,36 @@ def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_cha
     return chunks
 
 
+def _get_session_engrams(session_id):
+    """Get engrams already extracted from this session (self-extracted or auto-extracted).
+
+    Returns:
+        list of engram text strings
+    """
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT text FROM engrams WHERE deprecated = 0 AND source_sessions LIKE ?",
+            (f'%{session_id}%',),
+        ).fetchall()
+        conn.close()
+        return [r["text"] for r in rows]
+    except Exception:
+        return []
+
+
 def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions=""):
     """Call claude CLI to extract engrams from a conversation transcript."""
     instructions_block = ""
     if existing_instructions:
         instructions_block = f"\nThe project already has these instructions documented — DO NOT extract engrams that restate this information:\n{existing_instructions}\n"
+
+    # Skip re-extracting knowledge already captured (e.g. by the model via engrammar_add)
+    already_captured = _get_session_engrams(session_id)
+    if already_captured:
+        captured_list = "\n".join(f"- {text}" for text in already_captured)
+        instructions_block += f"\nThese engrams were already captured from this session — do NOT re-extract them or rephrase them:\n{captured_list}\n"
+
     prompt = _get_prompt("extraction/transcript.md").format(
         transcript=transcript_text,
         session_id=session_id,
@@ -857,6 +883,7 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
     if added > 0:
         engrams = get_all_active_engrams()
         build_index(engrams)
+        build_tag_index(engrams)
 
     print(f"  Done. Added: {added}, Merged: {merged}")
     return {"extracted": added, "merged": merged}
@@ -968,6 +995,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         if added > 0:
             engrams = get_all_active_engrams()
             build_index(engrams)
+            build_tag_index(engrams)
 
         summary["processed"] += 1
         summary["extracted"] += added
@@ -1209,6 +1237,7 @@ def extract_from_turn(session_id, transcript_path):
     if added > 0:
         engrams = get_all_active_engrams()
         build_index(engrams)
+        build_tag_index(engrams)
 
     # Save new offset
     _write_turn_offset(session_id, new_offset)

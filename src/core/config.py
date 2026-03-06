@@ -30,6 +30,7 @@ def load_config():
             "tool_use_enabled": True,
             "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
             "min_score_tool": 0.03,
+            "prerequisites_min_score": 0.02,
         },
         "display": {
             "max_engrams_per_prompt": 3,

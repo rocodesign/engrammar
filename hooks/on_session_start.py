@@ -43,7 +43,11 @@ def main():
         # Get pinned engrams
         from engrammar.core.config import load_config
         from engrammar.core.db import get_pinned_engrams, get_tag_relevance_with_evidence
-        from engrammar.search.environment import check_structural_prerequisites, detect_environment
+        from engrammar.search.environment import (
+            check_structural_prerequisites,
+            check_tag_prerequisites,
+            detect_environment,
+        )
 
         config = load_config()
         env = detect_environment()
@@ -55,6 +59,9 @@ def main():
         for p in pinned:
             # Hard-gate on structural prerequisites (os, repo, paths, mcp_servers)
             if not check_structural_prerequisites(p.get("prerequisites"), env):
+                continue
+            # Hard-gate on tag prerequisites for session-start pinned injection
+            if not check_tag_prerequisites(p.get("prerequisites"), env):
                 continue
             # Soft-gate on tag relevance: filter if strong negative with enough evidence
             if env_tags:

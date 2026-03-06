@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from src.search.environment import check_prerequisites, check_structural_prerequisites
+from src.search.environment import (
+    check_prerequisites,
+    check_structural_prerequisites,
+    check_tag_prerequisites,
+)
 from src.search.engine import search, _engram_has_all_tags
 from src.core.db import init_db, add_engram, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
 from src.core.embeddings import build_index
@@ -273,6 +277,26 @@ class TestStructuralPrerequisites:
         env = {"os": "darwin", "repo": "app-repo", "tags": []}
         prereqs = {"os": "darwin", "repos": ["app-repo"], "tags": ["nonexistent"]}
         assert check_structural_prerequisites(prereqs, env) is True
+
+
+class TestTagPrerequisites:
+    """Test check_tag_prerequisites strips structural keys and checks only tags."""
+
+    def test_passes_with_no_tags(self):
+        env = {"tags": []}
+        assert check_tag_prerequisites(None, env) is True
+        assert check_tag_prerequisites({}, env) is True
+        assert check_tag_prerequisites({"repos": ["app-repo"]}, env) is True
+
+    def test_checks_only_tags(self):
+        env = {"repo": "wrong-repo", "tags": ["frontend", "react"]}
+        prereqs = {"repos": ["app-repo"], "tags": ["frontend"]}
+        assert check_tag_prerequisites(prereqs, env) is True
+
+    def test_fails_when_tag_missing(self):
+        env = {"tags": ["frontend"]}
+        prereqs = {"tags": ["frontend", "react"]}
+        assert check_tag_prerequisites(prereqs, env) is False
 
 
 class TestTagRelevanceFiltering:

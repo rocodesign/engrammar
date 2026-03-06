@@ -127,3 +127,67 @@ def test_search_handles_no_matches():
         results = search("xyzabc123", db_path=db_path)
         # Should return empty or minimal results
         assert isinstance(results, list)
+
+
+def test_enforce_prerequisites_applies_min_score(monkeypatch):
+    """enforce_prerequisites should apply prerequisites_min_score threshold from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        add_engram(
+            text="Engrammar-only note",
+            category="tools/engrammar",
+            prerequisites='{"tags": ["repo:engrammar", "python"]}',
+            db_path=db_path,
+        )
+        add_engram(
+            text="Generic frontend note",
+            category="development/frontend",
+            db_path=db_path,
+        )
+
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda: {
+                "os": "darwin",
+                "repo": "other-repo",
+                "cwd": "/tmp/other-repo",
+                "tags": ["frontend", "nodejs", "repo:other-repo"],
+                "mcp_servers": [],
+            },
+        )
+
+        # With a very high threshold, low-scoring results get filtered out
+        monkeypatch.setattr(
+            "src.search.engine.load_config",
+            lambda: {
+                "search": {"top_k": 5},
+                "hooks": {"prerequisites_min_score": 999.0},
+                "display": {},
+            },
+        )
+        strict_results = search(
+            "note",
+            db_path=db_path,
+            top_k=5,
+            enforce_prerequisites=True,
+        )
+        assert strict_results == []
+
+        # With threshold at 0, all results pass
+        monkeypatch.setattr(
+            "src.search.engine.load_config",
+            lambda: {
+                "search": {"top_k": 5},
+                "hooks": {"prerequisites_min_score": 0},
+                "display": {},
+            },
+        )
+        all_results = search(
+            "note",
+            db_path=db_path,
+            top_k=5,
+            enforce_prerequisites=True,
+        )
+        assert len(all_results) >= 1
