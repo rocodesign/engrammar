@@ -12,3 +12,4 @@ build/
 *.db-shm
 *.db-wal
 .last-search.json
+eval_results*.json
