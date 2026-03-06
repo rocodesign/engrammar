@@ -223,9 +223,8 @@ def cmd_export(args):
 
 
 def cmd_extract(args):
-    """Extract engrams from conversation transcripts (or facets with --facets)."""
+    """Extract engrams from conversation transcripts."""
     dry_run = "--dry-run" in args
-    use_facets = "--facets" in args
 
     # Single-session extraction: extract --session <uuid>
     session_id = None
@@ -242,34 +241,24 @@ def cmd_extract(args):
             print(f"\nSummary: {summary['extracted']} added, {summary['merged']} merged")
         return
 
-    if use_facets:
-        from engrammar.pipeline.extractor import extract_from_sessions
+    from engrammar.pipeline.extractor import extract_from_transcripts
 
-        summary = extract_from_sessions(dry_run=dry_run)
+    # Parse --limit N
+    limit = None
+    if "--limit" in args:
+        idx = args.index("--limit")
+        if idx + 1 < len(args):
+            try:
+                limit = int(args[idx + 1])
+            except ValueError:
+                pass
 
-        if not dry_run:
-            print(f"\nSummary: {summary['new_sessions']} new sessions, "
-                  f"{summary['with_friction']} with friction, "
-                  f"{summary['extracted']} added, {summary['merged']} merged")
-    else:
-        from engrammar.pipeline.extractor import extract_from_transcripts
+    summary = extract_from_transcripts(limit=limit, dry_run=dry_run)
 
-        # Parse --limit N
-        limit = None
-        if "--limit" in args:
-            idx = args.index("--limit")
-            if idx + 1 < len(args):
-                try:
-                    limit = int(args[idx + 1])
-                except ValueError:
-                    pass
-
-        summary = extract_from_transcripts(limit=limit, dry_run=dry_run)
-
-        if not dry_run:
-            print(f"\nSummary: {summary['processed']} processed, "
-                  f"{summary['extracted']} added, {summary['merged']} merged, "
-                  f"{summary['skipped']} skipped")
+    if not dry_run:
+        print(f"\nSummary: {summary['processed']} processed, "
+              f"{summary['extracted']} added, {summary['merged']} merged, "
+              f"{summary['skipped']} skipped")
 
 
 def cmd_rebuild(args):
@@ -1120,7 +1109,7 @@ def main():
         print("  backfill     Create audit records from past sessions: backfill [--dry-run] [--limit N] [--evaluate]")
         print("  import       Import from file: import FILE")
         print("  export       Export all engrams to markdown")
-        print("  extract      Extract engrams from transcripts: extract [--limit N] [--session UUID] [--dry-run] [--facets]")
+        print("  extract      Extract engrams from transcripts: extract [--limit N] [--session UUID] [--dry-run]")
         print("  process-turn Process a single turn: process-turn --session UUID --transcript PATH")
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
