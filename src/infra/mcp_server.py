@@ -23,33 +23,26 @@ mcp = FastMCP(
         "to the current environment, use engrammar_feedback to record why.\n\n"
 
         "## Proactive Engram Extraction\n\n"
-        "You should actively extract engrams during sessions. Call engrammar_add "
-        "(with source=\"self-extracted\") when any of these occur:\n"
-        "- **User correction**: The user steers you away from an approach, tool, or pattern. "
-        "Capture what was wrong AND the preferred alternative.\n"
-        "- **Significant effort**: You spent multiple turns debugging, investigating, or "
-        "iterating on something. Capture the root cause and fix so future sessions skip the struggle.\n"
-        "- **Discovered convention**: You learn a project-specific pattern, naming convention, "
-        "architecture rule, or workflow preference. Capture it as a reusable rule.\n"
-        "- **Environment/tooling quirk**: A tool, API, or library behaves unexpectedly. "
-        "Capture the gotcha and workaround.\n\n"
+        "Call engrammar_add (source=\"self-extracted\") whenever you learn something "
+        "a future session should know. **Do not wait for the user to ask you to save it.**\n\n"
+        "Triggers — add an engram when:\n"
+        "- **User corrects you**: They steer you to a different approach → capture what was wrong and the fix\n"
+        "- **Deep discovery**: You read multiple files, debugged, or investigated to find how something "
+        "actually works (a component API, a config requirement, a library quirk) → capture the finding "
+        "so the next session doesn't repeat the investigation\n"
+        "- **Convention revealed**: You learn a project rule, naming pattern, or workflow preference → capture it\n"
+        "- **User directive**: The user says \"always\", \"never\", \"make sure\", \"in this project we...\" → capture the rule\n\n"
+
+        "The bar is: would a future assistant benefit from knowing this before starting a similar task? "
+        "If yes, add it. Err on the side of capturing — dedup runs automatically.\n\n"
 
         "## Deduplication\n\n"
-        "Before adding a engram, scan [ENGRAMMAR_V1] blocks already in your context — "
-        "if a matching or partial engram exists, call engrammar_update to improve it instead "
-        "of adding a duplicate. Do NOT call engrammar_search just to deduplicate; batch "
-        "dedup runs separately.\n\n"
-
-        "## Quality Criteria\n\n"
-        "Only add engrams that are:\n"
-        "- **Specific**: Contains concrete details (file paths, tool names, exact patterns), not vague advice.\n"
-        "- **Actionable**: A future session can act on it without further context.\n"
-        "- **Reusable**: Applies beyond this single session — would help in similar future situations.\n\n"
+        "Before adding, scan [ENGRAMMAR_V1] blocks in context — if a match exists, "
+        "call engrammar_update to improve it instead. Don't call engrammar_search just to deduplicate.\n\n"
 
         "## Updating Injected Engrams\n\n"
-        "When you see a engram in [ENGRAMMAR_V1] context that is incomplete, vague, or could be "
-        "improved based on what you now know, call engrammar_update to refine it. "
-        "Use the EG#ID to find the engram_id."
+        "When a engram in [ENGRAMMAR_V1] context is incomplete or could be improved "
+        "based on what you now know, call engrammar_update. Use the EG#ID to find it."
     ),
 )
 
@@ -95,21 +88,11 @@ def engrammar_add(
 ) -> str:
     """Add a new engram to the knowledge base.
 
-    Use this when you learn something that should be remembered across sessions.
+    Call this whenever you learn something a future session should know — don't wait
+    to be asked. See the Proactive Engram Extraction section in server instructions
+    for triggers (corrections, deep discovery, conventions, directives).
 
-    **Proactive usage — call this tool when you notice:**
-    - A user correction (they steer you to a different approach, tool, or pattern)
-    - Significant debugging effort (you spent multiple turns on something that had a non-obvious fix)
-    - A project convention or preference that future sessions should know
-    - A tooling/environment gotcha with a workaround
-
-    **Before calling**, scan [ENGRAMMAR_V1] blocks in your context for duplicates.
-    If a partial match exists, use engrammar_update to improve it instead.
-
-    **Examples:**
-    - User says "don't use relative imports here, use absolute" → add engram about import convention
-    - You discover a test must run with specific env vars → add engram about test requirements
-    - A library API changed and the old pattern fails → add engram about the new pattern
+    Before calling, scan [ENGRAMMAR_V1] blocks for duplicates — use engrammar_update instead if a match exists.
 
     Args:
         text: The engram text — what was learned. Be specific and actionable.

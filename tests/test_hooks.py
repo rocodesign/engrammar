@@ -123,6 +123,32 @@ class TestSessionStart:
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_tag_prereq_filter(self, test_db, monkeypatch, capsys):
+        """Pinned engram with non-matching tag prerequisites is filtered."""
+        engram_id = add_engram(
+            text="python-only pinned note",
+            category="general",
+            prerequisites=json.dumps({"tags": ["python"]}),
+            db_path=test_db,
+        )
+        conn = get_connection(test_db)
+        conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
+        conn.commit()
+        conn.close()
+
+        _set_stdin(monkeypatch, {"session_id": "sess-1"})
+        with patch("src.infra.client.send_request"), \
+             patch("src.search.environment.detect_environment", return_value={
+                 "os": "darwin", "repo": "test", "cwd": "/tmp",
+                 "tags": ["nodejs"], "mcp_servers": [],
+             }), \
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
+            from hooks.on_session_start import main
+            main()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
 
 # ---------- Prompt Hook ----------
 

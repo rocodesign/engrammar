@@ -21,6 +21,7 @@ def _search_via_daemon(tool_name, tool_input):
             "type": "tool_context",
             "tool_name": tool_name,
             "tool_input": tool_input,
+            "enforce_prerequisites": True,
         })
         if response and "results" in response:
             return response["results"]
@@ -33,7 +34,11 @@ def _search_via_daemon(tool_name, tool_input):
 def _search_direct(tool_name, tool_input):
     try:
         from engrammar.search.engine import search_for_tool_context
-        return search_for_tool_context(tool_name, tool_input)
+        return search_for_tool_context(
+            tool_name,
+            tool_input,
+            enforce_prerequisites=True,
+        )
     except Exception as e:
         from engrammar.infra.hook_utils import log_error
         log_error("PreToolUse", f"direct search for tool: {tool_name}", e)

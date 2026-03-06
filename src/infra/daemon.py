@@ -117,6 +117,7 @@ class EngrammarDaemon:
                 data.get("query", ""),
                 category_filter=data.get("category_filter"),
                 top_k=data.get("top_k"),
+                enforce_prerequisites=data.get("enforce_prerequisites", False),
             )
             return {"results": _serialize(results)}
 
@@ -126,12 +127,17 @@ class EngrammarDaemon:
             results = search_for_tool_context(
                 data.get("tool_name", ""),
                 data.get("tool_input", {}),
+                enforce_prerequisites=data.get("enforce_prerequisites", False),
             )
             return {"results": _serialize(results)}
 
         elif req_type == "pinned":
             from engrammar.core.db import get_pinned_engrams, get_tag_relevance_with_evidence
-            from engrammar.search.environment import check_structural_prerequisites, detect_environment
+            from engrammar.search.environment import (
+                check_structural_prerequisites,
+                check_tag_prerequisites,
+                detect_environment,
+            )
 
             env = detect_environment()
             env_tags = env.get("tags", [])
@@ -139,6 +145,8 @@ class EngrammarDaemon:
             matching = []
             for p in pinned:
                 if not check_structural_prerequisites(p.get("prerequisites"), env):
+                    continue
+                if not check_tag_prerequisites(p.get("prerequisites"), env):
                     continue
                 if env_tags:
                     avg_score, total_evals = get_tag_relevance_with_evidence(p["id"], env_tags)

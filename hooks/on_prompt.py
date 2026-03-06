@@ -17,7 +17,12 @@ sys.path.insert(0, ENGRAMMAR_HOME)
 def _search_via_daemon(prompt, max_results):
     try:
         from engrammar.infra.client import send_request
-        response = send_request({"type": "search", "query": prompt, "top_k": max_results})
+        response = send_request({
+            "type": "search",
+            "query": prompt,
+            "top_k": max_results,
+            "enforce_prerequisites": True,
+        })
         if response and "results" in response:
             return response["results"]
     except Exception as e:
@@ -29,7 +34,7 @@ def _search_via_daemon(prompt, max_results):
 def _search_direct(prompt, max_results):
     try:
         from engrammar.search.engine import search
-        return search(prompt, top_k=max_results)
+        return search(prompt, top_k=max_results, enforce_prerequisites=True)
     except Exception as e:
         from engrammar.infra.hook_utils import log_error
         log_error("UserPromptSubmit", f"direct search: {prompt[:50]}", e)
