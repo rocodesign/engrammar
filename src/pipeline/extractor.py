@@ -214,7 +214,7 @@ def _maybe_backfill_prerequisites(engram_id, prerequisites, db_path=None):
     if not prerequisites:
         return
 
-    from .db import get_connection
+    from engrammar.core.db import get_connection
 
     conn = get_connection(db_path)
     row = conn.execute(
@@ -272,7 +272,7 @@ def _detect_tags_for_cwd(cwd):
     original_cwd = os.getcwd()
     try:
         os.chdir(cwd)
-        from .tag_detectors import detect_tags
+        from engrammar.search.tag_detectors import detect_tags
         return detect_tags()
     except Exception:
         return []
@@ -502,7 +502,7 @@ def _get_session_engrams(session_id):
         return []
 
 
-def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions=""):
+def _call_claude_for_transcript_extraction(transcript_text, session_id, existing_instructions="", env_tags=None):
     """Call claude CLI to extract engrams from a conversation transcript."""
     instructions_block = ""
     if existing_instructions:
@@ -518,6 +518,7 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         transcript=transcript_text,
         session_id=session_id,
         existing_instructions=instructions_block,
+        env_tags=json.dumps(env_tags or []),
     )
 
     try:
@@ -572,19 +573,33 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
             category = "general/" + category
         source_sessions = [session_id]
         project_signals = engram_data.get("project_signals", [])
+        relevant_tags = engram_data.get("relevant_tags", [])
 
         if not text:
             continue
 
+        # Use LLM-selected relevant_tags for prerequisites when available,
+        # fall back to full env tags for backward compat
         prerequisites = _infer_prerequisites(text, project_signals)
-        prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
+        if relevant_tags:
+            if prerequisites is None:
+                prerequisites = {}
+            existing_tags = set(prerequisites.get("tags", []))
+            existing_tags.update(t for t in relevant_tags if t in env_tags)
+            if existing_tags:
+                prerequisites["tags"] = sorted(existing_tags)
+        else:
+            prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
+
+        # Score only LLM-selected relevant tags (not all env tags)
+        tags_to_score = [t for t in relevant_tags if t in env_tags] if relevant_tags else env_tags
 
         existing = find_similar_engram(text)
         if existing:
             increment_engram_occurrence(existing["id"], source_sessions)
             _maybe_backfill_prerequisites(existing["id"], prerequisites)
-            if env_tags:
-                tag_scores = {tag: 0.5 for tag in env_tags}
+            if tags_to_score:
+                tag_scores = {tag: 0.5 for tag in tags_to_score}
                 update_tag_relevance(existing["id"], tag_scores, weight=1.0)
             merged += 1
             print(f"  Merged into engram #{existing['id']}: {text[:60]}...")
@@ -597,8 +612,8 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
                 occurrence_count=1,
                 prerequisites=prerequisites,
             )
-            if env_tags:
-                tag_scores = {tag: 0.5 for tag in env_tags}
+            if tags_to_score:
+                tag_scores = {tag: 0.5 for tag in tags_to_score}
                 update_tag_relevance(engram_id, tag_scores, weight=1.0)
             added += 1
             prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
@@ -663,7 +678,8 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
 
     print(f"Extracting from session {session_id[:12]}...")
     extracted = _call_claude_for_transcript_extraction(
-        transcript_text, session_id, existing_instructions=existing_instructions
+        transcript_text, session_id, existing_instructions=existing_instructions,
+        env_tags=env_tags,
     )
 
     if not extracted:
@@ -774,7 +790,8 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         existing_instructions = _read_existing_instructions(metadata.get("cwd"))
 
         extracted = _call_claude_for_transcript_extraction(
-            transcript_text, session_id, existing_instructions=existing_instructions
+            transcript_text, session_id, existing_instructions=existing_instructions,
+            env_tags=env_tags,
         )
 
         if not extracted:
@@ -1023,7 +1040,8 @@ def extract_from_turn(session_id, transcript_path):
 
     print(f"Extracting from turn (session {session_id[:12]}, offset {byte_offset}->{new_offset})...")
     extracted = _call_claude_for_transcript_extraction(
-        full_text, session_id, existing_instructions=existing_instructions
+        full_text, session_id, existing_instructions=existing_instructions,
+        env_tags=env_tags,
     )
 
     if not extracted:
@@ -1053,7 +1071,7 @@ def _backfill_shown_engrams(projects_dir=None):
     from the transcript against the engram DB to find which engrams would have
     been shown. Updates the audit record in place.
     """
-    from .search import search
+    from engrammar.search.engine import search
 
     conn = get_connection()
     rows = conn.execute(
@@ -1322,7 +1340,7 @@ def reextract_engrams(category=None, limit=None, prune=False, dry_run=False):
             print(f"  Deprecated #{e['id']}")
 
         # Rebuild index after deprecations
-        from .embeddings import build_index as rebuild_index, build_tag_index
+        from engrammar.core.embeddings import build_index as rebuild_index, build_tag_index
         remaining = get_all_active_engrams()
         rebuild_index(remaining)
         build_tag_index(remaining)

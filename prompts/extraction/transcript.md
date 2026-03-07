@@ -11,7 +11,8 @@ variables:
   - transcript
   - session_id
   - existing_instructions
-output_format: JSON array of {category, engram, source_sessions, scope, project_signals}
+  - env_tags
+output_format: JSON array of {category, engram, source_sessions, scope, project_signals, relevant_tags}
 used_by:
   - extractor._call_claude_for_transcript_extraction
   - extractor.reextract_engrams (via chunked extraction)
@@ -44,6 +45,8 @@ Bad engrams (task summaries, generic, one-off):
 - "Before building a component, check if one exists" (generic process advice)
 - "The location field is empty for CITY profiles — use onsiteLocations array" (one-off data detail)
 {existing_instructions}
+Environment tags detected for this session: {env_tags}
+
 Session transcript:
 {transcript}
 
@@ -53,6 +56,7 @@ Output a JSON array of objects, each with:
 - "source_sessions": ["{session_id}"]
 - "scope": "general" or "project-specific"
 - "project_signals": project/tool names when scope is "project-specific", else []
+- "relevant_tags": subset of the environment tags above that the engram's content actually relates to. Only include tags the engram is *about* — not every tag present in the session. Generic advice that applies to any project should have an empty list [].
 
 If no engrams are worth extracting, output an empty array: []
 
