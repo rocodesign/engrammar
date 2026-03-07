@@ -29,12 +29,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 ### High
 
+- [ ] **#018 Normalize and blend scoring with configurable weights** `C2`
+  - `tasks/open/[1]-018-widen-tag-penalty/task.md`
 - [ ] **#020 Extract tags from user prompt for dynamic tag affinity** `C2`
   - `tasks/open/[1]-020-prompt-derived-tags/task.md`
-- [ ] **#017 Add minimum score threshold for prompt search** `C1`
-  - `tasks/open/[1]-017-reduce-injection-noise/task.md`
-- [ ] **#018 Widen tag affinity penalty range** `C1`
-  - `tasks/open/[1]-018-widen-tag-penalty/task.md`
 - [ ] **#019 Lower tag relevance evidence threshold** `C1`
   - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
 
@@ -74,6 +72,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[1]-007-session-end-extraction/task.md`
 - [x] **#011 Coalesce queued turn extraction requests** `C2`
   - `tasks/completed/[1]-011-coalesced-turn-extraction-queue/task.md`
+- [x] **#017 Add minimum score threshold for prompt search** `C1`
+  - `tasks/completed/[1]-017-reduce-injection-noise/task.md`
+- [x] **#021 LLM-selected relevant tags during extraction** `C2`
+  - `tasks/completed/[1]-021-extraction-relevant-tags/task.md`
 
 ### Medium
 
