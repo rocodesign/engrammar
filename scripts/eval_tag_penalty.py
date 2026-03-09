@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Evaluate different tag penalty configurations.
+"""Evaluate different scoring weight configurations.
 
-Runs searches with varying multiplier ranges and dumps comparison data.
+Runs searches with varying semantic/tag weight blends and dumps comparison data.
 Usage: PYTHONPATH=~/.engrammar ~/.engrammar/venv/bin/python scripts/eval_tag_penalty.py
 """
 
@@ -31,12 +31,12 @@ def get_per_tag_detail(engram_id):
     detail = {r["tag"]: [round(r["score"], 3), r["positive_evals"], r["negative_evals"]] for r in rows}
     return dict(sorted(detail.items(), key=lambda x: x[1][0], reverse=True))
 
-# Penalty configs to compare: (label, min_multiplier, max_multiplier)
+# Weight configs to compare: (label, weight_semantic, weight_tag)
 CONFIGS = [
-    ("current (0.50-1.30)", 0.50, 1.30),
-    ("moderate (0.35-1.30)", 0.35, 1.30),
-    ("aggressive (0.20-1.30)", 0.20, 1.30),
-    ("harsh (0.10-1.50)", 0.10, 1.50),
+    ("sem=0.60 tag=0.40", 0.60, 0.40),
+    ("sem=0.70 tag=0.30", 0.70, 0.30),
+    ("sem=0.80 tag=0.20", 0.80, 0.20),
+    ("sem=0.50 tag=0.50", 0.50, 0.50),
 ]
 
 # Test queries spanning different domains
@@ -92,19 +92,22 @@ def compute_base_rrf(engrams, query):
     return fused, engram_map
 
 
-def apply_tag_penalty(fused, engram_map, env_tag_emb, tag_sim_map, min_mult, max_mult):
-    """Apply tag affinity penalty with given multiplier range."""
-    boosted = []
+def apply_weighted_blend(fused, engram_map, env_tag_emb, tag_sim_map, w_semantic, w_tag):
+    """Normalize RRF scores and blend with tag similarity using given weights."""
+    # Normalize RRF to 0-1
+    max_rrf = fused[0][1] if fused else 1.0
+    blended = []
     for lid, score in fused:
+        rrf_norm = score / max_rrf
         sim = tag_sim_map.get(lid)
         if sim is None:
-            boosted.append((lid, score, None, 1.0))
-            continue
-        # Same formula as engine.py but with configurable bounds
-        multiplier = max(min_mult, min(max_mult, (sim - 0.65) / 0.30 * 0.8 + 0.5))
-        boosted.append((lid, score * multiplier, sim, multiplier))
-    boosted.sort(key=lambda x: x[1], reverse=True)
-    return boosted
+            tag_norm = 0.5  # neutral for untagged
+        else:
+            tag_norm = max(0.0, min(1.0, (sim - 0.65) / 0.30))
+        final = w_semantic * rrf_norm + w_tag * tag_norm
+        blended.append((lid, final, sim, tag_norm))
+    blended.sort(key=lambda x: x[1], reverse=True)
+    return blended
 
 
 def parse_args():
@@ -152,20 +155,20 @@ def main():
         fused, engram_map = compute_base_rrf(engrams, query)
         query_results = {}
 
-        for label, min_m, max_m in CONFIGS:
-            boosted = apply_tag_penalty(fused, engram_map, env_tag_emb, tag_sim_map, min_m, max_m)
+        for label, w_sem, w_tag in CONFIGS:
+            blended = apply_weighted_blend(fused, engram_map, env_tag_emb, tag_sim_map, w_sem, w_tag)
 
             # Also apply tag relevance filter (same as engine.py)
             filtered = []
-            for lid, score, sim, mult in boosted:
+            for lid, score, sim, tag_norm in blended:
                 avg_rel, total_evals = get_tag_relevance_with_evidence(lid, env_tags)
                 if total_evals >= 3 and avg_rel < -0.1:
                     continue
-                score += (avg_rel / 3.0) * 0.01
-                filtered.append((lid, score, sim, mult, avg_rel, total_evals))
+                score += (avg_rel / 3.0) * 0.05
+                filtered.append((lid, score, sim, tag_norm, avg_rel, total_evals))
 
             top5 = []
-            for lid, score, sim, mult, avg_rel, total_evals in filtered[:5]:
+            for lid, score, sim, tag_norm, avg_rel, total_evals in filtered[:5]:
                 e = engram_map.get(lid)
                 if not e:
                     continue
@@ -182,7 +185,7 @@ def main():
                     "text": e["text"][:90],
                     "score": round(score, 5),
                     "tag_sim": round(sim, 3) if sim is not None else None,
-                    "multiplier": round(mult, 3),
+                    "tag_norm": round(tag_norm, 3),
                     "tag_rel": round(avg_rel, 2),
                     "tag_evals": total_evals,
                     "engram_tags": etags,
@@ -236,8 +239,8 @@ def main():
         for label, top5 in configs.items():
             print(f"\n  [{label}]")
             for i, r in enumerate(top5[:3]):
-                tag_info = f"sim={r['tag_sim']}" if r['tag_sim'] is not None else "no-tags"
-                print(f"    #{i+1} EG#{r['id']} score={r['score']:.5f} {tag_info} mult={r['multiplier']}x | {r['text'][:70]}")
+                tag_info = f"sim={r['tag_sim']} tn={r['tag_norm']}" if r['tag_sim'] is not None else "no-tags tn=0.500"
+                print(f"    #{i+1} EG#{r['id']} score={r['score']:.5f} {tag_info} | {r['text'][:70]}")
                 if r.get("tag_detail"):
                     for tag, (sc, pos, neg) in r["tag_detail"].items():
                         print(f"         {tag:30s} {sc:+.3f}  (+{pos}/-{neg})")
