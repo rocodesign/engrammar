@@ -124,66 +124,68 @@ def search(
     rrf_k = max(1, len(engrams) // 5)
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
-    # 3.1. Environment tag affinity boost
-    # Use precomputed tag embeddings for a vectorized cosine similarity
-    # instead of per-engram embed calls. Falls back to per-engram embedding
-    # if the tag index is unavailable.
-    # Engrams without prerequisite tags are treated as generic (neutral).
+    # 3.1. Normalized blend: RRF (semantic) + tag affinity
+    # Normalize RRF scores to 0-1, compute tag similarity norm 0-1,
+    # then blend with configurable weights.
+    scoring_config = config.get("scoring", {})
+    w_semantic = scoring_config.get("weight_semantic", 0.60)
+    w_tag = scoring_config.get("weight_tag", 0.40)
+
+    # Normalize RRF scores to 0-1
+    max_rrf = fused[0][1] if fused else 1.0
+    fused = [(lid, score / max_rrf) for lid, score in fused]
+
     env_tags = env.get("tags", [])
     if env_tags:
         try:
             import numpy as np
             env_tag_emb = embed_text(" ".join(env_tags))
 
-            # Try precomputed tag index first
+            # Build tag similarity map
+            tag_sim_map = {}
             tag_embeddings, tag_ids = load_tag_index()
             if tag_embeddings is not None:
-                # Vectorized: compute all tag similarities at once
                 env_norm = env_tag_emb / (np.linalg.norm(env_tag_emb) + 1e-10)
                 tag_norms = np.linalg.norm(tag_embeddings, axis=1, keepdims=True) + 1e-10
                 tag_emb_norm = tag_embeddings / tag_norms
                 all_sims = tag_emb_norm @ env_norm
                 tag_sim_map = {int(tag_ids[i]): float(all_sims[i]) for i in range(len(tag_ids))}
-
-                boosted = []
-                for lid, score in fused:
-                    sim = tag_sim_map.get(lid)
-                    if sim is None:
-                        boosted.append((lid, score))
-                        continue
-                    # Map similarity to multiplier:
-                    # sim ~0.65 (unrelated stack) → ~0.5x penalty
-                    # sim ~0.80 (partial match)   → ~0.9x neutral
-                    # sim ~0.95+ (same stack)     → ~1.3x boost
-                    multiplier = max(0.5, min(1.3, (sim - 0.65) / 0.30 * 0.8 + 0.5))
-                    boosted.append((lid, score * multiplier))
             else:
                 # Fallback: per-engram embedding (no tag index built yet)
-                boosted = []
-                for lid, score in fused:
+                for lid, _ in fused:
                     engram = engram_map.get(lid)
                     if not engram:
-                        boosted.append((lid, score))
                         continue
                     prereqs = engram.get("prerequisites")
                     if not prereqs:
-                        boosted.append((lid, score))
                         continue
                     prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
                     engram_tags = prereq_dict.get("tags", [])
                     if not engram_tags:
-                        boosted.append((lid, score))
                         continue
                     engram_tag_emb = embed_text(" ".join(engram_tags))
                     sim = float(np.dot(env_tag_emb, engram_tag_emb) / (
                         np.linalg.norm(env_tag_emb) * np.linalg.norm(engram_tag_emb)
                     ))
-                    multiplier = max(0.5, min(1.3, (sim - 0.65) / 0.30 * 0.8 + 0.5))
-                    boosted.append((lid, score * multiplier))
+                    tag_sim_map[lid] = sim
 
-            fused = sorted(boosted, key=lambda x: x[1], reverse=True)
+            # Blend: weighted sum of normalized RRF + normalized tag similarity
+            blended = []
+            for lid, rrf_norm in fused:
+                sim = tag_sim_map.get(lid)
+                if sim is None:
+                    tag_norm = 0.5  # neutral for untagged engrams
+                else:
+                    tag_norm = max(0.0, min(1.0, (sim - 0.65) / 0.30))
+                final = w_semantic * rrf_norm + w_tag * tag_norm
+                blended.append((lid, final))
+
+            fused = sorted(blended, key=lambda x: x[1], reverse=True)
         except Exception:
             pass
+    else:
+        # No env tags — score is just normalized RRF (semantic only)
+        pass
 
     # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
     env_tags = env.get("tags", [])
@@ -191,7 +193,7 @@ def search(
         from engrammar.core.db import get_tag_relevance_with_evidence
         MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
         NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
-        RELEVANCE_WEIGHT = 0.01          # boost weight (RRF range ~0.014-0.033)
+        RELEVANCE_WEIGHT = 0.10          # boost weight (blended range ~0.0-1.0)
 
         filtered_fused = []
         for lid, score in fused:

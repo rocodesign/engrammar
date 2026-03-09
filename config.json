@@ -5,7 +5,12 @@
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
-    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
+    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+    "min_score_tool": 0.40
+  },
+  "scoring": {
+    "weight_semantic": 0.60,
+    "weight_tag": 0.40
   },
   "display": {
     "max_engrams_per_prompt": 3,
