@@ -11,7 +11,7 @@ import time
 
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 SOCKET_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.sock")
-DAEMON_MODULE = os.path.join(ENGRAMMAR_HOME, "engrammar", "daemon.py")
+DAEMON_MODULE = os.path.join(ENGRAMMAR_HOME, "engrammar", "infra", "daemon.py")
 VENV_PYTHON = os.path.join(ENGRAMMAR_HOME, "venv", "bin", "python")
 LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".daemon.log")
 
