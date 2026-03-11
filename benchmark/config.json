@@ -1,0 +1,42 @@
+{
+  "profiles": {
+    "quick": {
+      "description": "Fast validation run — 1 transcript, 1 model, 2 context sizes",
+      "models": ["haiku"],
+      "context_sizes": [8000, 16000],
+      "prompts": ["prompts/extraction/transcript.md"],
+      "transcript_count": 1,
+      "msg_max_chars": 1500
+    },
+    "compare-models": {
+      "description": "Compare haiku vs sonnet with current prompt",
+      "models": ["haiku", "sonnet"],
+      "context_sizes": [8000, 16000],
+      "prompts": ["prompts/extraction/transcript.md"],
+      "transcript_count": 3,
+      "msg_max_chars": 1500
+    },
+    "compare-prompts": {
+      "description": "Compare v1 vs v2 prompt on best transcripts — 3 context sizes, haiku only",
+      "models": ["haiku"],
+      "context_sizes": [8000, 12000, 16000],
+      "prompts": [
+        "benchmark/prompts/v1-original.md",
+        "benchmark/prompts/v2-reusable.md"
+      ],
+      "transcripts": [
+        "benchmark/transcripts/b95af07f*.jsonl",
+        "benchmark/transcripts/392ef156*.jsonl"
+      ],
+      "msg_max_chars": 1500
+    },
+    "full": {
+      "description": "Full sweep — all prompts, models, and context sizes",
+      "models": ["haiku", "sonnet"],
+      "context_sizes": [4000, 8000, 16000, 30000],
+      "prompts": ["prompts/extraction/transcript.md"],
+      "transcript_count": 5,
+      "msg_max_chars": 1500
+    }
+  }
+}

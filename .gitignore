@@ -13,3 +13,5 @@ build/
 *.db-wal
 .last-search.json
 eval_results*.json
+benchmark/results/
+benchmark/transcripts/

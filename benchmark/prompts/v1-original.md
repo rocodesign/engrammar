@@ -31,12 +31,8 @@ DO NOT extract:
 - Summaries of what was built or discussed
 - Generic advice (validate inputs, write tests, check existing code first)
 - One-off data mappings only useful for one specific task ("field X is empty, use field Y")
-- Architecture descriptions — how a system's scoring formula works, what weights it uses, how components connect. These are documentation, not friction-learned rules.
-- Over-specific references — file paths, line numbers, exact constant values, and config keys change frequently. Capture the *insight*, not the coordinates.
 
 **The key test**: would a future assistant working on a *different* task in this project benefit from knowing this? Gotchas about libraries, design system components, build tools, testing frameworks, and project conventions all pass this test. One-off field mappings and task-specific data details do not.
-
-**Abstraction level**: Write engrams that survive code refactors. Prefer "low relevance weights have minimal impact on blend scoring" over "RELEVANCE_WEIGHT=0.005 in search.py is too small". The insight should remain true even if files move, constants get renamed, or code gets reorganized.
 
 Good engrams (concrete, reusable):
 - "The `sortable` prop expects a comparator function, not a boolean — passing `true` silently disables sorting"
@@ -44,12 +40,10 @@ Good engrams (concrete, reusable):
 - "In this monorepo, run codegen scoped to the app (nx run app:codegen), not workspace-wide"
 - "Import order matters — group external imports before internal or CI lint fails"
 
-Bad engrams (task summaries, generic, one-off, over-specific):
+Bad engrams (task summaries, generic, one-off):
 - "Rebuild similarity index after each batch" (user instruction, not a correction)
 - "Before building a component, check if one exists" (generic process advice)
 - "The location field is empty for CITY profiles — use onsiteLocations array" (one-off data detail)
-- "RELEVANCE_WEIGHT=0.005 in search.py line 68 is too small" (over-specific — tied to exact file/line/value)
-- "The blend scoring formula uses w_semantic * rrf_norm + w_tag * tag_norm with weights 0.60/0.40" (architecture description, not a friction-learned rule)
 {existing_instructions}
 Environment tags detected for this session: {env_tags}
 
