@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from engrammar.core.config import load_config
 from engrammar.core.db import (
     get_connection,
     get_unverified_engrams,
@@ -266,7 +267,8 @@ Return strict JSON with this schema:
         env["ENGRAMMAR_INTERNAL_RUN"] = "1"
 
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text", "--no-session-persistence"],
+            ["claude", "-p", prompt, "--model", load_config().get("models", {}).get("deduplication", "haiku"),
+             "--output-format", "text", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=300,

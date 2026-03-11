@@ -36,6 +36,11 @@ def load_config():
             "weight_semantic": 0.60,
             "weight_tag": 0.40,
         },
+        "models": {
+            "extraction": "sonnet",
+            "deduplication": "haiku",
+            "evaluation": "haiku",
+        },
         "display": {
             "max_engrams_per_prompt": 3,
             "max_engrams_per_tool": 2,

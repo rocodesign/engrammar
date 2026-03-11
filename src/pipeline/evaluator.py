@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import datetime
 
+from engrammar.core.config import load_config
 from engrammar.core.db import get_connection, get_unprocessed_audit_sessions
 from engrammar.core.prompt_loader import load_prompt
 
@@ -173,7 +174,8 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
         env["ENGRAMMAR_INTERNAL_RUN"] = "1"
 
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text", "--no-session-persistence"],
+            ["claude", "-p", prompt, "--model", load_config().get("models", {}).get("evaluation", "haiku"),
+             "--output-format", "text", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=300,

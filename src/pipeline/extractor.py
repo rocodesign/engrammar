@@ -31,6 +31,7 @@ from engrammar.core.db import (
     update_tag_relevance,
     write_session_audit,
 )
+from engrammar.core.config import load_config
 from engrammar.core.embeddings import build_index, build_tag_index, embed_batch
 from engrammar.core.prompt_loader import load_prompt
 
@@ -527,7 +528,8 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         env["ENGRAMMAR_INTERNAL_RUN"] = "1"
 
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "haiku", "--output-format", "text", "--no-session-persistence"],
+            ["claude", "-p", prompt, "--model", load_config().get("models", {}).get("extraction", "haiku"),
+             "--output-format", "text", "--no-session-persistence"],
             capture_output=True,
             text=True,
             timeout=300,
