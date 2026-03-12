@@ -34,7 +34,15 @@ RESULTS_DIR = PROJECT_ROOT / "benchmark" / "results"
 
 
 def read_transcript_messages(jsonl_path, max_chars=None, msg_max_chars=1500):
-    """Read transcript messages, optionally capping total output size."""
+    """Read transcript messages, optionally capping total output size.
+
+    When max_chars is set and the transcript exceeds it, returns overlapping
+    chunks (15% overlap) at message boundaries instead of a hard tail slice.
+    This ensures friction patterns spanning chunk boundaries are captured.
+
+    Returns:
+        str (single chunk) or list[str] (multiple chunks) of transcript text
+    """
     messages = []
     try:
         with open(jsonl_path, "r") as f:
@@ -69,11 +77,47 @@ def read_transcript_messages(jsonl_path, max_chars=None, msg_max_chars=1500):
         print(f"Error reading {jsonl_path}: {e}", file=sys.stderr)
         return ""
 
-    result = "\n".join(messages)
-    if max_chars and len(result) > max_chars:
-        # Take the tail (most recent conversation) like the extractor does
-        result = result[-max_chars:]
-    return result
+    if not messages:
+        return ""
+
+    full_text = "\n".join(messages)
+
+    if not max_chars or len(full_text) <= max_chars:
+        return full_text
+
+    # Split into overlapping chunks at message boundaries
+    overlap_chars = int(max_chars * 0.15)
+    chunks = []
+    start_idx = 0
+
+    while start_idx < len(messages):
+        chunk_messages = []
+        chunk_len = 0
+        idx = start_idx
+
+        while idx < len(messages):
+            msg_len = len(messages[idx]) + 1
+            if chunk_len + msg_len > max_chars and chunk_messages:
+                break
+            chunk_messages.append(messages[idx])
+            chunk_len += msg_len
+            idx += 1
+
+        chunks.append("\n".join(chunk_messages))
+
+        if idx >= len(messages):
+            break
+
+        # Step back by overlap_chars worth of messages
+        overlap_len = 0
+        overlap_start = idx
+        while overlap_start > start_idx and overlap_len < overlap_chars:
+            overlap_start -= 1
+            overlap_len += len(messages[overlap_start]) + 1
+
+        start_idx = overlap_start if overlap_start > start_idx else idx
+
+    return chunks
 
 
 def load_prompt(path):
@@ -253,14 +297,21 @@ def main():
         t_size_kb = os.path.getsize(t_path) / 1024
 
         for ctx_size in args.context_sizes:
-            transcript_text = read_transcript_messages(
+            transcript_data = read_transcript_messages(
                 t_path, max_chars=ctx_size, msg_max_chars=args.msg_max_chars
             )
-            actual_chars = len(transcript_text)
+            # Normalize to list of chunks
+            if isinstance(transcript_data, str):
+                chunks = [transcript_data]
+            else:
+                chunks = transcript_data
+            actual_chars = sum(len(c) for c in chunks)
+            num_chunks = len(chunks)
 
             for p_label, p_template in prompts.items():
                 for model in args.models:
-                    label = f"{t_name} | {p_label} | {model} | ctx={ctx_size}"
+                    chunks_label = f" ({num_chunks} chunks)" if num_chunks > 1 else ""
+                    label = f"{t_name} | {p_label} | {model} | ctx={ctx_size}{chunks_label}"
 
                     if args.dry_run:
                         print(f"[DRY RUN] {label} — transcript {t_size_kb:.0f}KB, "
@@ -269,10 +320,38 @@ def main():
 
                     print(f"Running: {label}...", end=" ", flush=True)
 
-                    result = run_extraction(
-                        transcript_text, model, p_template,
-                        session_id=Path(t_path).stem,
-                    )
+                    # Run extraction on each chunk and merge results
+                    merged_engrams = []
+                    total_elapsed = 0
+                    total_prompt_chars = 0
+                    error = None
+
+                    for chunk in chunks:
+                        chunk_result = run_extraction(
+                            chunk, model, p_template,
+                            session_id=Path(t_path).stem,
+                        )
+                        total_elapsed += chunk_result.get("elapsed_s", 0)
+                        total_prompt_chars += chunk_result.get("prompt_chars", 0)
+
+                        if "error" in chunk_result:
+                            error = chunk_result["error"]
+                            break
+
+                        if chunk_result.get("engrams"):
+                            merged_engrams.extend(chunk_result["engrams"])
+
+                    result = {
+                        "raw_output": f"({num_chunks} chunks merged)",
+                        "engrams": merged_engrams,
+                        "engram_count": len(merged_engrams),
+                        "elapsed_s": total_elapsed,
+                        "prompt_chars": total_prompt_chars,
+                        "transcript_chars": actual_chars,
+                        "num_chunks": num_chunks,
+                    }
+                    if error:
+                        result["error"] = error
 
                     result["transcript_file"] = Path(t_path).name
                     result["transcript_size_kb"] = round(t_size_kb, 1)
@@ -286,7 +365,8 @@ def main():
                     if "error" in result:
                         print(f"ERROR: {result['error'][:80]}")
                     else:
-                        print(f"{result['engram_count']} engrams in {result['elapsed_s']:.1f}s")
+                        print(f"{result['engram_count']} engrams in {result['elapsed_s']:.1f}s"
+                              f"{f' ({num_chunks} chunks)' if num_chunks > 1 else ''}")
 
                     # Save individual result
                     p_suffix = f"_{p_label}" if len(prompts) > 1 else ""
@@ -319,6 +399,7 @@ def main():
             "transcript_chars": r.get("transcript_chars", 0),
             "prompt_chars": r.get("prompt_chars", 0),
             "engram_count": r.get("engram_count", 0),
+            "num_chunks": r.get("num_chunks", 1),
             "elapsed_s": round(r.get("elapsed_s", 0), 2),
             "error": r.get("error"),
         })
@@ -340,17 +421,18 @@ def main():
         f"**Transcripts**: {len(transcript_files)}  ",
         f"**Per-message truncation**: {args.msg_max_chars} chars\n",
         "## Summary\n",
-        f"| Transcript {prompt_col}| Model | CtxSize | Actual Chars | Engrams | Time (s) | Error |",
-        f"|------------{prompt_sep}|-------|--------:|-------------:|--------:|---------:|-------|",
+        f"| Transcript {prompt_col}| Model | CtxSize | Actual Chars | Chunks | Engrams | Time (s) | Error |",
+        f"|------------{prompt_sep}|-------|--------:|-------------:|-------:|--------:|---------:|-------|",
     ]
 
     for r in summary["results"]:
         t_name = r["transcript"][:12] if r["transcript"] else "?"
         error = r.get("error", "")[:30] if r.get("error") else ""
         p_col = f"| {r.get('prompt', '')} " if multi_prompt else ""
+        n_chunks = r.get("num_chunks", 1)
         md_lines.append(
             f"| {t_name} {p_col}| {r['model']} | {r['context_size']} | "
-            f"{r['transcript_chars']} | {r['engram_count']} | "
+            f"{r['transcript_chars']} | {n_chunks} | {r['engram_count']} | "
             f"{r['elapsed_s']:.1f} | {error} |"
         )
 

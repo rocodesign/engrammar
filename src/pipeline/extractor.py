@@ -392,7 +392,7 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
     return result
 
 
-def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_chars=4000, msg_max_chars=1500):
+def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_chars=None, msg_max_chars=1500):
     """Read a transcript JSONL and return overlapping chunks for extraction.
 
     Reads all messages, then splits into chunks at message boundaries with overlap.
@@ -402,13 +402,15 @@ def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_cha
     Args:
         jsonl_path: path to transcript JSONL
         chunk_chars: target size per chunk (chars)
-        overlap_chars: overlap between consecutive chunks
+        overlap_chars: overlap between consecutive chunks (default: 15% of chunk_chars)
         msg_max_chars: per-message truncation limit (higher than default 500 to
                        preserve assistant wrong attempts needed for friction detection)
 
     Returns:
         list of chunk strings, each ready to send to extraction
     """
+    if overlap_chars is None:
+        overlap_chars = int(chunk_chars * 0.15)
     messages = []
     try:
         with open(jsonl_path, "r") as f:
