@@ -38,7 +38,7 @@ def load_config():
         },
         "models": {
             "extraction": "sonnet",
-            "deduplication": "haiku",
+            "deduplication": "sonnet",
             "evaluation": "haiku",
         },
         "display": {
