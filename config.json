@@ -5,15 +5,17 @@
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
-    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
-    "min_score_prompt": 0.55,
-    "min_score_tool": 0.50
+    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Bash", "ToolSearch", "Skill"],
+    "min_score_prompt": 0.30,
+    "min_score_tool": 0.30
   },
   "scoring": {
     "weight_semantic": 0.60,
     "weight_tag": 0.40,
+    "rrf_floor": 0.01,
+    "rrf_ceiling": 0.035,
     "repo_match_boost": 0.05,
-    "repo_mismatch_penalty": -0.08
+    "repo_mismatch_penalty": -0.15
   },
   "models": {
     "extraction": "sonnet",
