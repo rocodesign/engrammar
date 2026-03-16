@@ -45,6 +45,7 @@ def search(
     db_path=None,
     skip_prerequisites=False,
     enforce_prerequisites=False,
+    cwd=None,
 ):
     """Main hybrid search entry point.
 
@@ -73,7 +74,7 @@ def search(
     if skip_prerequisites:
         env = {}
     else:
-        env = detect_environment()
+        env = detect_environment(cwd=cwd)
 
     engrams = all_engrams
 
@@ -131,9 +132,12 @@ def search(
     w_semantic = scoring_config.get("weight_semantic", 0.60)
     w_tag = scoring_config.get("weight_tag", 0.40)
 
-    # Normalize RRF scores to 0-1
-    max_rrf = fused[0][1] if fused else 1.0
-    fused = [(lid, score / max_rrf) for lid, score in fused]
+    # Normalize RRF to 0-1 using fixed anchors from observed score distribution
+    rrf_floor = scoring_config.get("rrf_floor", 0.015)
+    rrf_ceiling = scoring_config.get("rrf_ceiling", 0.033)
+    rrf_range = rrf_ceiling - rrf_floor
+    if rrf_range > 0:
+        fused = [(lid, (score - rrf_floor) / rrf_range) for lid, score in fused]
 
     env_tags = env.get("tags", [])
     if env_tags:
@@ -174,9 +178,10 @@ def search(
             for lid, rrf_norm in fused:
                 sim = tag_sim_map.get(lid)
                 if sim is None:
-                    tag_norm = 0.5  # neutral for untagged engrams
+                    tag_norm = 0.0  # neutral for untagged engrams
                 else:
-                    tag_norm = max(0.0, min(1.0, (sim - 0.65) / 0.30))
+                    # Normalize from [0.4, 1.0] range to [-1.0, 1.0]
+                    tag_norm = max(-1.0, min(1.0, (sim - 0.7) / 0.3))
                 final = w_semantic * rrf_norm + w_tag * tag_norm
                 blended.append((lid, final))
 
@@ -427,7 +432,7 @@ def _build_tool_query(tool_name, tool_input):
     return " ".join(keywords) if len(keywords) > 1 else None
 
 
-def search_for_tool_context(tool_name, tool_input, db_path=None, enforce_prerequisites=False):
+def search_for_tool_context(tool_name, tool_input, db_path=None, enforce_prerequisites=False, cwd=None):
     """Specialized search for PreToolUse hook.
 
     Builds a semantic query from tool name + input and runs hybrid search.
@@ -452,6 +457,7 @@ def search_for_tool_context(tool_name, tool_input, db_path=None, enforce_prerequ
         top_k=max_results,
         db_path=db_path,
         enforce_prerequisites=enforce_prerequisites,
+        cwd=cwd,
     )
 
     # Apply minimum score threshold — tool context is shallow,
