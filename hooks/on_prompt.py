@@ -106,7 +106,8 @@ def main():
         try:
             from engrammar.core.db import log_hook_event
             ctx = prompt[:80] if prompt else None
-            log_hook_event(session_id, "UserPromptSubmit", [r["id"] for r in new_results], context=ctx)
+            scores = {r["id"]: round(r.get("score", 0), 4) for r in new_results}
+            log_hook_event(session_id, "UserPromptSubmit", [r["id"] for r in new_results], context=ctx, scores=scores)
         except Exception:
             pass
 

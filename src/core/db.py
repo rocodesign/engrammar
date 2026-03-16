@@ -974,7 +974,7 @@ def import_from_state_file(path, db_path=None):
     return imported
 
 
-def log_hook_event(session_id, hook_event, engram_ids, context=None, db_path=None):
+def log_hook_event(session_id, hook_event, engram_ids, context=None, scores=None, db_path=None):
     """Write a persistent event log entry for a hook injection.
 
     Args:
@@ -982,13 +982,14 @@ def log_hook_event(session_id, hook_event, engram_ids, context=None, db_path=Non
         hook_event: e.g. "SessionStart", "UserPromptSubmit", "PreToolUse"
         engram_ids: list of engram IDs that were injected
         context: optional string (query snippet, tool name, etc.)
+        scores: optional dict mapping engram_id -> score
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        """INSERT INTO hook_event_log (timestamp, session_id, hook_event, engram_ids, context)
-           VALUES (?, ?, ?, ?, ?)""",
-        (now, session_id, hook_event, json.dumps(engram_ids), context),
+        """INSERT INTO hook_event_log (timestamp, session_id, hook_event, engram_ids, context, scores)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (now, session_id, hook_event, json.dumps(engram_ids), context, json.dumps(scores) if scores else None),
     )
     conn.commit()
     conn.close()

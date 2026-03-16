@@ -156,7 +156,8 @@ def main():
         # Log event
         try:
             from engrammar.core.db import log_hook_event
-            log_hook_event(session_id, "PreToolUse", [r["id"] for r in new_results], context=tool_name)
+            scores = {r["id"]: round(r.get("score", 0), 4) for r in new_results}
+            log_hook_event(session_id, "PreToolUse", [r["id"] for r in new_results], context=tool_name, scores=scores)
         except Exception:
             pass
 
