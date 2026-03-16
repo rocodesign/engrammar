@@ -74,23 +74,36 @@ def main():
                     continue
             matching.append(p)
 
-        if not matching:
-            return
+        # Build context parts
+        parts = []
 
-        # Record shown pinned engrams to avoid re-showing in prompt/tool hooks
-        if session_id:
-            from engrammar.core.db import record_shown_engram
-            for p in matching:
-                record_shown_engram(session_id, p["id"], "SessionStart")
+        # Always inject system instruction for proactive engram retrieval
+        parts.append(
+            "[ENGRAMMAR_INSTRUCTIONS]\n"
+            "When planning or working autonomously, call engrammar_search for each area "
+            "you touch — past learnings about conventions, pitfalls, and patterns should "
+            "shape your plan, not just your execution. Hooks surface engrams on user "
+            "prompts and some tool calls, but during autonomous work you must actively "
+            "search. Query by technology, pattern, file area, or workflow involved.\n"
+            "[/ENGRAMMAR_INSTRUCTIONS]"
+        )
 
-        # Log event
-        try:
-            from engrammar.core.db import log_hook_event
-            log_hook_event(session_id, "SessionStart", [p["id"] for p in matching])
-        except Exception:
-            pass
+        # Add pinned engrams if any matched
+        if matching:
+            if session_id:
+                from engrammar.core.db import record_shown_engram
+                for p in matching:
+                    record_shown_engram(session_id, p["id"], "SessionStart")
 
-        context = format_engrams_block(matching, show_categories=show_categories)
+            try:
+                from engrammar.core.db import log_hook_event
+                log_hook_event(session_id, "SessionStart", [p["id"] for p in matching])
+            except Exception:
+                pass
+
+            parts.append(format_engrams_block(matching, show_categories=show_categories))
+
+        context = "\n".join(parts)
         output = make_hook_output("SessionStart", context)
         print(json.dumps(output))
 

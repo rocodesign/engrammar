@@ -77,6 +77,12 @@ def main():
         if not results:
             return
 
+        # Filter by min score
+        min_score = config["hooks"].get("min_score_prompt", 0.50)
+        results = [r for r in results if r.get("score", 0) >= min_score]
+        if not results:
+            return
+
         # Filter out already-shown engrams (DB-based)
         session_id = data.get("session_id")
         if session_id:

@@ -25,7 +25,7 @@ find "$ENGRAMMAR_HOME/engrammar" -type d -name __pycache__ -exec rm -rf {} + 2>/
 
 # Copy hooks
 echo "  hooks/"
-for hook in on_session_start.py on_prompt.py on_tool_use.py on_stop.py; do
+for hook in on_session_start.py on_prompt.py on_tool_use.py on_post_tool.py on_stop.py; do
     if [ -f "$SOURCE_DIR/hooks/$hook" ]; then
         cp "$SOURCE_DIR/hooks/$hook" "$ENGRAMMAR_HOME/hooks/$hook"
     fi

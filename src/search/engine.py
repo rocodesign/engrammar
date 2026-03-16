@@ -187,6 +187,30 @@ def search(
         # No env tags — score is just normalized RRF (semantic only)
         pass
 
+    # 3.2. Repo tag adjustment — repo: tags are stronger signals than generic tags
+    env_repo_tags = {t for t in env.get("tags", []) if t.startswith("repo:")}
+    if env_repo_tags:
+        repo_match_boost = scoring_config.get("repo_match_boost", 0.05)
+        repo_mismatch_penalty = scoring_config.get("repo_mismatch_penalty", -0.08)
+        adjusted = []
+        for lid, score in fused:
+            engram = engram_map.get(lid)
+            if engram and engram.get("prerequisites"):
+                prereqs = engram["prerequisites"]
+                if isinstance(prereqs, str):
+                    try:
+                        prereqs = json.loads(prereqs)
+                    except (json.JSONDecodeError, TypeError):
+                        prereqs = {}
+                engram_repo_tags = {t for t in prereqs.get("tags", []) if t.startswith("repo:")}
+                if engram_repo_tags:
+                    if engram_repo_tags & env_repo_tags:
+                        score += repo_match_boost
+                    else:
+                        score += repo_mismatch_penalty
+            adjusted.append((lid, score))
+        fused = adjusted
+
     # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
     env_tags = env.get("tags", [])
     if env_tags:

@@ -42,7 +42,16 @@ mcp = FastMCP(
 
         "## Updating Injected Engrams\n\n"
         "When a engram in [ENGRAMMAR_V1] context is incomplete or could be improved "
-        "based on what you now know, call engrammar_update. Use the EG#ID to find it."
+        "based on what you now know, call engrammar_update. Use the EG#ID to find it.\n\n"
+
+        "## Engram Retrieval During Planning\n\n"
+        "When planning or executing multi-step work, call engrammar_search for each "
+        "step before executing it. Hooks only fire on user prompts and tool calls — "
+        "during long autonomous sessions where you work through a plan, relevant engrams "
+        "won't be surfaced unless you actively search for them. For each step in your plan, "
+        "search with a query describing what that step does (e.g. the technology, pattern, "
+        "or area involved). This is especially important for complex tasks where past "
+        "learnings about conventions, pitfalls, or project-specific patterns would help."
     ),
 )
 

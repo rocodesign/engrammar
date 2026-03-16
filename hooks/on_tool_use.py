@@ -67,6 +67,20 @@ def main():
         if not tool_name:
             return
 
+        # Inject planning instruction when entering plan mode
+        if tool_name == "EnterPlanMode":
+            context = (
+                "[ENGRAMMAR_INSTRUCTIONS]\n"
+                "Before finalizing your plan, call engrammar_search for each area "
+                "your plan touches — conventions, pitfalls, and past learnings should "
+                "shape your approach, not just your execution. Search by technology, "
+                "pattern, file area, or workflow involved in each step.\n"
+                "[/ENGRAMMAR_INSTRUCTIONS]"
+            )
+            output = make_hook_output("PreToolUse", context)
+            print(json.dumps(output))
+            return
+
         from engrammar.core.config import load_config
         config = load_config()
         if not config["hooks"]["tool_use_enabled"]:

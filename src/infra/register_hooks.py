@@ -22,6 +22,7 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
     session_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_session_start.py")}'
     prompt_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_prompt.py")}'
     tool_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_tool_use.py")}'
+    post_tool_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_post_tool.py")}'
     stop_hook_cmd = f'{python_bin} {os.path.join(engrammar_home, "hooks", "on_stop.py")}'
 
     settings = {}
@@ -55,6 +56,12 @@ def _register_hooks_in_settings(engrammar_home, python_bin):
             "hooks": [{"type": "command", "command": tool_hook_cmd}]
         })
         print("Registered PreToolUse hook")
+
+    if not hook_exists("PostToolUse", post_tool_hook_cmd):
+        hooks.setdefault("PostToolUse", []).append({
+            "hooks": [{"type": "command", "command": post_tool_hook_cmd}]
+        })
+        print("Registered PostToolUse hook")
 
     if not hook_exists("Stop", stop_hook_cmd):
         hooks.setdefault("Stop", []).append({
