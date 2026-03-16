@@ -61,7 +61,12 @@ def send_request(request, timeout=5.0):
     """Send a request to the daemon, starting it if needed.
 
     Returns the response dict, or None on failure.
+    Returns None immediately if the engrammar MCP is disabled.
     """
+    from engrammar.infra.hook_utils import is_mcp_enabled
+    if not is_mcp_enabled():
+        return None
+
     sock = None
 
     # Try connecting to existing daemon

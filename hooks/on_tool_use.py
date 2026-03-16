@@ -52,6 +52,10 @@ def main():
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
             return
 
+        from engrammar.infra.hook_utils import is_mcp_enabled
+        if not is_mcp_enabled():
+            return
+
         raw = sys.stdin.read().strip()
         if not raw:
             return

@@ -10,6 +10,28 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 ERROR_LOG_PATH = os.path.join(ENGRAMMAR_HOME, ".hook-errors.log")
 
 
+def is_mcp_enabled():
+    """Check if the engrammar MCP server is enabled in Claude config.
+
+    Returns False if the entry is missing or has disabled=true,
+    meaning hooks should no-op and the daemon should not start.
+    """
+    try:
+        claude_config = os.path.expanduser("~/.claude.json")
+        if not os.path.exists(claude_config):
+            return False
+        with open(claude_config, "r") as f:
+            data = json.load(f)
+        entry = data.get("mcpServers", {}).get("engrammar")
+        if entry is None:
+            return False
+        if isinstance(entry, dict) and entry.get("disabled"):
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def log_error(hook_name, context, error):
     """Write error to .hook-errors.log."""
     try:

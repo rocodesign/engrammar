@@ -22,6 +22,10 @@ def main():
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
             return
 
+        from engrammar.infra.hook_utils import is_mcp_enabled
+        if not is_mcp_enabled():
+            return
+
         # Read session_id and transcript_path from Claude's hook payload
         data = parse_hook_input()
         session_id = data.get("session_id")
