@@ -36,6 +36,10 @@ echo "  prompts/"
 mkdir -p "$ENGRAMMAR_HOME/prompts"
 cp -r "$SOURCE_DIR"/prompts/* "$ENGRAMMAR_HOME/prompts/"
 
+# Copy config
+echo "  config.json"
+cp "$SOURCE_DIR/config.json" "$ENGRAMMAR_HOME/config.json"
+
 # Copy CLI + scripts
 echo "  cli.py, engrammar, backfill_stats.py"
 cp "$SOURCE_DIR/cli.py" "$ENGRAMMAR_HOME/cli.py"
