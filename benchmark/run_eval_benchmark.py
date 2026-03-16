@@ -159,14 +159,14 @@ def load_engram_texts(ids, db_path=None):
 # --- Evaluation call ---
 
 
-def run_evaluation(session, engram_texts, model):
-    """Call the tag_relevance evaluation prompt for a session.
+EVAL_BATCH_SIZE = 15
 
-    Returns dict with raw scores, timing, and any error.
-    """
+
+def _run_single_eval_batch(engram_ids, session, engram_texts, model):
+    """Run evaluation for a single batch of engram IDs. Returns parsed result dict."""
     engrams_block = "\n".join(
         f"- ID {eid}: {engram_texts[eid]}"
-        for eid in session["shown_engram_ids"]
+        for eid in engram_ids
         if eid in engram_texts
     )
     if not engrams_block:
@@ -225,6 +225,42 @@ def run_evaluation(session, engram_texts, model):
         return {"error": "timeout", "elapsed_s": 120}
     except Exception as e:
         return {"error": str(e), "elapsed_s": time.time() - start}
+
+
+def run_evaluation(session, engram_texts, model):
+    """Call the tag_relevance evaluation prompt for a session.
+
+    Batches large engram sets (>EVAL_BATCH_SIZE) to prevent quality degradation.
+    Returns dict with raw scores, timing, and any error.
+    """
+    shown = [eid for eid in session["shown_engram_ids"] if eid in engram_texts]
+    if not shown:
+        return {"error": "no engrams found in DB", "elapsed_s": 0}
+
+    if len(shown) <= EVAL_BATCH_SIZE:
+        return _run_single_eval_batch(shown, session, engram_texts, model)
+
+    # Batch large sets
+    all_evaluations = []
+    total_elapsed = 0
+    total_prompt_chars = 0
+
+    for i in range(0, len(shown), EVAL_BATCH_SIZE):
+        batch = shown[i:i + EVAL_BATCH_SIZE]
+        result = _run_single_eval_batch(batch, session, engram_texts, model)
+        total_elapsed += result.get("elapsed_s", 0)
+        total_prompt_chars += result.get("prompt_chars", 0)
+
+        if "error" in result:
+            return {"error": result["error"], "elapsed_s": total_elapsed}
+
+        all_evaluations.extend(result.get("evaluations", []))
+
+    return {
+        "evaluations": all_evaluations,
+        "elapsed_s": total_elapsed,
+        "prompt_chars": total_prompt_chars,
+    }
 
 
 # --- Score analysis ---
@@ -334,11 +370,20 @@ def judge_evaluations(session_data, engram_texts, evaluations, judge_model, n=5)
     sample = scored[:n]
 
     results = []
-    transcript_excerpt = session_data["transcript"][:3000]
+    # Give judge the SAME transcript the evaluator saw
+    transcript_for_judge = session_data["transcript"]
+
+    # Build lookup for model's reasoning fields
+    eval_by_id = {}
+    for ev in evaluations:
+        eval_by_id[ev.get("engram_id")] = ev
 
     for abs_score, avg_score, eid, tag_scores, reason in sample:
         engram_text = engram_texts.get(eid, "?")
         direction = "POSITIVE" if avg_score > 0.1 else ("NEGATIVE" if avg_score < -0.1 else "NEUTRAL")
+        ev = eval_by_id.get(eid, {})
+        model_action = ev.get("action", "not provided")
+        model_found = ev.get("found", "not provided")
 
         prompt = f"""You are auditing a tag-relevance evaluation decision.
 
@@ -346,18 +391,21 @@ A model evaluated whether an engram (learned lesson) was acted on during a sessi
 
 Engram: "{engram_text}"
 
-Session transcript excerpt:
-{transcript_excerpt}
+Session transcript (same excerpt the model saw):
+{transcript_for_judge}
 
 The model's evaluation:
 - Direction: {direction}
 - Tag scores: {json.dumps(tag_scores)}
+- Action identified: "{model_action}"
+- Transcript quote: "{model_found}"
 - Reason given: "{reason}"
 
 Is this evaluation defensible? Consider:
-- Does the transcript contain evidence the engram's advice was followed (positive) or violated (negative)?
-- If neutral: is the topic genuinely absent from the session?
-- Is the score directionally correct even if the magnitude could vary?
+1. Does the transcript quote actually appear in the transcript above? (Check for fabricated quotes)
+2. If the quote is real, does it show the engram's advice was followed (positive) or violated (negative)?
+3. Are the tag scores relevant to the engram's domain (not just the session's project)?
+4. If neutral: is the topic genuinely absent from the session?
 
 Return strict JSON:
 {{
@@ -482,6 +530,7 @@ def main():
             session_row["models"][model] = {
                 "summary": summary,
                 "elapsed_s": round(result["elapsed_s"], 2),
+                "evaluations": evaluations,
             }
 
         # Inter-model agreement (if multiple models)

@@ -193,7 +193,13 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
             if output.endswith("```"):
                 output = output.rsplit("\n", 1)[0]
 
-        return json.loads(output)
+        evaluations = json.loads(output)
+        # Enforce transcript evidence gate: zero out tag_scores when no quote found
+        for ev in evaluations:
+            found = ev.get("found", "")
+            if not found or found.upper().strip() == "NO":
+                ev["tag_scores"] = {}
+        return evaluations
     except subprocess.TimeoutExpired:
         print(f"Claude evaluation timed out for {session_id}", file=sys.stderr)
         return []
@@ -251,10 +257,21 @@ def run_evaluation_for_session(session_id, db_path=None):
     if not transcript:
         transcript = _find_transcript_excerpt(session_id)
 
-    # Call Claude for evaluation
-    evaluations = _call_claude_for_evaluation(
-        session_id, shown_engrams, env_tags, repo, transcript
-    )
+    # Call Claude for evaluation — batch large sets to avoid quality degradation
+    BATCH_SIZE = 15
+    evaluations = []
+    if len(shown_engrams) <= BATCH_SIZE:
+        evaluations = _call_claude_for_evaluation(
+            session_id, shown_engrams, env_tags, repo, transcript
+        )
+    else:
+        for i in range(0, len(shown_engrams), BATCH_SIZE):
+            batch = shown_engrams[i:i + BATCH_SIZE]
+            batch_results = _call_claude_for_evaluation(
+                session_id, batch, env_tags, repo, transcript
+            )
+            if batch_results:
+                evaluations.extend(batch_results)
 
     if not evaluations:
         # Mark as failed, increment retry

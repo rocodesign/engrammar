@@ -61,23 +61,21 @@ Engrams shown (ID and text):
 Session transcript excerpt:
 {transcript}
 
-For each engram, output a JSON object with:
-- "engram_id": the engram ID number
-- "tag_scores": dict mapping each relevant env tag to a score from -1.0 to 1.0
-  (-1.0 = actively wrong/misleading, 0 = not acted on, 1.0 = clearly applied)
-  ONLY include tags where the engram's advice directly relates to that tag's domain.
-- "evidence": what specific action in the transcript supports the score (required for any non-zero score)
-- "reason": brief explanation (required for negative scores)
+For each engram, output a JSON object with these fields IN THIS EXACT ORDER:
+1. "engram_id": the engram ID number
+2. "action": what specific action does this engram advise? (5-10 words)
+3. "found": quote the EXACT transcript line where this action occurs, or "NO" if not found
+4. "tag_scores": ONLY if "found" contains a real quote — dict of relevant tag → score (-1.0 to 1.0). If "found" is "NO", MUST be {{}}.
 
-If an engram has no relevant actions in the transcript, output empty tag_scores: {{}}.
+ALL FOUR FIELDS ARE REQUIRED for every engram. Do not skip any field.
 
 Output ONLY a valid JSON array. No markdown fences, no explanation.
 
-Example output:
-[{{"engram_id": 42, "tag_scores": {{"typescript": 0.8}}, "evidence": "line: 'assistant: Running tsc --noEmit to check types before committing' — matches engram advice to type-check pre-commit"}},
- {{"engram_id": 17, "tag_scores": {{"typescript": -0.5}}, "evidence": "line: 'Error: Type X is not assignable to type Y' — assistant followed advised pattern but it caused type error", "reason": "advice was wrong for this TS version"}},
- {{"engram_id": 99, "tag_scores": {{}}}},
- {{"engram_id": 55, "tag_scores": {{}}}},
- {{"engram_id": 12, "tag_scores": {{}}}}]
+Example:
+[{{"engram_id": 42, "action": "run tsc --noEmit before committing", "found": "assistant: Running tsc --noEmit to check types before committing", "tag_scores": {{"typescript": 0.8}}}},
+ {{"engram_id": 99, "action": "export NPM_TOKEN before retrying", "found": "NO", "tag_scores": {{}}}},
+ {{"engram_id": 55, "action": "use Form.Input for BigInt IDs", "found": "NO", "tag_scores": {{}}}},
+ {{"engram_id": 17, "action": "use Record<string, T> for index types", "found": "Error: Type X is not assignable to type Y", "tag_scores": {{"typescript": -0.5}}}},
+ {{"engram_id": 12, "action": "name branches after Jira ticket keys", "found": "NO", "tag_scores": {{}}}}]
 
-NOTE: Most engrams in a session will score 0 with empty tag_scores. This is expected and correct. Only 1-3 engrams per session typically have concrete evidence of being acted on.
+NOTE: Most engrams will have "found": "NO" with empty tag_scores. Expect only 1-3 per session to have real quotes.
