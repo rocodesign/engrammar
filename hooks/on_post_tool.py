@@ -32,7 +32,7 @@ TARGET_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
 RATE_LIMIT_SECONDS = 10
 
 # Min score threshold — higher than PreToolUse since these fire frequently
-MIN_SCORE = 0.60
+MIN_SCORE = 0.40
 
 
 def _read_state():
@@ -117,7 +117,7 @@ def _build_query(narration, tool_name, tool_input):
     return " ".join(parts) if parts else None
 
 
-def _search_via_daemon(query, max_results):
+def _search_via_daemon(query, max_results, cwd=None):
     try:
         from engrammar.infra.client import send_request
         response = send_request({
@@ -125,6 +125,7 @@ def _search_via_daemon(query, max_results):
             "query": query,
             "top_k": max_results,
             "enforce_prerequisites": True,
+            "cwd": cwd,
         })
         if response and "results" in response:
             return response["results"]
@@ -174,11 +175,6 @@ def main():
             if state.get("last_narration") == narration:
                 return
 
-            # Rate limit: skip if searched too recently
-            last_time = state.get("last_search_time", 0)
-            if time.time() - last_time < RATE_LIMIT_SECONDS:
-                return
-
         # Build search query
         query = _build_query(narration, tool_name, tool_input)
         if not query:
@@ -190,7 +186,8 @@ def main():
         max_results = config["display"].get("max_engrams_per_tool", 2)
         show_categories = config["display"]["show_categories"]
 
-        results = _search_via_daemon(query, max_results)
+        hook_cwd = data.get("cwd")
+        results = _search_via_daemon(query, max_results, cwd=hook_cwd)
         if not results:
             # Update state even on no results to avoid re-searching same narration
             _write_state({

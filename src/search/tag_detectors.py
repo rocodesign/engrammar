@@ -15,22 +15,25 @@ from .tag_patterns import (
 )
 
 
-def detect_tags() -> list[str]:
+def detect_tags(cwd=None) -> list[str]:
     """Detect tags from multiple sources.
+
+    Args:
+        cwd: override working directory for detection
 
     Returns:
         Sorted list of unique tags detected from the environment.
     """
     tags = set()
-    tags.update(_detect_from_git())
-    tags.update(_detect_from_files())
-    tags.update(_detect_from_package())
-    tags.update(_detect_from_gemfile())
-    tags.update(_detect_from_structure())
+    tags.update(_detect_from_git(cwd=cwd))
+    tags.update(_detect_from_files(cwd=cwd))
+    tags.update(_detect_from_package(cwd=cwd))
+    tags.update(_detect_from_gemfile(cwd=cwd))
+    tags.update(_detect_from_structure(cwd=cwd))
     return sorted(list(tags))
 
 
-def _detect_from_git() -> Set[str]:
+def _detect_from_git(cwd=None) -> Set[str]:
     """Detect tags from git remote URL, including repo name."""
     tags = set()
 
@@ -39,7 +42,8 @@ def _detect_from_git() -> Set[str]:
             ["git", "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=2,
+            cwd=cwd,
         )
         if result.returncode == 0:
             url = result.stdout.strip()
@@ -58,13 +62,20 @@ def _detect_from_git() -> Set[str]:
     return tags
 
 
-def _detect_from_files() -> Set[str]:
+def _resolve(path, cwd=None):
+    """Resolve a relative path against cwd override."""
+    if cwd:
+        return os.path.join(cwd, path)
+    return path
+
+
+def _detect_from_files(cwd=None) -> Set[str]:
     """Detect tags from presence of marker files in current directory."""
     tags = set()
 
     try:
         for filename, file_tags in FILE_MARKERS.items():
-            if os.path.exists(filename):
+            if os.path.exists(_resolve(filename, cwd)):
                 tags.update(file_tags)
     except Exception:
         pass
@@ -72,13 +83,14 @@ def _detect_from_files() -> Set[str]:
     return tags
 
 
-def _detect_from_package() -> Set[str]:
+def _detect_from_package(cwd=None) -> Set[str]:
     """Detect tags from package.json dependencies."""
     tags = set()
 
     try:
-        if os.path.exists("package.json"):
-            with open("package.json", "r") as f:
+        pkg_path = _resolve("package.json", cwd)
+        if os.path.exists(pkg_path):
+            with open(pkg_path, "r") as f:
                 data = json.load(f)
 
             # Check all dependency sections
@@ -98,13 +110,14 @@ def _detect_from_package() -> Set[str]:
     return tags
 
 
-def _detect_from_gemfile() -> Set[str]:
+def _detect_from_gemfile(cwd=None) -> Set[str]:
     """Detect tags from Gemfile dependencies."""
     tags = set()
 
     try:
-        if os.path.exists("Gemfile"):
-            with open("Gemfile", "r") as f:
+        gem_path = _resolve("Gemfile", cwd)
+        if os.path.exists(gem_path):
+            with open(gem_path, "r") as f:
                 content = f.read()
 
             # Simple pattern matching for gem declarations
@@ -117,14 +130,14 @@ def _detect_from_gemfile() -> Set[str]:
     return tags
 
 
-def _detect_from_structure() -> Set[str]:
+def _detect_from_structure(cwd=None) -> Set[str]:
     """Detect tags from directory structure."""
     tags = set()
 
     try:
         # Check for specific directories
         for dir_name, dir_tags in DIR_STRUCTURE_PATTERNS.items():
-            if os.path.isdir(dir_name.rstrip("/")):
+            if os.path.isdir(_resolve(dir_name.rstrip("/"), cwd)):
                 tags.update(dir_tags)
     except Exception:
         pass

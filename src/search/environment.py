@@ -8,8 +8,11 @@ import subprocess
 from .tag_detectors import detect_tags
 
 
-def detect_environment():
+def detect_environment(cwd=None):
     """Detect current environment context.
+
+    Args:
+        cwd: override working directory (used when daemon detects env for a remote caller)
 
     Returns dict with:
         os: "darwin" | "linux" | "windows"
@@ -18,22 +21,24 @@ def detect_environment():
         mcp_servers: list of configured MCP server names
         tags: list of detected environment tags
     """
+    effective_cwd = cwd or os.getcwd()
     env = {
         "os": platform.system().lower(),
-        "repo": _detect_repo(),
-        "cwd": os.getcwd(),
+        "repo": _detect_repo(cwd=effective_cwd),
+        "cwd": effective_cwd,
         "mcp_servers": _detect_mcp_servers(),
-        "tags": detect_tags(),
+        "tags": detect_tags(cwd=effective_cwd),
     }
     return env
 
 
-def _detect_repo():
+def _detect_repo(cwd=None):
     """Get repository name from git remote origin."""
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=2
+            capture_output=True, text=True, timeout=2,
+            cwd=cwd,
         )
         if result.returncode == 0:
             url = result.stdout.strip()

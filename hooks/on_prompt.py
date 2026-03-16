@@ -14,7 +14,7 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 sys.path.insert(0, ENGRAMMAR_HOME)
 
 
-def _search_via_daemon(prompt, max_results):
+def _search_via_daemon(prompt, max_results, cwd=None):
     try:
         from engrammar.infra.client import send_request
         response = send_request({
@@ -22,6 +22,7 @@ def _search_via_daemon(prompt, max_results):
             "query": prompt,
             "top_k": max_results,
             "enforce_prerequisites": True,
+            "cwd": cwd,
         })
         if response and "results" in response:
             return response["results"]
@@ -31,10 +32,10 @@ def _search_via_daemon(prompt, max_results):
     return None
 
 
-def _search_direct(prompt, max_results):
+def _search_direct(prompt, max_results, cwd=None):
     try:
         from engrammar.search.engine import search
-        return search(prompt, top_k=max_results, enforce_prerequisites=True)
+        return search(prompt, top_k=max_results, enforce_prerequisites=True, cwd=cwd)
     except Exception as e:
         from engrammar.infra.hook_utils import log_error
         log_error("UserPromptSubmit", f"direct search: {prompt[:50]}", e)
@@ -70,9 +71,10 @@ def main():
         show_categories = config["display"]["show_categories"]
 
         # Try daemon, fall back to direct
-        results = _search_via_daemon(prompt, max_results)
+        hook_cwd = data.get("cwd")
+        results = _search_via_daemon(prompt, max_results, cwd=hook_cwd)
         if results is None:
-            results = _search_direct(prompt, max_results)
+            results = _search_direct(prompt, max_results, cwd=hook_cwd)
 
         if not results:
             return

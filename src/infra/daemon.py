@@ -118,6 +118,7 @@ class EngrammarDaemon:
                 category_filter=data.get("category_filter"),
                 top_k=data.get("top_k"),
                 enforce_prerequisites=data.get("enforce_prerequisites", False),
+                cwd=data.get("cwd"),
             )
             return {"results": _serialize(results)}
 
@@ -128,6 +129,7 @@ class EngrammarDaemon:
                 data.get("tool_name", ""),
                 data.get("tool_input", {}),
                 enforce_prerequisites=data.get("enforce_prerequisites", False),
+                cwd=data.get("cwd"),
             )
             return {"results": _serialize(results)}
 

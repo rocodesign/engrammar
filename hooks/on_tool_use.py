@@ -14,7 +14,7 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 sys.path.insert(0, ENGRAMMAR_HOME)
 
 
-def _search_via_daemon(tool_name, tool_input):
+def _search_via_daemon(tool_name, tool_input, cwd=None):
     try:
         from engrammar.infra.client import send_request
         response = send_request({
@@ -22,6 +22,7 @@ def _search_via_daemon(tool_name, tool_input):
             "tool_name": tool_name,
             "tool_input": tool_input,
             "enforce_prerequisites": True,
+            "cwd": cwd,
         })
         if response and "results" in response:
             return response["results"]
@@ -31,13 +32,14 @@ def _search_via_daemon(tool_name, tool_input):
     return None
 
 
-def _search_direct(tool_name, tool_input):
+def _search_direct(tool_name, tool_input, cwd=None):
     try:
         from engrammar.search.engine import search_for_tool_context
         return search_for_tool_context(
             tool_name,
             tool_input,
             enforce_prerequisites=True,
+            cwd=cwd,
         )
     except Exception as e:
         from engrammar.infra.hook_utils import log_error
@@ -67,6 +69,39 @@ def main():
         if not tool_name:
             return
 
+        # Inject instructions on first tool call in a subagent
+        agent_id = data.get("agent_id")
+        if agent_id:
+            state_file = os.path.join(ENGRAMMAR_HOME, ".subagent_injected.json")
+            injected = set()
+            try:
+                if os.path.exists(state_file):
+                    with open(state_file, "r") as f:
+                        injected = set(json.load(f))
+            except Exception:
+                pass
+            if agent_id not in injected:
+                injected.add(agent_id)
+                # Keep only last 20 to avoid unbounded growth
+                if len(injected) > 20:
+                    injected = set(list(injected)[-20:])
+                try:
+                    with open(state_file, "w") as f:
+                        json.dump(list(injected), f)
+                except Exception:
+                    pass
+                context = (
+                    "[ENGRAMMAR_INSTRUCTIONS]\n"
+                    "When exploring or planning, call engrammar_search for each area "
+                    "you touch — conventions, pitfalls, and past learnings should "
+                    "shape your approach. Search by technology, component, pattern, "
+                    "or file area involved.\n"
+                    "[/ENGRAMMAR_INSTRUCTIONS]"
+                )
+                output = make_hook_output("PreToolUse", context)
+                print(json.dumps(output))
+                return
+
         # Inject planning instruction when entering plan mode
         if tool_name == "EnterPlanMode":
             context = (
@@ -93,9 +128,10 @@ def main():
         show_categories = config["display"]["show_categories"]
 
         # Try daemon, fall back to direct
-        results = _search_via_daemon(tool_name, tool_input)
+        hook_cwd = data.get("cwd")
+        results = _search_via_daemon(tool_name, tool_input, cwd=hook_cwd)
         if results is None:
-            results = _search_direct(tool_name, tool_input)
+            results = _search_direct(tool_name, tool_input, cwd=hook_cwd)
 
         if not results:
             return
