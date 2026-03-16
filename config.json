@@ -15,7 +15,7 @@
   "models": {
     "extraction": "sonnet",
     "deduplication": "sonnet",
-    "evaluation": "haiku"
+    "evaluation": "sonnet"
   },
   "display": {
     "max_engrams_per_prompt": 3,
