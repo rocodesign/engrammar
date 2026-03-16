@@ -47,6 +47,8 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-035-nudge-agent-feedback-updates/issue.md`
 - [ ] **#37 Progressive disclosure — summarize long engrams, expand on demand** `[C3]`
   - `issues/open/[2]-037-progressive-disclosure-summaries/issue.md`
+- [ ] **#39 Extract content-specific tags during extraction, merge/prune during dedup** `[C2]`
+  - `issues/open/[2]-039-content-tags-extraction/issue.md`
 
 ### Medium
 
