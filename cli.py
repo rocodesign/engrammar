@@ -112,7 +112,7 @@ def cmd_search(args):
 
     from engrammar.search.engine import search
 
-    results = search(query, category_filter=category, tag_filter=tags, top_k=5)
+    results = search(query, category_filter=category, tag_filter=tags, top_k=5, skip_prerequisites=True)
 
     if not results:
         print("No matching engrams found.")
