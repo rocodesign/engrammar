@@ -39,6 +39,14 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
 - [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
   - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
+- [ ] **#33 Inject engrams when the agent plans or executes multi-step work** `[C1] low-hanging`
+  - `issues/open/[2]-033-engram-injection-during-plan-steps/issue.md`
+- [ ] **#34 Procedural skill engrams — structured workflows, not just facts** `[C3]`
+  - `issues/open/[2]-034-procedural-skill-engrams/issue.md`
+- [ ] **#35 Nudge the agent to provide feedback and update engrams more often** `[C1] low-hanging`
+  - `issues/open/[2]-035-nudge-agent-feedback-updates/issue.md`
+- [ ] **#37 Progressive disclosure — summarize long engrams, expand on demand** `[C3]`
+  - `issues/open/[2]-037-progressive-disclosure-summaries/issue.md`
 
 ### Medium
 
@@ -56,6 +64,10 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-022-cli-update-category-level-drift/issue.md`
 - [ ] **#27 Tag relevance boost averages only known-tag rows** `[C1] low-hanging`
   - `issues/open/[3]-027-tag-relevance-average-sparse/issue.md`
+- [ ] **#36 Validate engram text on add/update for injection and exfiltration** `[C2]`
+  - `issues/open/[3]-036-memory-write-validation/issue.md`
+- [ ] **#38 Session-level capacity limits for surfaced engrams** `[C2]`
+  - `issues/open/[3]-038-session-capacity-limits/issue.md`
 
 ### Low
 
