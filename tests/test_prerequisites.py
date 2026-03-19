@@ -54,11 +54,14 @@ def test_mcp_servers_prerequisite():
 
 
 def test_paths_prerequisite():
-    """Path prerequisites should match directory prefixes."""
+    """Path prerequisites should match directory boundaries, not raw prefixes."""
     prereqs = {"paths": ["/Users/test/work/acme"]}
     assert check_prerequisites(prereqs, {"cwd": "/Users/test/work/acme/app-repo"}) is True
     assert check_prerequisites(prereqs, {"cwd": "/Users/test/work/acme"}) is True
     assert check_prerequisites(prereqs, {"cwd": "/Users/test/work/other"}) is False
+    # Issue #23: must not match prefix collisions like /work/app vs /work/application
+    assert check_prerequisites(prereqs, {"cwd": "/Users/test/work/acme-other"}) is False
+    assert check_prerequisites(prereqs, {"cwd": "/Users/test/work/acmeee"}) is False
 
 
 def test_combined_prerequisites():

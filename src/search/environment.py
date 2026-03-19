@@ -182,9 +182,9 @@ def check_prerequisites(prerequisites, env=None):
     if req_paths:
         if isinstance(req_paths, str):
             req_paths = [req_paths]
-        cwd = env.get("cwd", "")
-        expanded = [os.path.expanduser(p) for p in req_paths]
-        if not any(cwd.startswith(p) for p in expanded):
+        cwd = os.path.realpath(env.get("cwd", ""))
+        expanded = [os.path.realpath(os.path.expanduser(p)) for p in req_paths]
+        if not any(cwd == p or cwd.startswith(p + os.sep) for p in expanded):
             return False
 
     # Check MCP servers
