@@ -144,6 +144,7 @@ def run_extraction(transcript_text, model, prompt_template, session_id="benchmar
         session_id=session_id,
         existing_instructions="",
         env_tags="[]",
+        existing_tags_hint="",
     )
 
     prompt_chars = len(prompt)
