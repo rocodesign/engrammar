@@ -189,8 +189,39 @@ def search(
 
     fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
 
-    # NOTE: Content tag affinity scoring (prompt-derived tags vs engram content tags)
-    # will be added by task #020. Until then, scoring = semantic + repo prior + feedback.
+    # 3.6. Content tag affinity (prompt-derived tags vs engram content tags)
+    w_content = scoring_config.get("weight_content_tag", 0.25)
+    if w_content > 0 and query:
+        try:
+            from engrammar.search.prompt_tags import detect_prompt_tags
+            from engrammar.core.embeddings import embed_text as _embed_text
+            import numpy as np
+
+            prompt_tag_top_k = scoring_config.get("prompt_tag_top_k", 5)
+            prompt_tag_threshold = scoring_config.get("prompt_tag_threshold", 0.3)
+            prompt_tags = detect_prompt_tags(query, top_k=prompt_tag_top_k, threshold=prompt_tag_threshold)
+
+            if prompt_tags:
+                # Embed prompt-derived tag set as a single vector
+                prompt_tag_text = " ".join(tag for tag, _score in prompt_tags)
+                prompt_tag_emb = _embed_text(prompt_tag_text)
+                prompt_tag_norm = prompt_tag_emb / (np.linalg.norm(prompt_tag_emb) + 1e-10)
+
+                # Compute per-engram content tag affinity
+                content_scored = []
+                for lid, score in fused:
+                    engram_tags = content_tags_map.get(lid, [])
+                    if engram_tags:
+                        engram_tag_emb = _embed_text(" ".join(engram_tags))
+                        engram_tag_norm = engram_tag_emb / (np.linalg.norm(engram_tag_emb) + 1e-10)
+                        sim = float(np.dot(prompt_tag_norm, engram_tag_norm))
+                        # Normalize: (sim + 1) / 2 maps [-1, 1] to [0, 1]
+                        content_affinity = (sim + 1) / 2
+                        score += w_content * content_affinity
+                    content_scored.append((lid, score))
+                fused = sorted(content_scored, key=lambda x: x[1], reverse=True)
+        except Exception:
+            pass
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:

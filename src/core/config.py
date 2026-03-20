@@ -9,6 +9,8 @@ INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "embeddings.npy")
 IDS_PATH = os.path.join(ENGRAMMAR_HOME, "embedding_ids.npy")
 TAG_INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "tag_embeddings.npy")
 TAG_IDS_PATH = os.path.join(ENGRAMMAR_HOME, "tag_embedding_ids.npy")
+TAG_VOCAB_INDEX_PATH = os.path.join(ENGRAMMAR_HOME, "tag_vocab_embeddings.npy")
+TAG_VOCAB_LABELS_PATH = os.path.join(ENGRAMMAR_HOME, "tag_vocab_labels.json")
 CONFIG_PATH = os.path.join(ENGRAMMAR_HOME, "config.json")
 LAST_SEARCH_PATH = os.path.join(ENGRAMMAR_HOME, ".last-search.json")
 
@@ -33,8 +35,12 @@ def load_config():
             "prerequisites_min_score": 0.3,
         },
         "scoring": {
-            "weight_semantic": 0.60,
-            "weight_tag": 0.40,
+            "weight_content_tag": 0.25,
+            "weight_feedback": 0.20,
+            "repo_match_boost": 0.05,
+            "repo_mismatch_penalty": -0.08,
+            "prompt_tag_top_k": 5,
+            "prompt_tag_threshold": 0.3,
         },
         "models": {
             "extraction": "sonnet",

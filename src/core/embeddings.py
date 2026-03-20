@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-from .config import INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, TAG_IDS_PATH
+from .config import INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, TAG_IDS_PATH, TAG_VOCAB_INDEX_PATH, TAG_VOCAB_LABELS_PATH
 
 _model = None
 
@@ -75,7 +75,7 @@ def build_tag_index(engrams, index_path=None, ids_path=None):
     Returns:
         number of engrams with tag embeddings
     """
-    from engrammar.core.db import get_content_tags_batch
+    from .db import get_content_tags_batch
 
     idx_path = index_path or TAG_INDEX_PATH
     id_path = ids_path or TAG_IDS_PATH
@@ -124,6 +124,60 @@ def load_tag_index(index_path=None, ids_path=None):
         return None, None
 
     return embeddings, ids
+
+
+def build_tag_vocab_index(min_frequency=2, db_path=None):
+    """Build vocabulary-level content tag index: one embedding per unique tag.
+
+    Only includes tags appearing on >= min_frequency engrams.
+
+    Args:
+        min_frequency: minimum engram count for tag inclusion (default 2)
+        db_path: optional database path
+
+    Returns:
+        number of tags in vocabulary
+    """
+    import json
+    from .db import get_all_content_tags_vocab
+
+    vocab = get_all_content_tags_vocab(min_frequency=min_frequency, db_path=db_path)
+    if not vocab:
+        np.save(TAG_VOCAB_INDEX_PATH, np.array([], dtype=np.float32).reshape(0, 0))
+        with open(TAG_VOCAB_LABELS_PATH, "w") as f:
+            json.dump([], f)
+        return 0
+
+    labels = [tag for tag, _count in vocab]
+    embeddings = embed_batch(labels)
+    np.save(TAG_VOCAB_INDEX_PATH, embeddings)
+    with open(TAG_VOCAB_LABELS_PATH, "w") as f:
+        json.dump(labels, f)
+
+    return len(labels)
+
+
+def load_tag_vocab_index():
+    """Load content tag vocabulary index.
+
+    Returns:
+        (embeddings, labels) tuple or (None, None) if not built yet.
+        embeddings: numpy array of shape (n_tags, dim)
+        labels: list of tag strings
+    """
+    import json
+
+    if not os.path.exists(TAG_VOCAB_INDEX_PATH) or not os.path.exists(TAG_VOCAB_LABELS_PATH):
+        return None, None
+
+    embeddings = np.load(TAG_VOCAB_INDEX_PATH, mmap_mode="r")
+    if embeddings.size == 0:
+        return None, None
+
+    with open(TAG_VOCAB_LABELS_PATH, "r") as f:
+        labels = json.load(f)
+
+    return embeddings, labels
 
 
 def load_index(index_path=None, ids_path=None):

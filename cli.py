@@ -27,7 +27,7 @@ def cmd_setup(args):
     # Build embedding index
     print("Building embedding index...")
     from engrammar.core.db import get_all_active_engrams
-    from engrammar.core.embeddings import build_index, build_tag_index
+    from engrammar.core.embeddings import build_index, build_tag_index, build_tag_vocab_index
 
     engrams = get_all_active_engrams()
     if engrams:
@@ -35,6 +35,8 @@ def cmd_setup(args):
         print(f"Indexed {n} engrams.")
         nt = build_tag_index(engrams)
         print(f"Cached {nt} tag embeddings.")
+        nv = build_tag_vocab_index()
+        print(f"Built tag vocabulary: {nv} unique tags.")
     else:
         print("No engrams to index.")
 
@@ -277,7 +279,7 @@ def cmd_extract(args):
 def cmd_rebuild(args):
     """Rebuild the embedding index."""
     from engrammar.core.db import get_all_active_engrams
-    from engrammar.core.embeddings import build_index, build_tag_index
+    from engrammar.core.embeddings import build_index, build_tag_index, build_tag_vocab_index
 
     print("Loading engrams...")
     engrams = get_all_active_engrams()
@@ -289,7 +291,8 @@ def cmd_rebuild(args):
     print(f"Building index for {len(engrams)} engrams...")
     n = build_index(engrams)
     nt = build_tag_index(engrams)
-    print(f"Done. Indexed {n} engrams, cached {nt} tag embeddings.")
+    nv = build_tag_vocab_index()
+    print(f"Done. Indexed {n} engrams, cached {nt} tag embeddings, {nv} vocab tags.")
 
 
 def cmd_list(args):
