@@ -1,0 +1,272 @@
+[
+  {
+    "prompt": "<ide_opened_file>The user opened the file /Users/romeocopaciu/work/ai-tools/engrammar/src/search/tag_detectors.py in the IDE. This may or may not be related to the current task.</ide_opened_file> what are the open tasks/issues let's think what to tac",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I remember we already do LLM assistem dedup",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "verify the rest of the task",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "how are tasks merged?",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "[Request interrupted by user]",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "how are tags merged?",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I already thought about a tag extraction mechanism check task.md @tasks/open/[1]-020-prompt-derived-tags/",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "yes, this is the idea I had",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "During deduplication we can do another pass of getting tags against content, and maybe also ask the llm to determine tags if we pass the tags of both",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Both extraction and merge should add content relevant tags let's add this to the task 039",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "based on this extraction should work in two steps, llm is injected env tags as well as some content tags maybe (i guess this is a bit hard if the window is big, a lot of tags will be noise) then our system retrieves content tags for all generated eng",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's add to the task",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's work on one of these issues pick what makes sense to pickup first",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "still running?",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "can we consider 039 done?",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's continue with #020",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "yes it should extraction automatically set prerequisites.repos from the source session's repo",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Let's backfill",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's also query tags after each engram is added, querying tags for the engram would retrieve tags based on vector similarity",
+    "session": "556d65b5-67f",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Check what title actually does on Button.Circular",
+    "session": "cafb9948-e19",
+    "type": "prompt"
+  },
+  {
+    "prompt": "<ide_selection>The user selected the lines 127 to 127 from /Users/romeocopaciu/work/toptal/staff-portal/_scripts/extract-skipped-screenshots.mjs:\nhappoScreenshot\n\nThis may or may not be related to the current task.</ide_selection> let's use toptal wo",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "what's going on?",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "[Request interrupted by user for tool use]",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "The ticket is in TODO, not in review as it should be",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Yeah, that's true",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "The checklist is missing from the PR description and the way it looks doesn't match the template, let's fix the workflow to make sure the template layout is always preserved",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I need to allow different parts of the toptal-workflow, I need it to run completely unattended in any repository",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I had to allow writing of clarify md as well",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I don't know you can check the session",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I allowed it",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Something with Clarify.md",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "cool, try to modify/edit the clarify file",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "actually let's do it, but make sure to delete the file before finishing the workflow",
+    "session": "e5a50504-809",
+    "type": "prompt"
+  },
+  {
+    "prompt": "some checks failed but it looks much better",
+    "session": "4f4e64f0-b6c",
+    "type": "prompt"
+  },
+  {
+    "prompt": "review this PR https://github.com/toptal/topkit/pull/1084",
+    "session": "b4485044-ee0",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Ah, sorry yes, let's discuss happo, accidentally dropped the discussed in the wrong conversation",
+    "session": "2b02c126-f0a",
+    "type": "prompt"
+  },
+  {
+    "prompt": "can you point to exact code and how the flow works I still don't get it",
+    "session": "2b02c126-f0a",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Let's discuss a bit first how to implement it",
+    "session": "e8161721-f85",
+    "type": "prompt"
+  },
+  {
+    "prompt": "so we have a list of tags, these tags can also be connected to eachother, so when we extract tags from the prompt, it the prompt says, \"let's write tests for blablaModal\" using a vector seach we could get ['testing', 'cypress",
+    "session": "e8161721-f85",
+    "type": "prompt"
+  },
+  {
+    "prompt": "So I would say any engram query should use this approach, I'd go for the self-maintaining, we can add a process later to curate it, or clear irellevant tags, deduplicate, etc",
+    "session": "e8161721-f85",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Tag index lifecycle  - suggest something\nThreshold & top-k for prompt\u2192tag matching configurable, we need some testing first before determining the value\nWhere in the pipeline - I think the search itself should do the tag lookup, but it can also recei",
+    "session": "e8161721-f85",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's add what we discussed to the task",
+    "session": "e8161721-f85",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Let's resolve and commit",
+    "session": "94b17c65-fd7",
+    "type": "prompt"
+  },
+  {
+    "prompt": "the toptal workflow blocks commits in all repos?",
+    "session": "94b17c65-fd7",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I need to be able to work in parallel on multiple things in multiple repos so the hook-enforce-commit should only work within the specified folder the workflow was started on, that should take care of git workspaces as well",
+    "session": "94b17c65-fd7",
+    "type": "prompt"
+  },
+  {
+    "prompt": "yes, let's create a folder here before working on the updated proposal,\n\nat the same time start a claude session in the background and based on your findings also create a confluence skill near the jira skill, make sure it's in the shared location",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "cool, now let's look deep into the research and figure if any of the suggestion would work, also check the davinci folder as we will start with that, compare with other package managers, search online for issues, compatibilities with existing version",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's dive deeper into what it would take to migrate davinci, staff-portal, if there's any dependency chain we need to take care of \n\nVedran updated his document https://toptal-core.atlassian.net/wiki/spaces/TECHX/pages/5787189283/pnpm+Migration+Impa",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "Let's do the similar analysis for npm and update the doc",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's sync everything with the confluence doc",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I mean the npm 11 migration page right? don't touch vedran's page",
+    "session": "96a6308c-968",
+    "type": "prompt"
+  },
+  {
+    "prompt": "let's checkout toptal davinci in this folder",
+    "session": "4ce74b0a-636",
+    "type": "prompt"
+  },
+  {
+    "prompt": "I mean disable it",
+    "session": "9fb60aeb-5bc",
+    "type": "prompt"
+  },
+  {
+    "prompt": "use the --fill to use the template for the PR description and modify it accordingly",
+    "session": "9fb60aeb-5bc",
+    "type": "prompt"
+  }
+]
