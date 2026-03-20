@@ -12,6 +12,7 @@ variables:
   - session_id
   - existing_instructions
   - env_tags
+  - existing_tags_hint
 output_format: JSON array of {category, engram, source_sessions, scope, project_signals, relevant_tags, content_tags}
 used_by:
   - extractor._call_claude_for_transcript_extraction
@@ -50,7 +51,7 @@ Bad engrams (task summaries, generic, one-off, over-specific):
 - "The location field is empty for CITY profiles — use onsiteLocations array" (one-off data detail)
 - "RELEVANCE_WEIGHT=0.005 in search.py line 68 is too small" (over-specific — tied to exact file/line/value)
 - "The blend scoring formula uses w_semantic * rrf_norm + w_tag * tag_norm with weights 0.60/0.40" (architecture description, not a friction-learned rule)
-{existing_instructions}
+{existing_instructions}{existing_tags_hint}
 Environment tags detected for this session: {env_tags}
 
 Session transcript:

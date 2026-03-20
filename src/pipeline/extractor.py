@@ -23,6 +23,7 @@ from engrammar.core.db import (
     deprecate_engram,
     find_similar_engram,
     get_all_active_engrams,
+    get_all_content_tags_vocab,
     get_connection,
     get_env_tags_for_sessions,
     get_processed_session_ids,
@@ -501,11 +502,22 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         captured_list = "\n".join(f"- {text}" for text in already_captured)
         instructions_block += f"\nThese engrams were already captured from this session — do NOT re-extract them or rephrase them:\n{captured_list}\n"
 
+    # Fetch top-50 most-used content tags as vocabulary hint for the LLM
+    vocab = get_all_content_tags_vocab(min_frequency=1)
+    top_tags = [tag for tag, _count in vocab[:50]]
+    existing_tags_hint = ""
+    if top_tags:
+        existing_tags_hint = (
+            f"\nExisting content tags in use (prefer reuse when conceptually similar): "
+            f"{json.dumps(top_tags)}\n"
+        )
+
     prompt = _get_prompt("extraction/transcript.md").format(
         transcript=transcript_text,
         session_id=session_id,
         existing_instructions=instructions_block,
         env_tags=json.dumps(env_tags or []),
+        existing_tags_hint=existing_tags_hint,
     )
 
     try:
