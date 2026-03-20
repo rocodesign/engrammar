@@ -1106,6 +1106,178 @@ def cmd_dedup(args):
         print(f"Failed:    {summary['failed']}")
 
 
+def _llm_generate_tags_batch(engrams_batch):
+    """Call LLM to generate content tags for a batch of engrams.
+
+    Returns:
+        dict mapping engram_id -> list of tag strings
+    """
+    import subprocess
+    from engrammar.core.config import load_config
+
+    items = [{"id": e["id"], "text": e["text"], "category": e.get("category", "general")} for e in engrams_batch]
+    prompt = f"""For each engram below, output 1-3 short lowercase topic tags describing what it's about.
+Tags should be specific topics (e.g. "forms", "git", "testing", "react", "docker"), not generic terms like "development" or "best-practices".
+
+Output strict JSON: {{"tags": {{"<id>": ["tag1", "tag2"], ...}}}}
+
+Engrams:
+{json.dumps(items, indent=2)}"""
+
+    try:
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+        env["ENGRAMMAR_INTERNAL_RUN"] = "1"
+        model = load_config().get("models", {}).get("extraction", "haiku")
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", model,
+             "--output-format", "text", "--no-session-persistence"],
+            capture_output=True, text=True, timeout=120, env=env, stdin=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            return {}
+        text = result.stdout.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text.rsplit("\n", 1)[0]
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(text[start:end])
+            tags_map = parsed.get("tags", parsed)
+            return {int(k): [t.strip().lower() for t in v] for k, v in tags_map.items()}
+    except Exception as e:
+        print(f"  LLM batch failed: {e}", file=sys.stderr)
+    return {}
+
+
+def cmd_backfill_tags(args):
+    """Generate content tags for engrams that don't have any.
+
+    Two strategies:
+    1. Vector retrieval from tag vocab (fast, promotes convergence)
+    2. LLM generation for engrams where retrieval finds nothing (cold start)
+
+    Options:
+        --limit N       Process at most N engrams (default: all)
+        --dry-run       Show what would be tagged without writing
+        --threshold F   Min cosine similarity for tag retrieval (default 0.4)
+        --llm           Use LLM for engrams where vector retrieval finds nothing
+    """
+    from engrammar.core.db import (
+        get_all_active_engrams, get_content_tags, add_content_tags,
+        get_all_content_tags_vocab,
+    )
+    from engrammar.core.embeddings import build_tag_vocab_index
+    from engrammar.search.prompt_tags import detect_prompt_tags
+
+    limit = None
+    dry_run = "--dry-run" in args
+    use_llm = "--llm" in args
+    threshold = 0.4
+    i = 0
+    while i < len(args):
+        if args[i] == "--limit" and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif args[i] == "--threshold" and i + 1 < len(args):
+            threshold = float(args[i + 1])
+            i += 2
+        else:
+            i += 1
+
+    # Build vocab index from whatever tags exist
+    print("Building tag vocab index...")
+    nv = build_tag_vocab_index(min_frequency=1)
+    print(f"  {nv} tags in vocabulary")
+
+    engrams = get_all_active_engrams()
+    to_process = [e for e in engrams if not get_content_tags(e["id"])]
+
+    if limit:
+        to_process = to_process[:limit]
+
+    if not to_process:
+        print("All engrams already have content tags.")
+        return
+
+    print(f"Processing {len(to_process)} engrams without content tags...\n")
+
+    tagged_vector = 0
+    tagged_llm = 0
+    skipped = 0
+    llm_queue = []
+
+    for idx, e in enumerate(to_process, 1):
+        text = e["text"]
+        # Try vector retrieval from vocab
+        retrieved = detect_prompt_tags(text, top_k=5, threshold=threshold)
+        tags = [tag for tag, _score in retrieved]
+
+        if tags:
+            if dry_run:
+                print(f"  [{idx}/{len(to_process)}] #{e['id']} (vector): {tags}")
+            else:
+                add_content_tags(e["id"], tags, source="backfill")
+                tagged_vector += 1
+                if idx <= 10 or idx % 50 == 0:
+                    print(f"  [{idx}/{len(to_process)}] #{e['id']} (vector): {tags}")
+        else:
+            llm_queue.append(e)
+            if not use_llm and dry_run:
+                print(f"  [{idx}/{len(to_process)}] #{e['id']}: (no vector match, would need --llm)")
+
+        # Rebuild vocab periodically
+        if not dry_run and tagged_vector > 0 and tagged_vector % 50 == 0:
+            nv = build_tag_vocab_index(min_frequency=1)
+            print(f"  ... rebuilt vocab ({nv} tags), retrying {len(llm_queue)} unmatched")
+            # Retry LLM queue with updated vocab
+            still_unmatched = []
+            for qe in llm_queue:
+                retrieved = detect_prompt_tags(qe["text"], top_k=5, threshold=threshold)
+                tags = [tag for tag, _score in retrieved]
+                if tags:
+                    add_content_tags(qe["id"], tags, source="backfill")
+                    tagged_vector += 1
+                else:
+                    still_unmatched.append(qe)
+            llm_queue = still_unmatched
+
+    # LLM fallback for remaining unmatched
+    if use_llm and llm_queue and not dry_run:
+        print(f"\nRunning LLM on {len(llm_queue)} unmatched engrams...")
+        BATCH_SIZE = 20
+        for batch_start in range(0, len(llm_queue), BATCH_SIZE):
+            batch = llm_queue[batch_start:batch_start + BATCH_SIZE]
+            print(f"  LLM batch {batch_start // BATCH_SIZE + 1} ({len(batch)} engrams)...")
+            result = _llm_generate_tags_batch(batch)
+            for e in batch:
+                tags = result.get(e["id"], [])
+                if tags:
+                    add_content_tags(e["id"], tags, source="backfill-llm")
+                    tagged_llm += 1
+                else:
+                    skipped += 1
+            # Rebuild vocab after each LLM batch
+            nv = build_tag_vocab_index(min_frequency=1)
+    elif llm_queue:
+        skipped = len(llm_queue)
+
+    print(f"\nDone. Vector-tagged: {tagged_vector}, LLM-tagged: {tagged_llm}, Skipped: {skipped}"
+          + (" (dry run)" if dry_run else ""))
+
+    # Final rebuild
+    if not dry_run and (tagged_vector + tagged_llm) > 0:
+        print("Rebuilding tag vocab index...")
+        nv = build_tag_vocab_index(min_frequency=1)
+        print(f"  {nv} unique tags in vocabulary")
+
+        vocab = get_all_content_tags_vocab(min_frequency=1)
+        top = vocab[:15]
+        print(f"  Top tags: {', '.join(f'{t}({c})' for t, c in top)}")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -1135,6 +1307,7 @@ def main():
         print("  reextract    Re-check engrams against current prompt: reextract [--category CAT] [--limit N] [--prune] [--dry-run]")
         print("  register     Register with a tool: register claude")
         print("  dedup        Deduplicate engrams: dedup [--scan] [--limit N] [--json] [--id N] [--single-pass]")
+        print("  backfill-tags  Generate content tags for untagged engrams: backfill-tags [--limit N] [--dry-run] [--rebuild]")
         return
 
     command = sys.argv[1]
@@ -1166,6 +1339,7 @@ def main():
         "reextract": cmd_reextract,
         "register": cmd_register,
         "dedup": cmd_dedup,
+        "backfill-tags": cmd_backfill_tags,
     }
 
     if command in commands:
