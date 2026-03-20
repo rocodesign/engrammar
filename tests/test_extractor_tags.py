@@ -60,30 +60,30 @@ def test_get_env_tags_partial_match(test_db):
 # --- _enrich_with_session_tags ---
 
 
-def test_enrich_with_session_tags_new(test_db):
-    """Creates prerequisites with tags when none existed."""
+def test_enrich_with_session_tags_noop(test_db):
+    """DEPRECATED: _enrich_with_session_tags is a no-op stub per #039."""
     write_session_audit("s1", [], ["python", "backend"], "repo", db_path=test_db)
 
     result = _enrich_with_session_tags(None, ["s1"], db_path=test_db)
-    assert result == {"tags": ["backend", "python"]}
+    assert result is None  # stub returns input unchanged
 
 
-def test_enrich_with_session_tags_merge(test_db):
-    """Merges new tags with existing tags (union)."""
+def test_enrich_with_session_tags_passthrough(test_db):
+    """DEPRECATED: returns input unchanged."""
     write_session_audit("s1", [], ["react", "typescript"], "repo", db_path=test_db)
 
     existing = {"tags": ["frontend", "react"]}
     result = _enrich_with_session_tags(existing, ["s1"], db_path=test_db)
-    assert result == {"tags": ["frontend", "react", "typescript"]}
+    assert result == existing  # unchanged
 
 
-def test_enrich_preserves_non_tag_prereqs(test_db):
-    """Preserves other prerequisite keys when merging tags."""
+def test_enrich_preserves_input(test_db):
+    """DEPRECATED: returns input unchanged."""
     write_session_audit("s1", [], ["react"], "repo", db_path=test_db)
 
     existing = {"mcp_servers": ["figma"], "tags": ["frontend"]}
     result = _enrich_with_session_tags(existing, ["s1"], db_path=test_db)
-    assert result == {"mcp_servers": ["figma"], "tags": ["frontend", "react"]}
+    assert result == existing  # unchanged
 
 
 def test_enrich_no_audit_returns_original(test_db):

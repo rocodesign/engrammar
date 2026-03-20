@@ -39,9 +39,11 @@ def test_cmd_add_with_tags(test_db, capsys):
     assert "typescript" in captured.out
 
     engrams = get_all_active_engrams(test_db)
-    prereqs = json.loads(engrams[0]["prerequisites"])
-    assert "react" in prereqs["tags"]
-    assert "typescript" in prereqs["tags"]
+    # Tags are now stored in engram_tags table, not prerequisites
+    from src.core.db import get_content_tags
+    tags = get_content_tags(engrams[0]["id"], db_path=test_db)
+    assert "react" in tags
+    assert "typescript" in tags
 
 
 def test_cmd_add_no_args(test_db, capsys):

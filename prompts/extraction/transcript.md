@@ -12,7 +12,7 @@ variables:
   - session_id
   - existing_instructions
   - env_tags
-output_format: JSON array of {category, engram, source_sessions, scope, project_signals, relevant_tags}
+output_format: JSON array of {category, engram, source_sessions, scope, project_signals, relevant_tags, content_tags}
 used_by:
   - extractor._call_claude_for_transcript_extraction
   - extractor.reextract_engrams (via chunked extraction)
@@ -62,7 +62,8 @@ Output a JSON array of objects, each with:
 - "source_sessions": ["{session_id}"]
 - "scope": "general" or "project-specific"
 - "project_signals": project/tool names when scope is "project-specific", else []
-- "relevant_tags": subset of the environment tags above that the engram's content actually relates to. Only include tags the engram is *about* — not every tag present in the session. Generic advice that applies to any project should have an empty list [].
+- "relevant_tags": (deprecated, kept for backward compat) subset of the environment tags above that the engram's content actually relates to. Only include tags the engram is *about* — not every tag present in the session. Generic advice should have an empty list []. This field is no longer used for scoring — content_tags below replaces it.
+- "content_tags": 1-3 short topic labels describing what the engram is about, independent of the project environment. These should be lowercase, specific, and capture the domain/tool/concept. Examples: ["testing", "react", "rtl"], ["git", "rebasing"], ["forms", "validation"], ["jira", "authentication"]. Generic engrams can have content_tags like ["dev-workflow"] or ["conventions"]. Do NOT use environment tags here — use topic-level labels only.
 
 If no engrams are worth extracting, output an empty array: []
 

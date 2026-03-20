@@ -54,7 +54,7 @@ class TestTagStatsTracking:
         conn.close()
 
     def test_track_single_tag_set(self, test_db):
-        """Should track matches for a single tag set."""
+        """Env tag tracking removed (#039) — tag_stats should NOT be written."""
         engram_id = _create_engram(test_db)
 
         tags = ["frontend", "react", "acme"]
@@ -68,12 +68,10 @@ class TestTagStatsTracking:
         ).fetchone()
         conn.close()
 
-        assert row is not None
-        assert json.loads(row["tag_set"]) == sorted(tags)
-        assert row["times_matched"] == 3
+        assert row is None
 
     def test_track_multiple_tag_sets(self, test_db):
-        """Should track different tag sets separately."""
+        """Env tag tracking removed (#039) — no tag_stats rows should be written."""
         engram_id = _create_engram(test_db)
 
         tag_sets = [
@@ -93,9 +91,7 @@ class TestTagStatsTracking:
         ).fetchall()
         conn.close()
 
-        assert len(rows) == 3
-        for row in rows:
-            assert row["times_matched"] == 2
+        assert len(rows) == 0
 
     def test_global_counter_still_works(self, test_db):
         """Should still increment global times_matched counter."""
@@ -140,7 +136,7 @@ class TestTagSubsetAlgorithm:
         assert result is None
 
     def test_finds_minimal_common_subset(self, test_db):
-        """Should find minimal common subset with 15+ matches."""
+        """Tag stats no longer populated (#039) — returns None with empty data."""
         engram_id = _create_engram(test_db)
 
         tag_sets = [
@@ -154,10 +150,10 @@ class TestTagSubsetAlgorithm:
                 update_match_stats(engram_id, tags=tags, db_path=test_db)
 
         result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
-        assert result == ["frontend"]
+        assert result is None
 
     def test_finds_smallest_minimal_subset(self, test_db):
-        """Should return smallest minimal subset when multiple exist."""
+        """Tag stats no longer populated (#039) — returns None with empty data."""
         engram_id = _create_engram(test_db)
 
         tag_sets = [
@@ -170,7 +166,7 @@ class TestTagSubsetAlgorithm:
                 update_match_stats(engram_id, tags=tags, db_path=test_db)
 
         result = find_auto_pin_tag_subsets(engram_id, db_path=test_db)
-        assert len(result) <= 2
+        assert result is None
 
     def test_multiple_disjoint_contexts(self, test_db):
         """Should handle scenarios where no common subset exists."""
@@ -193,7 +189,7 @@ class TestAutoPin:
     """Test automatic pinning based on tag thresholds."""
 
     def test_auto_pin_on_threshold(self, test_db):
-        """Should auto-pin engram when tag subset reaches threshold."""
+        """Tag-based auto-pin removed (#039) — engram should NOT be pinned from tag matches alone."""
         engram_id = _create_engram(test_db)
 
         tag_sets = [
@@ -213,10 +209,7 @@ class TestAutoPin:
         ).fetchone()
         conn.close()
 
-        assert row["pinned"] == 1
-        prereqs = json.loads(row["prerequisites"])
-        assert "tags" in prereqs
-        assert prereqs["tags"] == ["frontend"]
+        assert row["pinned"] == 0
 
     def test_no_auto_pin_when_already_pinned(self, test_db):
         """Should not modify already pinned engrams."""

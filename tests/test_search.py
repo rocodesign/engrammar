@@ -149,7 +149,7 @@ def test_enforce_prerequisites_applies_min_score(monkeypatch):
 
         monkeypatch.setattr(
             "src.search.engine.detect_environment",
-            lambda: {
+            lambda cwd=None: {
                 "os": "darwin",
                 "repo": "other-repo",
                 "cwd": "/tmp/other-repo",

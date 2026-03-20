@@ -148,10 +148,6 @@ def engrammar_add(
         else:
             return f"Error: prerequisites must be dict or JSON string. Got: {type(prerequisites)}"
 
-    # Merge tags into prerequisites
-    if tags:
-        prereqs_dict["tags"] = sorted(tags)
-
     engram_id = add_engram(
         text=text,
         category=category,
@@ -159,6 +155,11 @@ def engrammar_add(
         source_sessions=source_sessions,
         prerequisites=prereqs_dict if prereqs_dict else None,
     )
+
+    # Write tags to engram_tags table (content tags, not prerequisites)
+    if tags:
+        from engrammar.core.db import add_content_tags
+        add_content_tags(engram_id, tags, source="manual")
 
     # Rebuild index
     engrams = get_all_active_engrams()
@@ -254,14 +255,16 @@ def engrammar_feedback(
         update_tag_relevance(engram_id, tag_scores, weight=2.0)
         response_parts.append(f"Updated tag relevance with explicit scores: {tag_scores}")
     else:
-        # Derive weak signal from environment tags
-        env = detect_environment()
-        env_tags = env.get("tags", [])
-        if env_tags:
+        # Derive weak signal from engram's content tags (not env tags per #039)
+        from engrammar.core.db import get_content_tags
+        content_tags = get_content_tags(engram_id)
+        if content_tags:
             weak_score = 0.5 if applicable else -0.5
-            derived_scores = {tag: weak_score for tag in env_tags}
+            derived_scores = {tag: weak_score for tag in content_tags}
             update_tag_relevance(engram_id, derived_scores, weight=1.0)
-            response_parts.append(f"Updated tag relevance from env tags ({weak_score:+.1f})")
+            response_parts.append(f"Updated tag relevance from content tags ({weak_score:+.1f})")
+        else:
+            response_parts.append("No content tags on engram — skipped tag relevance update")
 
     # Add prerequisites if provided
     if add_prerequisites:

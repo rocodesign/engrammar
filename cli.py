@@ -74,13 +74,25 @@ def cmd_status(args):
     else:
         print(f"Index:      NOT FOUND ({INDEX_PATH})")
 
+    # Content tags
+    from engrammar.core.db import get_all_content_tags_vocab
+    vocab = get_all_content_tags_vocab(min_frequency=1)
+    if vocab:
+        total_tags = sum(cnt for _, cnt in vocab)
+        unique_tags = len(vocab)
+        print(f"Content tags: {total_tags} total across {unique_tags} unique tags")
+        top_tags = vocab[:8]
+        print(f"  Top tags: {', '.join(f'{t}({c})' for t, c in top_tags)}")
+    else:
+        print(f"Content tags: none (run extraction or backfill to populate)")
+
     # Tag index
     if os.path.exists(TAG_INDEX_PATH):
         tag_emb = np.load(TAG_INDEX_PATH, mmap_mode="r")
         if tag_emb.size > 0:
             print(f"Tag index:  {tag_emb.shape[0]} cached tag embeddings")
         else:
-            print(f"Tag index:  empty (no engrams with tags)")
+            print(f"Tag index:  empty")
     else:
         print(f"Tag index:  NOT BUILT (run 'rebuild' to create)")
 
@@ -144,13 +156,14 @@ def cmd_add(args):
         if idx + 1 < len(args):
             tags = args[idx + 1].split(",")
 
-    from engrammar.core.db import add_engram, get_all_active_engrams
+    from engrammar.core.db import add_engram, get_all_active_engrams, add_content_tags
     from engrammar.core.embeddings import build_index, build_tag_index
 
-    prereqs = {"tags": sorted(tags)} if tags else None
-    engram_id = add_engram(text=text, category=category, source="manual", prerequisites=prereqs)
+    engram_id = add_engram(text=text, category=category, source="manual")
 
+    # Write tags to engram_tags table (content tags, not prerequisites)
     if tags:
+        add_content_tags(engram_id, tags, source="manual")
         print(f"Added engram #{engram_id} in category '{category}' with tags: {', '.join(tags)}")
     else:
         print(f"Added engram #{engram_id} in category '{category}'")

@@ -322,7 +322,7 @@ class TestMerge:
         assert len(sessions) == 3  # no duplicates
 
     def test_merge_prerequisites_tags_union(self, db_path):
-        """Tags use union (engram applies to all contexts where originals were relevant)."""
+        """Tags no longer merged in prerequisites (#039) — they're in engram_tags table."""
         e1 = _add_engram(db_path, "Text one", prerequisites={"tags": ["frontend", "react", "acme"]})
         e2 = _add_engram(db_path, "Text two", prerequisites={"tags": ["frontend", "react"]})
 
@@ -332,8 +332,11 @@ class TestMerge:
 
         row = conn.execute("SELECT prerequisites FROM engrams WHERE id = ?", (e1,)).fetchone()
         conn.close()
-        prereqs = json.loads(row["prerequisites"])
-        assert set(prereqs["tags"]) == {"frontend", "react", "acme"}
+        # prerequisites should not contain tags (they're now in engram_tags)
+        if row["prerequisites"]:
+            prereqs = json.loads(row["prerequisites"])
+            assert "tags" not in prereqs
+        # (prerequisites may be None if the only key was "tags")
 
     def test_merge_prerequisites_repos_union(self, db_path):
         """Repos use union (OR semantics)."""

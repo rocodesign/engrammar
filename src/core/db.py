@@ -130,7 +130,8 @@ def init_db(db_path=None):
             session_id TEXT,
             hook_event TEXT NOT NULL,
             engram_ids TEXT NOT NULL,
-            context TEXT
+            context TEXT,
+            scores TEXT DEFAULT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_hook_event_log_ts ON hook_event_log(timestamp);
 
@@ -144,6 +145,19 @@ def init_db(db_path=None):
             reason TEXT,
             created_at TEXT NOT NULL
         );
+
+        -- Content tags: what the engram is about (topic labels)
+        CREATE TABLE IF NOT EXISTS engram_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            engram_id INTEGER NOT NULL REFERENCES engrams(id),
+            tag TEXT NOT NULL,
+            confidence REAL DEFAULT NULL,
+            source TEXT DEFAULT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(engram_id, tag)
+        );
+        CREATE INDEX IF NOT EXISTS idx_engram_tags_engram ON engram_tags(engram_id);
+        CREATE INDEX IF NOT EXISTS idx_engram_tags_tag ON engram_tags(tag);
     """)
 
     # Migrations for existing DBs
@@ -166,6 +180,11 @@ def init_db(db_path=None):
 
     # Index requires dedup_verified column — must be after migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_dedup_queue ON engrams(deprecated, dedup_verified, id)")
+
+    # Migration: add scores column to hook_event_log
+    hel_columns = [r[1] for r in conn.execute("PRAGMA table_info(hook_event_log)").fetchall()]
+    if hel_columns and "scores" not in hel_columns:
+        conn.execute("ALTER TABLE hook_event_log ADD COLUMN scores TEXT DEFAULT NULL")
 
     conn.commit()
     conn.close()
@@ -357,12 +376,13 @@ def find_auto_pin_tag_subsets(engram_id, threshold=AUTO_PIN_THRESHOLD, db_path=N
 
 
 def update_match_stats(engram_id, repo=None, tags=None, db_path=None):
-    """Increment times_matched (global + per-repo + per-tag-set) and auto-pin if threshold reached.
+    """Increment times_matched (global + per-repo) and auto-pin if repo threshold reached.
 
     Args:
         engram_id: the engram that matched
         repo: current repo name (for per-repo tracking)
-        tags: list of environment tags (for per-tag-set tracking)
+        tags: DEPRECATED — env tags, no longer written to engram_tag_stats.
+              Kept in signature for backward compat with callers.
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
@@ -406,48 +426,14 @@ def update_match_stats(engram_id, repo=None, tags=None, db_path=None):
 
                 repos = set(existing.get("repos", []))
                 repos.add(repo)
-                existing["repos"] = list(repos)
+                existing["repos"] = sorted(repos)
 
                 conn.execute(
                     "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
                     (json.dumps(existing), now, engram_id),
                 )
 
-    # Per-tag-set counter (NEW)
-    if tags:
-        tag_set_json = json.dumps(sorted(tags))
-        conn.execute(
-            """INSERT INTO engram_tag_stats (engram_id, tag_set, times_matched, last_matched)
-               VALUES (?, ?, 1, ?)
-               ON CONFLICT(engram_id, tag_set) DO UPDATE SET
-               times_matched = times_matched + 1, last_matched = ?""",
-            (engram_id, tag_set_json, now, now),
-        )
-
-        # Check for tag-based auto-pin
-        conn.commit()  # Commit first to make stats visible to find_auto_pin_tag_subsets
-        auto_pin_tags = find_auto_pin_tag_subsets(engram_id, db_path=db_path)
-        if auto_pin_tags:
-            # Check if engram is already pinned
-            engram = conn.execute(
-                "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
-            ).fetchone()
-
-            if engram and not engram["pinned"]:
-                # Auto-pin with tag prerequisite
-                existing = {}
-                if engram["prerequisites"]:
-                    try:
-                        existing = json.loads(engram["prerequisites"])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                existing["tags"] = auto_pin_tags
-
-                conn.execute(
-                    "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(existing), now, engram_id),
-                )
+    # engram_tag_stats no longer written (env tags deprecated as stored signal per #039)
 
     conn.commit()
     conn.close()
@@ -864,6 +850,165 @@ def get_tag_relevance_with_evidence(engram_id, tags, db_path=None):
     return (avg_score, total_evals)
 
 
+# --- Content tags (engram_tags table) ---
+
+
+def add_content_tags(engram_id, tags, source="extraction-llm", confidence=None, db_path=None):
+    """Insert content tags for an engram. Skips duplicates silently.
+
+    Args:
+        engram_id: engram ID
+        tags: list of tag strings
+        source: how tags were created (extraction-llm, dedup-llm, backfill, manual)
+        confidence: optional confidence score
+    """
+    if not tags:
+        return
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    for tag in tags:
+        tag = tag.strip().lower()
+        if not tag:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO engram_tags (engram_id, tag, confidence, source, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (engram_id, tag, confidence, source, now),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_content_tags(engram_id, db_path=None):
+    """Get all content tags for an engram.
+
+    Returns:
+        list of tag strings
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT tag FROM engram_tags WHERE engram_id = ? ORDER BY tag",
+        (engram_id,),
+    ).fetchall()
+    conn.close()
+    return [r["tag"] for r in rows]
+
+
+def get_content_tags_batch(engram_ids, db_path=None):
+    """Get content tags for multiple engrams in one query.
+
+    Returns:
+        dict mapping engram_id -> list of tag strings
+    """
+    if not engram_ids:
+        return {}
+    conn = get_connection(db_path)
+    placeholders = ",".join("?" for _ in engram_ids)
+    rows = conn.execute(
+        f"SELECT engram_id, tag FROM engram_tags WHERE engram_id IN ({placeholders}) ORDER BY engram_id, tag",
+        list(engram_ids),
+    ).fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        result.setdefault(r["engram_id"], []).append(r["tag"])
+    return result
+
+
+def remove_content_tags(engram_id, tags=None, db_path=None):
+    """Remove content tags for an engram. If tags is None, remove all.
+
+    Args:
+        engram_id: engram ID
+        tags: optional list of specific tags to remove (None = remove all)
+    """
+    conn = get_connection(db_path)
+    if tags is None:
+        conn.execute("DELETE FROM engram_tags WHERE engram_id = ?", (engram_id,))
+    else:
+        for tag in tags:
+            conn.execute(
+                "DELETE FROM engram_tags WHERE engram_id = ? AND tag = ?",
+                (engram_id, tag.strip().lower()),
+            )
+    conn.commit()
+    conn.close()
+
+
+def set_content_tags(engram_id, tags, source="extraction-llm", confidence=None, db_path=None):
+    """Replace all content tags for an engram (remove old, add new).
+
+    Args:
+        engram_id: engram ID
+        tags: list of tag strings (replaces all existing)
+        source: how tags were created
+        confidence: optional confidence score
+    """
+    conn = get_connection(db_path)
+    conn.execute("DELETE FROM engram_tags WHERE engram_id = ?", (engram_id,))
+    now = datetime.utcnow().isoformat()
+    for tag in tags:
+        tag = tag.strip().lower()
+        if not tag:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO engram_tags (engram_id, tag, confidence, source, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (engram_id, tag, confidence, source, now),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_all_content_tags_vocab(min_frequency=1, db_path=None):
+    """Get unique content tags with their frequency across engrams.
+
+    Args:
+        min_frequency: minimum number of engrams a tag must appear on
+
+    Returns:
+        list of (tag, count) tuples sorted by count descending
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        """SELECT tag, COUNT(DISTINCT engram_id) as cnt
+           FROM engram_tags
+           GROUP BY tag
+           HAVING cnt >= ?
+           ORDER BY cnt DESC""",
+        (min_frequency,),
+    ).fetchall()
+    conn.close()
+    return [(r["tag"], r["cnt"]) for r in rows]
+
+
+def merge_content_tags(survivor_id, absorbed_ids, db_path=None):
+    """Move content tags from absorbed engrams to survivor. Dedup on conflict.
+
+    Args:
+        survivor_id: engram ID that survives the merge
+        absorbed_ids: list of engram IDs being absorbed
+    """
+    if not absorbed_ids:
+        return
+    conn = get_connection(db_path)
+    for absorbed_id in absorbed_ids:
+        # Re-point tags to survivor, ignore duplicates
+        rows = conn.execute(
+            "SELECT tag, confidence, source, created_at FROM engram_tags WHERE engram_id = ?",
+            (absorbed_id,),
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                """INSERT OR IGNORE INTO engram_tags (engram_id, tag, confidence, source, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (survivor_id, r["tag"], r["confidence"], r["source"], r["created_at"]),
+            )
+        conn.execute("DELETE FROM engram_tags WHERE engram_id = ?", (absorbed_id,))
+    conn.commit()
+    conn.close()
+
+
 def check_and_apply_pin_decisions(engram_id, db_path=None):
     """Auto-pin at avg > PIN_THRESHOLD with enough evidence, auto-unpin at avg < UNPIN_THRESHOLD.
 
@@ -900,7 +1045,8 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
     result = None
 
     if not engram["pinned"] and avg_score > PIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
-        # Auto-pin
+        # Auto-pin — mark as auto_pinned but do NOT set prerequisites.tags
+        # (tags are content tags in engram_tags table, not hard prerequisites)
         existing = {}
         if engram["prerequisites"]:
             try:
@@ -909,10 +1055,8 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
                 pass
 
         existing["auto_pinned"] = True
-        # Add tags with positive scores as tag prerequisites
-        positive_tags = sorted([r["tag"] for r in rows if r["score"] > 0])
-        if positive_tags:
-            existing["tags"] = positive_tags
+        # Remove any legacy tags from prerequisites (they're now in engram_tags)
+        existing.pop("tags", None)
 
         conn.execute(
             "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
@@ -1195,6 +1339,20 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
                      rr["negative_evals"], rr["last_evaluated"] or now),
                 )
 
+    # 6.5. engram_tags: merge content tags (re-point absorbed to survivor, dedup)
+    for eid in absorbed_ids:
+        tag_rows = conn.execute(
+            "SELECT tag, confidence, source, created_at FROM engram_tags WHERE engram_id = ?",
+            (eid,),
+        ).fetchall()
+        for tr in tag_rows:
+            conn.execute(
+                """INSERT OR IGNORE INTO engram_tags (engram_id, tag, confidence, source, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (survivor_id, tr["tag"], tr["confidence"], tr["source"], tr["created_at"]),
+            )
+        conn.execute("DELETE FROM engram_tags WHERE engram_id = ?", (eid,))
+
     # 7. session_shown_engrams: rewrite absorbed IDs to survivor
     for eid in absorbed_ids:
         conn.execute(
@@ -1268,6 +1426,7 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
         f"DELETE FROM engram_tag_relevance WHERE engram_id IN ({absorbed_placeholders})",
         list(absorbed_ids),
     )
+    # engram_tags already cleaned in step 6.5
 
     # 12. Log merge
     conn.execute(
@@ -1280,11 +1439,11 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
 def _merge_prerequisites(engrams):
     """Merge prerequisites from multiple engrams per task spec policy.
 
-    - tags: intersection (AND-gated); drop if empty
     - repos: union (OR semantics)
     - os: union
     - paths: union
     - mcp_servers: intersection (AND semantics)
+    - tags: REMOVED — tags are now content tags in engram_tags table, merged separately
     - unknown keys: preserve from first engram that has them
     """
     all_prereqs = []
@@ -1304,16 +1463,8 @@ def _merge_prerequisites(engrams):
 
     merged = {}
 
-    # Tags: union (merged engram applies to all contexts where originals were relevant;
-    # tag relevance scores handle per-context filtering)
-    all_tags = set()
-    for p in all_prereqs:
-        tags = p.get("tags", [])
-        if isinstance(tags, str):
-            tags = [tags]
-        all_tags.update(tags)
-    if all_tags:
-        merged["tags"] = sorted(all_tags)
+    # Tags: REMOVED from prerequisites — now in engram_tags table (per #039)
+    # Content tags are merged via merge_content_tags() in the merge flow
 
     # Repos: union
     all_repos = set()

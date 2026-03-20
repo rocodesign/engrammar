@@ -62,32 +62,33 @@ def build_index(engrams, index_path=None, ids_path=None):
 
 
 def build_tag_index(engrams, index_path=None, ids_path=None):
-    """Embed engram prerequisite tags and save to .npy files.
+    """Embed engram content tags and save to .npy files.
 
-    Only engrams with non-empty prerequisite tags are included.
+    Reads from engram_tags table (content tags per #039), not prerequisites.tags.
+    Only engrams with non-empty content tags are included.
 
     Args:
-        engrams: list of dicts with 'id' and 'prerequisites' keys
+        engrams: list of dicts with 'id' key (prerequisites field no longer used)
         index_path: path for tag embeddings .npy file
         ids_path: path for engram IDs .npy file
 
     Returns:
         number of engrams with tag embeddings
     """
-    import json
+    from engrammar.core.db import get_content_tags_batch
 
     idx_path = index_path or TAG_INDEX_PATH
     id_path = ids_path or TAG_IDS_PATH
 
-    # Collect engrams that have prerequisite tags
+    # Batch-load content tags for all engrams
+    engram_ids = [e["id"] for e in engrams]
+    tags_map = get_content_tags_batch(engram_ids) if engram_ids else {}
+
+    # Collect engrams that have content tags
     tag_texts = []
     tag_ids = []
     for engram in engrams:
-        prereqs = engram.get("prerequisites")
-        if not prereqs:
-            continue
-        prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-        tags = prereq_dict.get("tags", [])
+        tags = tags_map.get(engram["id"], [])
         if tags:
             tag_texts.append(" ".join(tags))
             tag_ids.append(engram["id"])

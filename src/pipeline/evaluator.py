@@ -278,16 +278,25 @@ def run_evaluation_for_session(session_id, db_path=None):
         _mark_session_status(session_id, "failed", db_path)
         return False
 
-    # Accumulate scores (import here to avoid circular dependency in Commit D)
+    # Accumulate scores — rekey to content tags (per #039)
+    # LLM still returns tag_scores keyed by env tags for now,
+    # but we also score against each engram's content tags
     try:
-        from engrammar.core.db import update_tag_relevance
+        from engrammar.core.db import update_tag_relevance, get_content_tags
         for ev in evaluations:
             engram_id = ev.get("engram_id")
             tag_scores = ev.get("tag_scores", {})
             if engram_id and tag_scores:
+                # Score env-tag-keyed results (legacy, will phase out)
                 update_tag_relevance(engram_id, tag_scores, weight=1.0, db_path=db_path)
+                # Also derive content tag scores from overall signal
+                content_tags = get_content_tags(engram_id, db_path=db_path)
+                if content_tags:
+                    # Use average of LLM tag_scores as signal for content tags
+                    avg_signal = sum(tag_scores.values()) / len(tag_scores) if tag_scores else 0
+                    content_scores = {ct: avg_signal for ct in content_tags}
+                    update_tag_relevance(engram_id, content_scores, weight=1.0, db_path=db_path)
     except ImportError:
-        # update_tag_relevance not yet available (added in Commit D)
         pass
 
     _mark_session_status(session_id, "completed", db_path)

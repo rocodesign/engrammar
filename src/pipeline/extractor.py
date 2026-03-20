@@ -180,27 +180,11 @@ def _infer_prerequisites(text, project_signals=None):
 
 
 def _enrich_with_session_tags(prerequisites, source_sessions, db_path=None):
-    """Merge env_tags from session_audit into prerequisites.
+    """DEPRECATED: env tags are no longer stored as ranking features (per #039).
 
-    Args:
-        prerequisites: existing prerequisites dict (or None)
-        source_sessions: list of session ID strings
-        db_path: optional database path
-
-    Returns:
-        updated prerequisites dict, or None if no tags found and input was None
+    Kept as stub for any callers that haven't been migrated.
+    Returns prerequisites unchanged.
     """
-    tags = get_env_tags_for_sessions(source_sessions, db_path=db_path)
-    if not tags:
-        return prerequisites
-
-    if prerequisites is None:
-        prerequisites = {}
-
-    existing_tags = set(prerequisites.get("tags", []))
-    existing_tags.update(tags)
-    prerequisites["tags"] = sorted(existing_tags)
-
     return prerequisites
 
 
@@ -577,34 +561,30 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
             category = "general/" + category
         source_sessions = [session_id]
         project_signals = engram_data.get("project_signals", [])
-        relevant_tags = engram_data.get("relevant_tags", [])
+        # Content tags from LLM extraction (new field, per #039)
+        content_tags = engram_data.get("content_tags", [])
+        # Legacy field — env-relevant subset, used only for backward compat logging
+        env_relevant_tags = engram_data.get("relevant_tags", [])
 
         if not text:
             continue
 
-        # Use LLM-selected relevant_tags for prerequisites when available,
-        # fall back to full env tags for backward compat
+        # Infer structural prerequisites only (no tags — those go to engram_tags)
         prerequisites = _infer_prerequisites(text, project_signals)
-        if relevant_tags:
-            if prerequisites is None:
-                prerequisites = {}
-            existing_tags = set(prerequisites.get("tags", []))
-            existing_tags.update(t for t in relevant_tags if t in env_tags)
-            if existing_tags:
-                prerequisites["tags"] = sorted(existing_tags)
-        else:
-            prerequisites = _enrich_with_session_tags(prerequisites, source_sessions)
-
-        # Score only LLM-selected relevant tags (not all env tags)
-        tags_to_score = [t for t in relevant_tags if t in env_tags] if relevant_tags else env_tags
+        # Do NOT enrich with session env tags — env tags are not stored as ranking features
 
         existing = find_similar_engram(text)
         if existing:
             increment_engram_occurrence(existing["id"], source_sessions)
             _maybe_backfill_prerequisites(existing["id"], prerequisites)
-            if tags_to_score:
-                tag_scores = {tag: 0.5 for tag in tags_to_score}
+            # Score content tags (not env tags) for relevance tracking
+            if content_tags:
+                tag_scores = {tag.strip().lower(): 0.5 for tag in content_tags}
                 update_tag_relevance(existing["id"], tag_scores, weight=1.0)
+            # Add content tags to existing engram (additive, not replace)
+            if content_tags:
+                from engrammar.core.db import add_content_tags
+                add_content_tags(existing["id"], content_tags, source="extraction-llm")
             merged += 1
             print(f"  Merged into engram #{existing['id']}: {text[:60]}...")
         else:
@@ -616,12 +596,16 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
                 occurrence_count=1,
                 prerequisites=prerequisites,
             )
-            if tags_to_score:
-                tag_scores = {tag: 0.5 for tag in tags_to_score}
+            # Store content tags in engram_tags table
+            if content_tags:
+                from engrammar.core.db import add_content_tags
+                add_content_tags(engram_id, content_tags, source="extraction-llm")
+                tag_scores = {tag.strip().lower(): 0.5 for tag in content_tags}
                 update_tag_relevance(engram_id, tag_scores, weight=1.0)
             added += 1
             prereq_str = f" prereqs={prerequisites}" if prerequisites else ""
-            print(f"  Added engram #{engram_id} [{category}]{prereq_str}: {text[:60]}...")
+            tags_str = f" tags={content_tags}" if content_tags else ""
+            print(f"  Added engram #{engram_id} [{category}]{prereq_str}{tags_str}: {text[:60]}...")
 
     return added, merged
 

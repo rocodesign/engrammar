@@ -49,7 +49,6 @@ def main():
         from engrammar.core.db import get_pinned_engrams, get_tag_relevance_with_evidence
         from engrammar.search.environment import (
             check_structural_prerequisites,
-            check_tag_prerequisites,
             detect_environment,
         )
 
@@ -64,12 +63,11 @@ def main():
             # Hard-gate on structural prerequisites (os, repo, paths, mcp_servers)
             if not check_structural_prerequisites(p.get("prerequisites"), env):
                 continue
-            # Hard-gate on tag prerequisites for session-start pinned injection
-            if not check_tag_prerequisites(p.get("prerequisites"), env):
-                continue
-            # Soft-gate on tag relevance: filter if strong negative with enough evidence
-            if env_tags:
-                avg_score, total_evals = get_tag_relevance_with_evidence(p["id"], env_tags)
+            # Soft-gate: overall content tag relevance (no prompt context at session start)
+            from engrammar.core.db import get_content_tags
+            content_tags = get_content_tags(p["id"])
+            if content_tags:
+                avg_score, total_evals = get_tag_relevance_with_evidence(p["id"], content_tags)
                 if total_evals >= 3 and avg_score < -0.1:
                     continue
             matching.append(p)

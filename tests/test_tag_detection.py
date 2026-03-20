@@ -210,7 +210,8 @@ class TestIntegration:
         assert "react" in tags  # from package.json
         assert "frontend" in tags  # from package.json + structure
         assert "monorepo" in tags  # from packages/
-        assert "nodejs" in tags  # from package.json presence
+        # "nodejs" requires a Node.js backend dep (express, fastify, etc.),
+        # not just package.json presence
 
     def test_tags_are_sorted(self, tmp_path, monkeypatch):
         """Should return sorted list of tags."""

@@ -104,8 +104,20 @@ def test_add_with_tags_and_prereqs(test_db):
 
     engrams = get_all_active_engrams(test_db)
     prereqs = json.loads(engrams[0]["prerequisites"])
-    assert "react" in prereqs["tags"]
+    # Tags now go to engram_tags table, not prerequisites (#039)
+    assert "tags" not in prereqs
     assert "app-repo" in prereqs["repos"]
+
+    # Verify tags are in engram_tags table
+    conn = get_connection(test_db)
+    rows = conn.execute(
+        "SELECT tag FROM engram_tags WHERE engram_id = ? ORDER BY tag",
+        (engrams[0]["id"],),
+    ).fetchall()
+    conn.close()
+    content_tags = [r["tag"] for r in rows]
+    assert "react" in content_tags
+    assert "frontend" in content_tags
 
 
 def test_add_invalid_prereqs(test_db):

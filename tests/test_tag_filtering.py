@@ -11,7 +11,7 @@ from src.search.environment import (
     check_structural_prerequisites,
     check_tag_prerequisites,
 )
-from src.search.engine import search, _engram_has_all_tags
+from src.search.engine import search
 from src.core.db import init_db, add_engram, get_connection, update_tag_relevance, get_tag_relevance_with_evidence
 from src.core.embeddings import build_index
 
@@ -45,10 +45,10 @@ class TestPrerequisiteChecking:
         assert check_prerequisites(prereqs, env) is True
 
     def test_single_tag_no_match(self):
-        """Should not match when required tag is absent."""
+        """Tags are no longer hard gates — should pass even when tag is absent."""
         env = {"tags": ["frontend", "react"]}
         prereqs = {"tags": ["backend"]}
-        assert check_prerequisites(prereqs, env) is False
+        assert check_prerequisites(prereqs, env) is True
 
     def test_multiple_tags_all_present(self):
         """Should match when all required tags are present."""
@@ -57,10 +57,10 @@ class TestPrerequisiteChecking:
         assert check_prerequisites(prereqs, env) is True
 
     def test_multiple_tags_one_missing(self):
-        """Should not match when any required tag is missing."""
+        """Tags are no longer hard gates — should pass even when a tag is missing."""
         env = {"tags": ["frontend", "react"]}
         prereqs = {"tags": ["frontend", "vue"]}
-        assert check_prerequisites(prereqs, env) is False
+        assert check_prerequisites(prereqs, env) is True
 
     def test_empty_tag_list(self):
         """Should pass when empty tag list required."""
@@ -69,10 +69,10 @@ class TestPrerequisiteChecking:
         assert check_prerequisites(prereqs, env) is True
 
     def test_no_tags_in_environment(self):
-        """Should fail when tags required but env has none."""
+        """Tags are no longer hard gates — should pass even with no env tags."""
         env = {"tags": []}
         prereqs = {"tags": ["frontend"]}
-        assert check_prerequisites(prereqs, env) is False
+        assert check_prerequisites(prereqs, env) is True
 
     def test_json_string_prerequisites(self):
         """Should handle prerequisites as JSON string."""
@@ -108,45 +108,25 @@ class TestPrerequisiteChecking:
 
 
 class TestEngramTagChecking:
-    """Test _engram_has_all_tags helper."""
+    """Tag filtering now uses engram_tags table, not prerequisites.tags.
+    See TestSearchWithTagFilter for the integration tests."""
 
-    def test_engram_has_all_required_tags(self):
-        """Should return True when engram has all required tags."""
-        engram = {
-            "prerequisites": json.dumps({"tags": ["frontend", "react", "acme"]})
-        }
-        required = {"frontend", "react"}
-        assert _engram_has_all_tags(engram, required) is True
+    def test_tag_filter_uses_engram_tags_table(self, test_db):
+        """Tag filter should check engram_tags table, not prerequisites."""
+        from src.core.db import add_content_tags
+        eid = add_engram(text="React hooks guide", category="dev", db_path=test_db)
+        add_content_tags(eid, ["frontend", "react"], db_path=test_db)
 
-    def test_engram_missing_required_tag(self):
-        """Should return False when engram missing required tag."""
-        engram = {
-            "prerequisites": json.dumps({"tags": ["frontend", "react"]})
-        }
-        required = {"frontend", "vue"}
-        assert _engram_has_all_tags(engram, required) is False
+        # Engram has no prerequisites.tags — but has content tags
+        conn = get_connection(test_db)
+        row = conn.execute("SELECT prerequisites FROM engrams WHERE id = ?", (eid,)).fetchone()
+        conn.close()
+        assert row["prerequisites"] is None  # no tags in prerequisites
 
-    def test_engram_no_prerequisites(self):
-        """Should return False when engram has no prerequisites."""
-        engram = {"prerequisites": None}
-        required = {"frontend"}
-        assert _engram_has_all_tags(engram, required) is False
-
-    def test_engram_no_tags(self):
-        """Should return False when prerequisites exist but no tags."""
-        engram = {
-            "prerequisites": json.dumps({"repos": ["app-repo"]})
-        }
-        required = {"frontend"}
-        assert _engram_has_all_tags(engram, required) is False
-
-    def test_empty_required_tags(self):
-        """Should return True when no tags required."""
-        engram = {
-            "prerequisites": json.dumps({"tags": ["frontend"]})
-        }
-        required = set()
-        assert _engram_has_all_tags(engram, required) is True
+        from src.core.db import get_content_tags
+        tags = get_content_tags(eid, db_path=test_db)
+        assert "frontend" in tags
+        assert "react" in tags
 
 
 class TestSearchWithTagFilter:
@@ -294,9 +274,10 @@ class TestTagPrerequisites:
         assert check_tag_prerequisites(prereqs, env) is True
 
     def test_fails_when_tag_missing(self):
+        """Tags are no longer hard gates — check_tag_prerequisites always returns True."""
         env = {"tags": ["frontend"]}
         prereqs = {"tags": ["frontend", "react"]}
-        assert check_tag_prerequisites(prereqs, env) is False
+        assert check_tag_prerequisites(prereqs, env) is True
 
 
 class TestTagRelevanceFiltering:

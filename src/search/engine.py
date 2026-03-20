@@ -125,116 +125,72 @@ def search(
     rrf_k = max(1, len(engrams) // 5)
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
-    # 3.1. Normalized blend: RRF (semantic) + tag affinity
-    # Normalize RRF scores to 0-1, compute tag similarity norm 0-1,
-    # then blend with configurable weights.
+    # 3.1. Normalize RRF scores to 0-1 using fixed anchors
     scoring_config = config.get("scoring", {})
-    w_semantic = scoring_config.get("weight_semantic", 0.60)
-    w_tag = scoring_config.get("weight_tag", 0.40)
-
-    # Normalize RRF to 0-1 using fixed anchors from observed score distribution
     rrf_floor = scoring_config.get("rrf_floor", 0.015)
     rrf_ceiling = scoring_config.get("rrf_ceiling", 0.033)
     rrf_range = rrf_ceiling - rrf_floor
     if rrf_range > 0:
         fused = [(lid, (score - rrf_floor) / rrf_range) for lid, score in fused]
 
-    env_tags = env.get("tags", [])
-    if env_tags:
-        try:
-            import numpy as np
-            env_tag_emb = embed_text(" ".join(env_tags))
-
-            # Build tag similarity map
-            tag_sim_map = {}
-            tag_embeddings, tag_ids = load_tag_index()
-            if tag_embeddings is not None:
-                env_norm = env_tag_emb / (np.linalg.norm(env_tag_emb) + 1e-10)
-                tag_norms = np.linalg.norm(tag_embeddings, axis=1, keepdims=True) + 1e-10
-                tag_emb_norm = tag_embeddings / tag_norms
-                all_sims = tag_emb_norm @ env_norm
-                tag_sim_map = {int(tag_ids[i]): float(all_sims[i]) for i in range(len(tag_ids))}
-            else:
-                # Fallback: per-engram embedding (no tag index built yet)
-                for lid, _ in fused:
-                    engram = engram_map.get(lid)
-                    if not engram:
-                        continue
-                    prereqs = engram.get("prerequisites")
-                    if not prereqs:
-                        continue
-                    prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-                    engram_tags = prereq_dict.get("tags", [])
-                    if not engram_tags:
-                        continue
-                    engram_tag_emb = embed_text(" ".join(engram_tags))
-                    sim = float(np.dot(env_tag_emb, engram_tag_emb) / (
-                        np.linalg.norm(env_tag_emb) * np.linalg.norm(engram_tag_emb)
-                    ))
-                    tag_sim_map[lid] = sim
-
-            # Blend: weighted sum of normalized RRF + normalized tag similarity
-            blended = []
-            for lid, rrf_norm in fused:
-                sim = tag_sim_map.get(lid)
-                if sim is None:
-                    tag_norm = 0.0  # neutral for untagged engrams
-                else:
-                    # Normalize from [0.4, 1.0] range to [-1.0, 1.0]
-                    tag_norm = max(-1.0, min(1.0, (sim - 0.7) / 0.3))
-                final = w_semantic * rrf_norm + w_tag * tag_norm
-                blended.append((lid, final))
-
-            fused = sorted(blended, key=lambda x: x[1], reverse=True)
-        except Exception:
-            pass
-    else:
-        # No env tags — score is just normalized RRF (semantic only)
-        pass
-
-    # 3.2. Repo tag adjustment — repo: tags are stronger signals than generic tags
-    env_repo_tags = {t for t in env.get("tags", []) if t.startswith("repo:")}
-    if env_repo_tags:
+    # 3.2. Repo prior from engram_repo_stats (replaces repo:* tag matching)
+    current_repo = env.get("repo")
+    if current_repo:
+        from engrammar.core.db import get_connection
         repo_match_boost = scoring_config.get("repo_match_boost", 0.05)
         repo_mismatch_penalty = scoring_config.get("repo_mismatch_penalty", -0.08)
+
+        # Batch-load repo stats for all candidates
+        candidate_ids = [lid for lid, _ in fused]
+        repo_stats_map = {}  # engram_id -> {repo: times_matched}
+        if candidate_ids:
+            conn = get_connection(db_path)
+            placeholders = ",".join("?" for _ in candidate_ids)
+            rows = conn.execute(
+                f"SELECT engram_id, repo, times_matched FROM engram_repo_stats WHERE engram_id IN ({placeholders})",
+                candidate_ids,
+            ).fetchall()
+            conn.close()
+            for r in rows:
+                repo_stats_map.setdefault(r["engram_id"], {})[r["repo"]] = r["times_matched"]
+
         adjusted = []
         for lid, score in fused:
-            engram = engram_map.get(lid)
-            if engram and engram.get("prerequisites"):
-                prereqs = engram["prerequisites"]
-                if isinstance(prereqs, str):
-                    try:
-                        prereqs = json.loads(prereqs)
-                    except (json.JSONDecodeError, TypeError):
-                        prereqs = {}
-                engram_repo_tags = {t for t in prereqs.get("tags", []) if t.startswith("repo:")}
-                if engram_repo_tags:
-                    if engram_repo_tags & env_repo_tags:
-                        score += repo_match_boost
-                    else:
-                        score += repo_mismatch_penalty
+            stats = repo_stats_map.get(lid, {})
+            if stats:
+                if current_repo in stats:
+                    score += repo_match_boost
+                else:
+                    score += repo_mismatch_penalty
             adjusted.append((lid, score))
         fused = adjusted
 
-    # 3.5. Tag relevance filter + boost (after RRF, before category/tag filters)
-    env_tags = env.get("tags", [])
-    if env_tags:
-        from engrammar.core.db import get_tag_relevance_with_evidence
-        MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
-        NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
-        RELEVANCE_WEIGHT = 0.10          # boost weight (blended range ~0.0-1.0)
+    # 3.5. Tag relevance filter + boost (keyed by engram's content tags)
+    from engrammar.core.db import get_tag_relevance_with_evidence, get_content_tags_batch
+    MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
+    NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
+    RELEVANCE_WEIGHT = scoring_config.get("weight_feedback", 0.20)
 
-        filtered_fused = []
-        for lid, score in fused:
-            avg_score, total_evals = get_tag_relevance_with_evidence(lid, env_tags, db_path=db_path)
+    # Batch-load content tags for all candidates
+    candidate_ids = [lid for lid, _ in fused]
+    content_tags_map = get_content_tags_batch(candidate_ids, db_path=db_path) if candidate_ids else {}
+
+    filtered_fused = []
+    for lid, score in fused:
+        engram_content_tags = content_tags_map.get(lid, [])
+        if engram_content_tags:
+            avg_score, total_evals = get_tag_relevance_with_evidence(lid, engram_content_tags, db_path=db_path)
             # Filter: strong negative signal with enough evidence
             if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
                 continue
             # Boost: apply tag relevance as score adjustment
             score += (avg_score / 3.0) * RELEVANCE_WEIGHT
-            filtered_fused.append((lid, score))
+        filtered_fused.append((lid, score))
 
-        fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
+    fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
+
+    # NOTE: Content tag affinity scoring (prompt-derived tags vs engram content tags)
+    # will be added by task #020. Until then, scoring = semantic + repo prior + feedback.
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:
@@ -257,12 +213,15 @@ def search(
             )
         ]
 
-    # 4.5. Apply tag filter (NEW)
+    # 4.5. Apply tag filter — checks engram_tags table (content tags)
     if tag_filter:
-        required_tags = set(tag_filter if isinstance(tag_filter, list) else [tag_filter])
+        required_tags = set(t.strip().lower() for t in (tag_filter if isinstance(tag_filter, list) else [tag_filter]))
+        from engrammar.core.db import get_content_tags_batch
+        candidate_ids = [lid for lid, _ in fused if lid in engram_map]
+        content_tags_map = get_content_tags_batch(candidate_ids, db_path=db_path)
         fused = [
             (lid, score) for lid, score in fused
-            if lid in engram_map and _engram_has_all_tags(engram_map[lid], required_tags)
+            if lid in engram_map and required_tags.issubset(set(content_tags_map.get(lid, [])))
         ]
 
     # 5. Take top_k results
@@ -284,24 +243,6 @@ def search(
 
     return results
 
-
-def _engram_has_all_tags(engram, required_tags):
-    """Check if engram has all required tags in prerequisites.
-
-    Args:
-        engram: engram dict with prerequisites field
-        required_tags: set of tags that must all be present
-
-    Returns:
-        True if engram has all required tags, False otherwise
-    """
-    prereqs = engram.get("prerequisites")
-    if not prereqs:
-        return False
-
-    prereq_dict = json.loads(prereqs) if isinstance(prereqs, str) else prereqs
-    engram_tags = set(prereq_dict.get("tags", []))
-    return required_tags.issubset(engram_tags)
 
 
 def _build_tool_query(tool_name, tool_input):

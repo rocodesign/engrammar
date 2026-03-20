@@ -102,12 +102,14 @@ class TestSessionStart:
         output = json.loads(captured.out)
         ctx = output["hookSpecificOutput"]["additionalContext"]
         assert "ENGRAMMAR_INSTRUCTIONS" in ctx
-        assert "ENGRAMMAR_V1" not in ctx
+        # Engram text should not appear (structural prereqs failed)
         assert "repo-specific" not in ctx
 
     def test_tag_relevance_filter(self, test_db, monkeypatch, capsys):
-        """Pinned engram with strong negative tag relevance is filtered — instructions still injected."""
+        """Pinned engram with strong negative content tag relevance is filtered."""
+        from src.core.db import add_content_tags
         engram_id = add_engram(text="bad match", category="general", db_path=test_db)
+        add_content_tags(engram_id, ["python", "testing"], db_path=test_db)
         conn = get_connection(test_db)
         conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
         conn.commit()
@@ -128,11 +130,15 @@ class TestSessionStart:
         output = json.loads(captured.out)
         ctx = output["hookSpecificOutput"]["additionalContext"]
         assert "ENGRAMMAR_INSTRUCTIONS" in ctx
-        assert "ENGRAMMAR_V1" not in ctx
+        # Engram text should not appear (negative content tag relevance filtered it)
         assert "bad match" not in ctx
 
-    def test_tag_prereq_filter(self, test_db, monkeypatch, capsys):
-        """Pinned engram with non-matching tag prerequisites is filtered — instructions still injected."""
+    def test_tag_prereq_no_longer_filters(self, test_db, monkeypatch, capsys):
+        """Tags are no longer hard gates — pinned engram with tag prereqs passes through.
+
+        Per issue #039: tags moved to engram_tags as soft content signals.
+        check_tag_prerequisites always returns True now.
+        """
         engram_id = add_engram(
             text="python-only pinned note",
             category="general",
@@ -158,8 +164,8 @@ class TestSessionStart:
         output = json.loads(captured.out)
         ctx = output["hookSpecificOutput"]["additionalContext"]
         assert "ENGRAMMAR_INSTRUCTIONS" in ctx
-        assert "ENGRAMMAR_V1" not in ctx
-        assert "python-only pinned note" not in ctx
+        # Engram now passes through — tags are soft signals, not hard gates
+        assert "python-only pinned note" in ctx
 
 
 # ---------- Prompt Hook ----------

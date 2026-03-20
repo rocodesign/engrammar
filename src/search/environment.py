@@ -101,35 +101,11 @@ def check_structural_prerequisites(prerequisites, env=None):
 
 
 def check_tag_prerequisites(prerequisites, env=None):
-    """Check only tag prerequisites.
+    """DEPRECATED: Tags are now content tags in engram_tags table, not hard prerequisites.
 
-    Used by hook injection paths that need hard tag scoping while
-    keeping structural checks handled separately.
-
-    Args:
-        prerequisites: dict with optional keys including tags
-        env: environment dict (auto-detected if None)
-
-    Returns:
-        True if tag prerequisites are met (or no tags are required)
+    Always returns True. Kept temporarily for callers that haven't been migrated yet.
     """
-    if not prerequisites:
-        return True
-
-    if isinstance(prerequisites, str):
-        try:
-            prerequisites = json.loads(prerequisites)
-        except (json.JSONDecodeError, TypeError):
-            return True
-
-    if not isinstance(prerequisites, dict):
-        return True
-
-    req_tags = prerequisites.get("tags")
-    if not req_tags:
-        return True
-
-    return check_prerequisites({"tags": req_tags}, env)
+    return True
 
 
 def check_prerequisites(prerequisites, env=None):
@@ -196,14 +172,7 @@ def check_prerequisites(prerequisites, env=None):
         if not all(s in available for s in req_mcp):
             return False
 
-    # Check tags (engram tags must be subset of environment tags)
-    req_tags = prerequisites.get("tags")
-    if req_tags:
-        if isinstance(req_tags, str):
-            req_tags = [req_tags]
-        env_tags = set(env.get("tags", []))
-        # ALL required tags must be in environment
-        if not all(tag in env_tags for tag in req_tags):
-            return False
+    # Tags are no longer hard prerequisites — they're content tags in engram_tags table,
+    # used only as soft rerank signals. Tag check removed per issue #039.
 
     return True
