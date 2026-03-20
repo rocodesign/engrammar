@@ -26,6 +26,20 @@ Strengthen the nudge in multiple places:
 
 4. **Periodic nudge** (optional, lower priority): At session start or after N turns, inject a gentle reminder to review surfaced engrams.
 
+## Resolution
+
+Implemented items 1-3 from the proposed solution:
+
+1. **MCP server instructions**: Added "Quality Stewardship" section framing engram improvement as a secondary goal of every session. Covers scoring relevance, improving wording, adding prerequisites, and deprecating stale engrams. Also added two extraction triggers (API/library gotchas, wasted turns).
+
+2. **Session-start injection**: Expanded `[ENGRAMMAR_INSTRUCTIONS]` with a feedback/update/extraction nudge.
+
+3. **Hook injection footer**: Expanded to mention `engrammar_update` for partially-right engrams.
+
+4. **Tests**: Updated 3 SessionStart tests that expected empty output when pinned engrams are filtered — they now correctly assert that the instructions block is always present while filtered engrams are absent.
+
+Item 4 (periodic nudge) was not implemented — lower priority and more invasive.
+
 ## Notes
 
 - This is instruction-tuning, not code changes — low complexity

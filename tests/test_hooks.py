@@ -75,7 +75,7 @@ class TestSessionStart:
         assert captured.out == ""
 
     def test_structural_prereq_filter(self, test_db, monkeypatch, capsys):
-        """Pinned engram with non-matching structural prereqs is filtered."""
+        """Pinned engram with non-matching structural prereqs is filtered — instructions still injected."""
         engram_id = add_engram(
             text="repo-specific",
             category="general",
@@ -99,10 +99,14 @@ class TestSessionStart:
             main()
 
         captured = capsys.readouterr()
-        assert captured.out == ""
+        output = json.loads(captured.out)
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "ENGRAMMAR_INSTRUCTIONS" in ctx
+        assert "ENGRAMMAR_V1" not in ctx
+        assert "repo-specific" not in ctx
 
     def test_tag_relevance_filter(self, test_db, monkeypatch, capsys):
-        """Pinned engram with strong negative tag relevance is filtered."""
+        """Pinned engram with strong negative tag relevance is filtered — instructions still injected."""
         engram_id = add_engram(text="bad match", category="general", db_path=test_db)
         conn = get_connection(test_db)
         conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
@@ -121,10 +125,14 @@ class TestSessionStart:
             main()
 
         captured = capsys.readouterr()
-        assert captured.out == ""
+        output = json.loads(captured.out)
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "ENGRAMMAR_INSTRUCTIONS" in ctx
+        assert "ENGRAMMAR_V1" not in ctx
+        assert "bad match" not in ctx
 
     def test_tag_prereq_filter(self, test_db, monkeypatch, capsys):
-        """Pinned engram with non-matching tag prerequisites is filtered."""
+        """Pinned engram with non-matching tag prerequisites is filtered — instructions still injected."""
         engram_id = add_engram(
             text="python-only pinned note",
             category="general",
@@ -147,7 +155,11 @@ class TestSessionStart:
             main()
 
         captured = capsys.readouterr()
-        assert captured.out == ""
+        output = json.loads(captured.out)
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "ENGRAMMAR_INSTRUCTIONS" in ctx
+        assert "ENGRAMMAR_V1" not in ctx
+        assert "python-only pinned note" not in ctx
 
 
 # ---------- Prompt Hook ----------

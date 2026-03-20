@@ -77,16 +77,27 @@ def main():
         # Build context parts
         parts = []
 
-        # Always inject system instruction for proactive engram retrieval
-        parts.append(
-            "[ENGRAMMAR_INSTRUCTIONS]\n"
-            "When planning or working autonomously, call engrammar_search for each area "
-            "you touch — past learnings about conventions, pitfalls, and patterns should "
-            "shape your plan, not just your execution. Hooks surface engrams on user "
-            "prompts and some tool calls, but during autonomous work you must actively "
-            "search. Query by technology, pattern, file area, or workflow involved.\n"
-            "[/ENGRAMMAR_INSTRUCTIONS]"
-        )
+        # Always inject system instruction from prompt template
+        prompt_path = os.path.join(ENGRAMMAR_HOME, "prompts", "injection", "session_start.md")
+        try:
+            with open(prompt_path, "r") as f:
+                content = f.read()
+            # Strip YAML frontmatter (between --- markers)
+            if content.startswith("---"):
+                end = content.index("---", 3)
+                content = content[end + 3:].strip()
+            parts.append(content)
+        except Exception:
+            # Fallback to inline if prompt file missing
+            parts.append(
+                "[ENGRAMMAR_INSTRUCTIONS]\n"
+                "When planning or working autonomously, call engrammar_search for each area "
+                "you touch — past learnings about conventions, pitfalls, and patterns should "
+                "shape your plan, not just your execution. Hooks surface engrams on user "
+                "prompts and some tool calls, but during autonomous work you must actively "
+                "search. Query by technology, pattern, file area, or workflow involved.\n"
+                "[/ENGRAMMAR_INSTRUCTIONS]"
+            )
 
         # Add pinned engrams if any matched
         if matching:

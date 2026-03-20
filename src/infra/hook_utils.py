@@ -108,7 +108,8 @@ def format_engrams_block(engrams, show_categories=True):
         lines.append(f"- [EG#{engram['id']}]{cat}{engram['text']}")
     lines.append(
         "Treat these as soft constraints. If one doesn't apply here, "
-        "call engrammar_feedback(engram_id, applicable=false, reason=\"...\")."
+        "call engrammar_feedback(engram_id, applicable=false, reason=\"...\"). "
+        "If one is relevant but vague or incomplete, call engrammar_update to improve it."
     )
     lines.append("[/ENGRAMMAR_V1]")
     return "\n".join(lines)
