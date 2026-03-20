@@ -553,13 +553,14 @@ def _call_claude_for_transcript_extraction(transcript_text, session_id, existing
         return []
 
 
-def _process_extracted_engrams(extracted, session_id, env_tags):
+def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
     """Process extracted engram data — dedup, add to DB, update tag relevance.
 
     Args:
         extracted: list of engram dicts from Haiku (with 'engram', 'category', etc.)
         session_id: the source session ID
         env_tags: list of environment tag strings for this session
+        repo: source repo name — set as prerequisites.repos for project-specific engrams
 
     Returns:
         tuple of (added_count, merged_count)
@@ -573,6 +574,7 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
             category = "general/" + category
         source_sessions = [session_id]
         project_signals = engram_data.get("project_signals", [])
+        scope = engram_data.get("scope", "general")
         # Content tags from LLM extraction (new field, per #039)
         content_tags = engram_data.get("content_tags", [])
         # Legacy field — env-relevant subset, used only for backward compat logging
@@ -583,7 +585,14 @@ def _process_extracted_engrams(extracted, session_id, env_tags):
 
         # Infer structural prerequisites only (no tags — those go to engram_tags)
         prerequisites = _infer_prerequisites(text, project_signals)
-        # Do NOT enrich with session env tags — env tags are not stored as ranking features
+
+        # Set repo prerequisite for project-specific engrams
+        if repo and scope == "project-specific":
+            if prerequisites is None:
+                prerequisites = {}
+            existing_repos = set(prerequisites.get("repos", []))
+            existing_repos.add(repo)
+            prerequisites["repos"] = sorted(existing_repos)
 
         existing = find_similar_engram(text)
         if existing:
@@ -689,7 +698,7 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
         ])
         return {"extracted": 0, "merged": 0}
 
-    added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
+    added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
 
     mark_sessions_processed([
         {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
@@ -802,7 +811,7 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             summary["processed"] += 1
             continue
 
-        added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
+        added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
 
         mark_sessions_processed([
             {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
@@ -1049,7 +1058,7 @@ def extract_from_turn(session_id, transcript_path):
         _write_turn_offset(session_id, new_offset)
         return {"extracted": 0, "merged": 0}
 
-    added, merged = _process_extracted_engrams(extracted, session_id, env_tags)
+    added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
 
     # Rebuild index so new engrams are immediately searchable
     if added > 0:
