@@ -46,6 +46,7 @@ def search(
     skip_prerequisites=False,
     enforce_prerequisites=False,
     cwd=None,
+    return_diagnostics=False,
 ):
     """Main hybrid search entry point.
 
@@ -66,9 +67,21 @@ def search(
     if top_k is None:
         top_k = config["search"]["top_k"]
 
+    # Component diagnostics tracker (per engram_id)
+    diag = {} if return_diagnostics else None
+
+    # Pre-filter: skip low-information queries before any embedding work
+    from .query_filter import is_low_information
+    should_skip, skip_reason = is_low_information(query)
+    if should_skip:
+        _save_last_search(query, [])
+        if return_diagnostics:
+            return [], {"abstained": True, "skip_reason": skip_reason}
+        return []
+
     all_engrams = get_all_active_engrams(db_path=db_path)
     if not all_engrams:
-        return []
+        return ([], {}) if return_diagnostics else []
 
     # Detect environment (skip_prerequisites sets env={} which naturally skips tag filtering)
     if skip_prerequisites:
@@ -116,7 +129,17 @@ def search(
 
     if not vector_results and not bm25_ranked:
         _save_last_search(query, [])
-        return []
+        return ([], {}) if return_diagnostics else []
+
+    # 2.5. Abstain for low-information queries
+    # If the best vector similarity is below threshold, the query is too vague
+    # to produce meaningful results (e.g., "still running?", "Yeah, that's true")
+    abstain_threshold = config.get("scoring", {}).get("abstain_threshold", 0.0)
+    if abstain_threshold > 0 and vector_results:
+        best_vector_sim = vector_results[0][1] if vector_results else 0
+        if best_vector_sim < abstain_threshold:
+            _save_last_search(query, [])
+            return ([], {"abstained": True, "best_vector_sim": best_vector_sim}) if return_diagnostics else []
 
     # 3. Reciprocal Rank Fusion
     # Scale k with engram count so rank position carries real weight.
@@ -132,6 +155,22 @@ def search(
     rrf_range = rrf_ceiling - rrf_floor
     if rrf_range > 0:
         fused = [(lid, (score - rrf_floor) / rrf_range) for lid, score in fused]
+
+    # Record raw vector + BM25 + RRF diagnostics
+    if diag is not None:
+        vector_map = dict(vector_results)
+        bm25_map = dict(bm25_ranked)
+        for lid, score in fused:
+            diag[lid] = {
+                "vector_sim": round(vector_map.get(lid, 0.0), 4),
+                "bm25": round(bm25_map.get(lid, 0.0), 4),
+                "rrf_normalized": round(score, 4),
+                "repo_delta": 0.0,
+                "feedback_delta": 0.0,
+                "tag_affinity": 0.0,
+                "best_tag_sim": 0.0,
+                "tag_bonus": 0.0,
+            }
 
     # 3.2. Repo prior from engram_repo_stats (replaces repo:* tag matching)
     current_repo = env.get("repo")
@@ -157,11 +196,15 @@ def search(
         adjusted = []
         for lid, score in fused:
             stats = repo_stats_map.get(lid, {})
+            repo_delta = 0.0
             if stats:
                 if current_repo in stats:
-                    score += repo_match_boost
+                    repo_delta = repo_match_boost
                 else:
-                    score += repo_mismatch_penalty
+                    repo_delta = repo_mismatch_penalty
+                score += repo_delta
+            if diag is not None and lid in diag:
+                diag[lid]["repo_delta"] = round(repo_delta, 4)
             adjusted.append((lid, score))
         fused = adjusted
 
@@ -184,40 +227,87 @@ def search(
             if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
                 continue
             # Boost: apply tag relevance as score adjustment
-            score += (avg_score / 3.0) * RELEVANCE_WEIGHT
+            feedback_delta = (avg_score / 3.0) * RELEVANCE_WEIGHT
+            score += feedback_delta
+            if diag is not None and lid in diag:
+                diag[lid]["feedback_delta"] = round(feedback_delta, 4)
         filtered_fused.append((lid, score))
 
     fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
 
-    # 3.6. Content tag affinity (prompt-derived tags vs engram content tags)
-    w_content = scoring_config.get("weight_content_tag", 0.25)
+    # 3.6. Content tag affinity (per-tag matching with thresholded scoring)
+    w_content = scoring_config.get("weight_content_tag", 0.10)
+    tag_sim_floor = scoring_config.get("tag_sim_floor", 0.45)
+    tag_sim_ceiling = scoring_config.get("tag_sim_ceiling", 0.75)
+    tag_mismatch_penalty = scoring_config.get("tag_mismatch_penalty", -0.05)
+    tag_mismatch_threshold = scoring_config.get("tag_mismatch_threshold", 0.20)
+    prompt_tags = []
     if w_content > 0 and query:
         try:
             from engrammar.search.prompt_tags import detect_prompt_tags
             from engrammar.core.embeddings import embed_text as _embed_text
             import numpy as np
 
-            prompt_tag_top_k = scoring_config.get("prompt_tag_top_k", 5)
-            prompt_tag_threshold = scoring_config.get("prompt_tag_threshold", 0.3)
+            prompt_tag_top_k = scoring_config.get("prompt_tag_top_k", 3)
+            prompt_tag_threshold = scoring_config.get("prompt_tag_threshold", 0.45)
             prompt_tags = detect_prompt_tags(query, top_k=prompt_tag_top_k, threshold=prompt_tag_threshold)
 
             if prompt_tags:
-                # Embed prompt-derived tag set as a single vector
-                prompt_tag_text = " ".join(tag for tag, _score in prompt_tags)
-                prompt_tag_emb = _embed_text(prompt_tag_text)
-                prompt_tag_norm = prompt_tag_emb / (np.linalg.norm(prompt_tag_emb) + 1e-10)
+                # Pre-embed each prompt tag individually
+                prompt_tag_embs = []
+                for tag, _score in prompt_tags:
+                    emb = _embed_text(tag)
+                    prompt_tag_embs.append(emb / (np.linalg.norm(emb) + 1e-10))
 
-                # Compute per-engram content tag affinity
+                # Pre-embed all unique engram content tags
+                all_engram_tags = set()
+                for lid, _ in fused:
+                    for t in content_tags_map.get(lid, []):
+                        all_engram_tags.add(t)
+
+                engram_tag_emb_cache = {}
+                for t in all_engram_tags:
+                    emb = _embed_text(t)
+                    engram_tag_emb_cache[t] = emb / (np.linalg.norm(emb) + 1e-10)
+
+                # Per-engram: best prompt-tag to engram-tag match
                 content_scored = []
                 for lid, score in fused:
                     engram_tags = content_tags_map.get(lid, [])
-                    if engram_tags:
-                        engram_tag_emb = _embed_text(" ".join(engram_tags))
-                        engram_tag_norm = engram_tag_emb / (np.linalg.norm(engram_tag_emb) + 1e-10)
-                        sim = float(np.dot(prompt_tag_norm, engram_tag_norm))
-                        # Normalize: (sim + 1) / 2 maps [-1, 1] to [0, 1]
-                        content_affinity = (sim + 1) / 2
-                        score += w_content * content_affinity
+                    if engram_tags and prompt_tag_embs:
+                        # Find best similarity across all prompt-tag × engram-tag pairs
+                        best_sim = -1.0
+                        for pt_emb in prompt_tag_embs:
+                            for et in engram_tags:
+                                et_emb = engram_tag_emb_cache[et]
+                                sim = float(np.dot(pt_emb, et_emb))
+                                if sim > best_sim:
+                                    best_sim = sim
+
+                        # Thresholded ramp: zero below floor, linear to ceiling, capped at 1.0
+                        tag_range = tag_sim_ceiling - tag_sim_floor
+                        if best_sim < tag_sim_floor:
+                            tag_bonus = 0.0
+                        elif tag_range > 0 and best_sim < tag_sim_ceiling:
+                            tag_bonus = (best_sim - tag_sim_floor) / tag_range
+                        else:
+                            tag_bonus = 1.0
+
+                        score += w_content * tag_bonus
+
+                        if diag is not None and lid in diag:
+                            diag[lid]["best_tag_sim"] = round(best_sim, 4)
+                            diag[lid]["tag_bonus"] = round(tag_bonus, 4)
+                            diag[lid]["tag_affinity"] = round(w_content * tag_bonus, 4)
+
+                        # Penalty for strong mismatch when prompt tags exist
+                        if best_sim < tag_mismatch_threshold:
+                            score += tag_mismatch_penalty
+                            if diag is not None and lid in diag:
+                                diag[lid]["tag_affinity"] = round(diag[lid].get("tag_affinity", 0) + tag_mismatch_penalty, 4)
+                    elif prompt_tags and not engram_tags:
+                        # Engram has no content tags but query has topic signal — mild penalty
+                        score += tag_mismatch_penalty * 0.5
                     content_scored.append((lid, score))
                 fused = sorted(content_scored, key=lambda x: x[1], reverse=True)
         except Exception:
@@ -263,6 +353,11 @@ def search(
             result["score"] = round(score, 4)
             results.append(result)
 
+    # 5.3. Apply min_top1_score filter: if top-1 is below threshold, return nothing
+    min_top1 = scoring_config.get("min_top1_score", 0.0)
+    if min_top1 > 0 and results and results[0].get("score", 0) < min_top1:
+        results = []
+
     # 5.5. Apply min score threshold for hook injection
     if enforce_prerequisites:
         min_score = config["hooks"].get("prerequisites_min_score", 0.02)
@@ -271,6 +366,18 @@ def search(
 
     # Save last search for introspection
     _save_last_search(query, results)
+
+    if return_diagnostics:
+        # Attach per-result diagnostics and query-level metadata
+        for r in results:
+            r["_diag"] = diag.get(r["id"], {})
+        meta = {
+            "prompt_tags": [(t, round(s, 4)) for t, s in prompt_tags] if prompt_tags else [],
+            "rrf_k": rrf_k,
+            "abstained": False,
+            "per_result": {r["id"]: diag.get(r["id"], {}) for r in results},
+        }
+        return results, meta
 
     return results
 

@@ -1,0 +1,30 @@
+{
+  "_doc": "Ground truth labels for search benchmark. expect: 'relevant' (exact match expected, expected_ids required), 'useful' (topically relevant results expected but no specific engram ID known), 'abstain' (query too vague, should return nothing or score < threshold). expected_ids: engram IDs that are correct matches (empty for useful/abstain).",
+  "labels": [
+    {"idx": 1, "query": "I remember we already do LLM assistem dedup", "expect": "relevant", "expected_ids": [75, 211], "note": "dedup engrams should rank high"},
+    {"idx": 3, "query": "how are tasks merged?", "expect": "relevant", "expected_ids": [255], "note": "task/issue numbering engram"},
+    {"idx": 4, "query": "[Request interrupted by user]", "expect": "abstain", "expected_ids": [], "note": "no meaningful query"},
+    {"idx": 5, "query": "how are tags merged?", "expect": "relevant", "expected_ids": [200, 304], "note": "tag merging engrams"},
+    {"idx": 7, "query": "yes, this is the idea I had", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
+    {"idx": 8, "query": "During deduplication we can do another pass of getting tags", "expect": "relevant", "expected_ids": [200], "note": "dedup tag handling"},
+    {"idx": 12, "query": "let's work on one of these issues", "expect": "abstain", "expected_ids": [], "note": "no topic signal"},
+    {"idx": 13, "query": "still running?", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
+    {"idx": 14, "query": "can we consider 039 done?", "expect": "abstain", "expected_ids": [], "note": "session-specific reference"},
+    {"idx": 16, "query": "yes it should extraction automatically set prerequisites.repos", "expect": "relevant", "expected_ids": [41, 267], "note": "prerequisites + extraction"},
+    {"idx": 19, "query": "Check what title actually does on Button.Circular", "expect": "relevant", "expected_ids": [416], "note": "Picasso Button.Circular engram"},
+    {"idx": 21, "query": "what's going on?", "expect": "abstain", "expected_ids": [], "note": "no topic signal"},
+    {"idx": 22, "query": "[Request interrupted by user for tool use]", "expect": "abstain", "expected_ids": [], "note": "no meaningful query"},
+    {"idx": 23, "query": "The ticket is in TODO, not in review", "expect": "relevant", "expected_ids": [128, 129], "note": "TODO comment lint rules"},
+    {"idx": 24, "query": "Yeah, that's true", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
+    {"idx": 25, "query": "The checklist is missing from the PR description", "expect": "relevant", "expected_ids": [162, 400, 377], "note": "PR template engrams"},
+    {"idx": 26, "query": "I need to allow different parts of the toptal-workflow", "expect": "relevant", "expected_ids": [381, 389], "note": "toptal-workflow hook config"},
+    {"idx": 30, "query": "Something with Clarify.md", "expect": "relevant", "expected_ids": [401], "note": "clarify agent output path"},
+    {"idx": 32, "query": "actually let's do it, delete the file before finishing", "expect": "relevant", "expected_ids": [401], "note": "clarify file cleanup"},
+    {"idx": 34, "query": "review this PR https://github.com/toptal/topkit/pull/1084", "expect": "relevant", "expected_ids": [162, 400], "note": "PR review engrams"},
+    {"idx": 35, "query": "let's discuss happo", "expect": "relevant", "expected_ids": [333, 398], "note": "happo screenshot testing"},
+    {"idx": 43, "query": "the toptal workflow blocks commits in all repos?", "expect": "relevant", "expected_ids": [381], "note": "toptal-workflow global blocking"},
+    {"idx": 47, "query": "let's dive deeper into what it would take to migrate davinci", "expect": "useful", "expected_ids": [], "note": "migration related, should surface migration engrams"},
+    {"idx": 48, "query": "Let's do the similar analysis for npm and update the doc", "expect": "useful", "expected_ids": [], "note": "npm migration, should surface versioning/migration engrams"},
+    {"idx": 52, "query": "I mean disable it", "expect": "abstain", "expected_ids": [], "note": "too vague without context"}
+  ]
+}
