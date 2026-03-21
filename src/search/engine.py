@@ -172,36 +172,45 @@ def search(
                 "tag_bonus": 0.0,
             }
 
-    # 3.2. Repo prior from engram_repo_stats (replaces repo:* tag matching)
+    # 3.2. Repo prior from engram_tag_relevance (evaluated usefulness per repo)
+    # Reads the evaluator's repo:X relevance scores — these reflect whether
+    # the engram was actually useful when shown in that repo, not just shown.
     current_repo = env.get("repo")
     if current_repo:
         from engrammar.core.db import get_connection
         repo_match_boost = scoring_config.get("repo_match_boost", 0.05)
         repo_mismatch_penalty = scoring_config.get("repo_mismatch_penalty", -0.08)
+        repo_tag = f"repo:{current_repo}"
 
-        # Batch-load repo stats for all candidates
+        # Batch-load repo relevance for all candidates
         candidate_ids = [lid for lid, _ in fused]
-        repo_stats_map = {}  # engram_id -> {repo: times_matched}
+        repo_relevance = {}  # engram_id -> {score, evals}
         if candidate_ids:
             conn = get_connection(db_path)
             placeholders = ",".join("?" for _ in candidate_ids)
             rows = conn.execute(
-                f"SELECT engram_id, repo, times_matched FROM engram_repo_stats WHERE engram_id IN ({placeholders})",
-                candidate_ids,
+                f"""SELECT engram_id, score, positive_evals, negative_evals
+                    FROM engram_tag_relevance
+                    WHERE engram_id IN ({placeholders}) AND tag = ?""",
+                candidate_ids + [repo_tag],
             ).fetchall()
             conn.close()
             for r in rows:
-                repo_stats_map.setdefault(r["engram_id"], {})[r["repo"]] = r["times_matched"]
+                repo_relevance[r["engram_id"]] = {
+                    "score": r["score"],
+                    "evals": r["positive_evals"] + r["negative_evals"],
+                }
 
         adjusted = []
         for lid, score in fused:
-            stats = repo_stats_map.get(lid, {})
+            rel = repo_relevance.get(lid)
             repo_delta = 0.0
-            if stats:
-                if current_repo in stats:
-                    repo_delta = repo_match_boost
+            if rel and rel["evals"] >= 3:
+                # Scale boost/penalty by evaluated relevance score
+                if rel["score"] > 0:
+                    repo_delta = repo_match_boost * min(rel["score"], 1.0)
                 else:
-                    repo_delta = repo_mismatch_penalty
+                    repo_delta = repo_mismatch_penalty * min(abs(rel["score"]), 1.0)
                 score += repo_delta
             if diag is not None and lid in diag:
                 diag[lid]["repo_delta"] = round(repo_delta, 4)
