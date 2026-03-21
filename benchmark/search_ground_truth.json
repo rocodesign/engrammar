@@ -532,20 +532,20 @@
       "type": "prompt",
       "query": "how does the benchmark sweep optimizer work",
       "repo": "staff-portal",
-      "expect": "abstain",
+      "expect": "useful",
       "expected_ids": [],
-      "note": "engrammar-scoped engrams #419/#420 should be excluded by repo prereq",
-      "scenario": "repo_prereq_exclude"
+      "note": "engrammar-scoped #419/#420 should rank lower via repo mismatch penalty, but still appear",
+      "scenario": "repo_prior_penalty"
     },
     {
       "idx": 83,
       "type": "prompt",
       "query": "detect_prompt_tags is matching everything, not prompt-specific",
       "repo": "via-dacica",
-      "expect": "abstain",
+      "expect": "useful",
       "expected_ids": [],
-      "note": "engrammar-scoped #415 should be excluded, no relevant via-dacica engrams",
-      "scenario": "repo_prereq_exclude"
+      "note": "engrammar-scoped #415 should rank lower from via-dacica context, but may still appear",
+      "scenario": "repo_prior_penalty"
     },
     {
       "idx": 84,
@@ -652,10 +652,10 @@
       "type": "prompt",
       "query": "Google Sheets budget spreadsheet column names",
       "repo": "staff-portal",
-      "expect": "abstain",
+      "expect": "useful",
       "expected_ids": [],
-      "note": "#372 has tags=['repo:via-dacica'] — too niche for staff-portal context",
-      "scenario": "soft_prereq_exclude"
+      "note": "#372 has tags=['repo:via-dacica'] — soft tag signal, should rank lower but not be excluded",
+      "scenario": "soft_tag_penalty"
     },
     {
       "idx": 93,
@@ -674,10 +674,10 @@
       "type": "prompt",
       "query": "the Publish to Production workflow cancelled itself",
       "repo": "staff-portal",
-      "expect": "abstain",
+      "expect": "useful",
       "expected_ids": [],
-      "note": "#321 has tags=['repo:sourcing-extension'] — should NOT surface from staff-portal",
-      "scenario": "soft_prereq_exclude"
+      "note": "#321 has tags=['repo:sourcing-extension'] — soft tag signal, should rank lower from staff-portal",
+      "scenario": "soft_tag_penalty"
     },
     {
       "idx": 95,

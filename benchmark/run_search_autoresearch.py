@@ -148,12 +148,14 @@ def build_query_gt_map(queries, ground_truth):
 class PrecomputedData:
     """All embeddings and base scores pre-computed for fast sweep."""
 
-    def __init__(self, queries):
+    def __init__(self, queries, ground_truth=None):
         from engrammar.core.embeddings import embed_text, embed_batch, load_tag_vocab_index
         from engrammar.core.db import get_all_active_engrams, get_content_tags_batch
         from engrammar.search.prompt_tags import _load_tag_frequencies
         from engrammar.search.engine import search
         from engrammar.search.query_filter import is_low_information
+
+        q_gt_map = build_query_gt_map(queries, ground_truth) if ground_truth else {}
 
         print("Pre-computing embeddings and base scores...")
         t0 = time.time()
@@ -194,10 +196,12 @@ class PrecomputedData:
         self.max_freq = max(tag_freqs.values()) if tag_freqs else 1
 
         # Pre-compute base search results (RRF + repo + feedback, no tag affinity)
-        # and query embeddings for prompt tag detection
+        # and query embeddings for prompt tag detection.
+        # Uses cwd from turn_data for proper repo prior and prerequisite filtering.
         self.query_data = []
         for i, q in enumerate(queries):
             qtext = q["prompt"]
+            cwd = (q.get("turn_data") or {}).get("cwd")
 
             # Check query filter
             filtered, filter_reason = is_low_information(qtext)
@@ -211,7 +215,7 @@ class PrecomputedData:
             cfg_mod._config_cache = None
             config = cfg_mod.load_config()
             config["scoring"]["weight_content_tag"] = 0.0  # disable tag affinity
-            hits, meta = search(qtext, return_diagnostics=True, skip_prerequisites=True, top_k=10)
+            hits, meta = search(qtext, return_diagnostics=True, cwd=cwd, top_k=10)
 
             base_results = []
             best_vector_sim = 0.0
@@ -238,7 +242,7 @@ class PrecomputedData:
                 score_gap = base_results[0]["base_score"] - base_results[1]["base_score"]
 
             self.query_data.append({
-                "idx": i,
+                "idx": q_gt_map.get(i, i),
                 "query": qtext[:100],
                 "query_emb_norm": q_norm,
                 "base_results": base_results,
@@ -797,7 +801,7 @@ def cmd_sweep():
     queries = load_queries()
     gt = load_ground_truth()
 
-    precomputed = PrecomputedData(queries)
+    precomputed = PrecomputedData(queries, ground_truth=gt)
 
     param_grid = {
         # Tag affinity (best from previous sweep, narrow range)
