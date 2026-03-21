@@ -42,6 +42,65 @@ def _search_direct(prompt, max_results, cwd=None):
     return None
 
 
+def _enrich_prompt_query(prompt, config):
+    """Apply query enrichment settings to the raw prompt.
+
+    Strips/injects IDE context based on config.query_enrichment.prompt settings.
+    Returns the enriched query string.
+    """
+    import re
+
+    enrich = config.get("query_enrichment", {}).get("prompt", {})
+    strip_ide = enrich.get("strip_ide_tags", True)
+    inject_file = enrich.get("inject_ide_file", False)
+    inject_selection = enrich.get("inject_ide_selection", False)
+    max_length = enrich.get("max_query_length", 300)
+
+    ide_file = None
+    ide_selection = None
+
+    # Extract IDE context before stripping
+    if inject_file or inject_selection:
+        file_match = re.search(
+            r'<ide_opened_file>The user opened the file ([^<]+?) in the IDE[^<]*</ide_opened_file>',
+            prompt, re.DOTALL
+        )
+        if file_match:
+            full_path = file_match.group(1).strip()
+            segments = full_path.split("/")
+            ide_file = "/".join(segments[-3:]) if len(segments) > 3 else full_path
+
+        sel_match = re.search(
+            r'<ide_selection>[^:]+:\n(.*?)\n\nThis may or may not',
+            prompt, re.DOTALL
+        )
+        if sel_match:
+            ide_selection = sel_match.group(1).strip()[:100]
+
+    # Strip IDE tags from query
+    if strip_ide:
+        prompt = re.sub(r'<ide_opened_file>.*?</ide_opened_file>\s*', '', prompt, flags=re.DOTALL)
+        prompt = re.sub(r'<ide_selection>.*?</ide_selection>\s*', '', prompt, flags=re.DOTALL)
+
+    # Strip other system tags
+    prompt = re.sub(r'<task-notification>.*?</task-notification>\s*', '', prompt, flags=re.DOTALL)
+    prompt = re.sub(r'<system-reminder>.*?</system-reminder>\s*', '', prompt, flags=re.DOTALL)
+
+    prompt = prompt.strip()
+
+    # Inject IDE context if configured
+    if inject_file and ide_file:
+        prompt = f"[file: {ide_file}] {prompt}"
+    if inject_selection and ide_selection:
+        prompt = f"[selection: {ide_selection}] {prompt}"
+
+    # Truncate to max length
+    if max_length and len(prompt) > max_length:
+        prompt = prompt[:max_length]
+
+    return prompt
+
+
 def main():
     from engrammar.infra.hook_utils import log_error, format_engrams_block, make_hook_output
 
@@ -67,14 +126,19 @@ def main():
         if not config["hooks"]["prompt_enabled"]:
             return
 
+        # Apply query enrichment
+        search_query = _enrich_prompt_query(prompt, config)
+        if not search_query or len(search_query) < 5:
+            return
+
         max_results = config["display"]["max_engrams_per_prompt"]
         show_categories = config["display"]["show_categories"]
 
         # Try daemon, fall back to direct
         hook_cwd = data.get("cwd")
-        results = _search_via_daemon(prompt, max_results, cwd=hook_cwd)
+        results = _search_via_daemon(search_query, max_results, cwd=hook_cwd)
         if results is None:
-            results = _search_direct(prompt, max_results, cwd=hook_cwd)
+            results = _search_direct(search_query, max_results, cwd=hook_cwd)
 
         if not results:
             return

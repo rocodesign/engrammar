@@ -88,31 +88,39 @@ def _extract_narration(transcript_path, session_id):
     return None
 
 
-def _build_query(narration, tool_name, tool_input):
-    """Build a search query from narration + tool context."""
+def _build_query(narration, tool_name, tool_input, config=None):
+    """Build a search query from narration + tool context.
+
+    Uses config.query_enrichment.post_tool settings to control what gets included.
+    """
+    enrich = {}
+    if config:
+        enrich = config.get("query_enrichment", {}).get("post_tool", {})
+
+    inject_narration = enrich.get("inject_narration", True)
+    narration_max = enrich.get("narration_max_length", 200)
+    inject_tool_ctx = enrich.get("inject_tool_context", True)
+
     parts = []
 
-    if narration:
-        # Use narration as primary signal, truncate to keep focused
-        parts.append(narration[:200])
+    if narration and inject_narration:
+        parts.append(narration[:narration_max])
 
-    # Add tool context as secondary signal
-    if tool_name == "Read":
-        path = tool_input.get("file_path", "")
-        if path:
-            # Extract meaningful parts from path
-            segments = path.split("/")
-            # Take last 3 path segments (most specific)
-            relevant = "/".join(segments[-3:]) if len(segments) > 3 else path
-            parts.append(relevant)
-    elif tool_name == "Grep":
-        pattern = tool_input.get("pattern", "")
-        if pattern:
-            parts.append(pattern)
-    elif tool_name == "Glob":
-        pattern = tool_input.get("pattern", "")
-        if pattern:
-            parts.append(pattern)
+    if inject_tool_ctx:
+        if tool_name == "Read":
+            path = tool_input.get("file_path", "")
+            if path:
+                segments = path.split("/")
+                relevant = "/".join(segments[-3:]) if len(segments) > 3 else path
+                parts.append(relevant)
+        elif tool_name == "Grep":
+            pattern = tool_input.get("pattern", "")
+            if pattern:
+                parts.append(pattern)
+        elif tool_name == "Glob":
+            pattern = tool_input.get("pattern", "")
+            if pattern:
+                parts.append(pattern)
 
     return " ".join(parts) if parts else None
 
@@ -176,13 +184,14 @@ def main():
                 return
 
         # Build search query
-        query = _build_query(narration, tool_name, tool_input)
+        from engrammar.core.config import load_config
+        config = load_config()
+
+        query = _build_query(narration, tool_name, tool_input, config=config)
         if not query:
             return
 
         # Search via daemon
-        from engrammar.core.config import load_config
-        config = load_config()
         max_results = config["display"].get("max_engrams_per_tool", 2)
         show_categories = config["display"]["show_categories"]
 

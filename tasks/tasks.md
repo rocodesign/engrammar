@@ -83,6 +83,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[2]-002-extraction-wrong-categories/task.md`
 - [x] **#003 LLM-assisted engram deduplication** `C2`
   - `tasks/completed/[2]-003-lesson-dedup-too-weak/task.md`
+- [x] **#023 Sync shipped config defaults and document config options** `C1`
+  - `tasks/completed/[2]-023-config-defaults-and-docs/task.md`
 
 ### Low
 

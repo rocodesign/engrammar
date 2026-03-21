@@ -5,22 +5,48 @@
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
-    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Bash", "ToolSearch", "Skill"],
-    "min_score_prompt": 0.30,
-    "min_score_tool": 0.30
+    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+    "min_score_prompt": 0.5,
+    "min_score_tool": 0.4,
+    "prerequisites_min_score": 0.3
+  },
+  "query_enrichment": {
+    "prompt": {
+      "strip_ide_tags": true,
+      "inject_ide_file": false,
+      "inject_ide_selection": false,
+      "max_query_length": 300
+    },
+    "pre_tool": {
+      "inject_narration": false,
+      "narration_max_length": 150
+    },
+    "post_tool": {
+      "inject_narration": true,
+      "narration_max_length": 200,
+      "inject_tool_context": true
+    }
   },
   "scoring": {
-    "weight_semantic": 0.60,
-    "weight_tag": 0.40,
-    "rrf_floor": 0.01,
-    "rrf_ceiling": 0.035,
+    "rrf_floor": 0.015,
+    "rrf_ceiling": 0.033,
+    "weight_content_tag": 0.25,
+    "weight_feedback": 0.2,
     "repo_match_boost": 0.05,
-    "repo_mismatch_penalty": -0.15
+    "repo_mismatch_penalty": -0.08,
+    "prompt_tag_top_k": 3,
+    "prompt_tag_threshold": 0.6,
+    "tag_sim_floor": 0.5,
+    "tag_sim_ceiling": 0.8,
+    "tag_mismatch_penalty": 0.0,
+    "tag_mismatch_threshold": 0.2,
+    "abstain_threshold": 0.55,
+    "min_top1_score": 0.4
   },
   "models": {
     "extraction": "sonnet",
     "deduplication": "sonnet",
-    "evaluation": "sonnet"
+    "evaluation": "haiku"
   },
   "display": {
     "max_engrams_per_prompt": 3,

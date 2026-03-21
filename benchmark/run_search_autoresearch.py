@@ -32,6 +32,26 @@ QUERIES_PATH = os.path.join(os.path.dirname(__file__), "search_queries.json")
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results", "autoresearch")
 ABSTAIN_SCORE_THRESHOLD = 0.30
 
+# Enrichment presets for --enrich flag
+ENRICHMENT_PRESETS = {
+    "none": {
+        "prompt": {"strip_ide_tags": False, "inject_ide_file": False, "inject_ide_selection": False, "max_query_length": 0},
+        "post_tool": {"inject_narration": False, "inject_tool_context": False},
+    },
+    "strip": {
+        "prompt": {"strip_ide_tags": True, "inject_ide_file": False, "inject_ide_selection": False, "max_query_length": 300},
+        "post_tool": {"inject_narration": True, "inject_tool_context": False},
+    },
+    "file": {
+        "prompt": {"strip_ide_tags": True, "inject_ide_file": True, "inject_ide_selection": False, "max_query_length": 300},
+        "post_tool": {"inject_narration": True, "inject_tool_context": True},
+    },
+    "full": {
+        "prompt": {"strip_ide_tags": True, "inject_ide_file": True, "inject_ide_selection": True, "max_query_length": 400},
+        "post_tool": {"inject_narration": True, "inject_tool_context": True, "narration_max_length": 250},
+    },
+}
+
 
 def load_ground_truth():
     with open(GROUND_TRUTH_PATH) as f:

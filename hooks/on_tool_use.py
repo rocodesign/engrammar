@@ -14,6 +14,37 @@ ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engramm
 sys.path.insert(0, ENGRAMMAR_HOME)
 
 
+def _extract_narration(transcript_path):
+    """Read the last assistant narration text from the transcript.
+
+    Scans backward for the most recent assistant text block.
+    Returns the text or None if no narration found.
+    """
+    try:
+        with open(transcript_path, "r") as f:
+            lines = f.readlines()
+
+        for line in reversed(lines[-50:]):
+            try:
+                obj = json.loads(line)
+                msg = obj.get("message", {})
+                if msg.get("role") != "assistant":
+                    continue
+                content = msg.get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "").strip()
+                        if text and len(text) > 10:
+                            return text
+            except (json.JSONDecodeError, Exception):
+                continue
+    except Exception:
+        pass
+    return None
+
+
 def _search_via_daemon(tool_name, tool_input, cwd=None):
     try:
         from engrammar.infra.client import send_request
@@ -126,6 +157,18 @@ def main():
             return
 
         show_categories = config["display"]["show_categories"]
+
+        # Optionally enrich tool query with narration from transcript
+        enrich = config.get("query_enrichment", {}).get("pre_tool", {})
+        if enrich.get("inject_narration"):
+            transcript_path = data.get("transcript_path")
+            if transcript_path:
+                narration = _extract_narration(transcript_path)
+                if narration:
+                    max_len = enrich.get("narration_max_length", 150)
+                    narration = narration[:max_len]
+                    tool_input = dict(tool_input) if isinstance(tool_input, dict) else {}
+                    tool_input["_narration"] = narration
 
         # Try daemon, fall back to direct
         hook_cwd = data.get("cwd")

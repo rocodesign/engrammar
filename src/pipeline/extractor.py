@@ -220,6 +220,9 @@ def _maybe_backfill_prerequisites(engram_id, prerequisites, db_path=None):
 def _read_transcript_metadata(jsonl_path):
     """Extract cwd and repo from a transcript JSONL's metadata entries.
 
+    Uses git remote origin URL to detect repo name (same as environment.py).
+    Falls back to last directory segment of cwd if git is unavailable.
+
     Returns:
         dict with 'cwd' and 'repo' (or None for each if not found)
     """
@@ -236,15 +239,38 @@ def _read_transcript_metadata(jsonl_path):
                     continue
                 if not cwd and "cwd" in entry:
                     cwd = entry["cwd"]
-                    if "/work/" in cwd:
-                        parts = cwd.split("/work/")[-1].split("/")
-                        if parts:
-                            repo = parts[0]
                 if cwd:
                     break
     except Exception:
         pass
+
+    if cwd:
+        repo = _detect_repo_from_cwd(cwd)
+
     return {"cwd": cwd, "repo": repo}
+
+
+def _detect_repo_from_cwd(cwd):
+    """Detect repo name from a cwd path using git remote, with fallback."""
+    import subprocess
+    try:
+        if os.path.isdir(cwd):
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                capture_output=True, text=True, timeout=2,
+                cwd=cwd,
+            )
+            if result.returncode == 0:
+                url = result.stdout.strip()
+                name = url.rstrip("/").split("/")[-1]
+                if name.endswith(".git"):
+                    name = name[:-4]
+                return name
+    except Exception:
+        pass
+    # Fallback: last non-empty directory segment
+    parts = [p for p in cwd.rstrip("/").split("/") if p]
+    return parts[-1] if parts else None
 
 
 def _detect_tags_for_cwd(cwd):

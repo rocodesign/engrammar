@@ -388,19 +388,34 @@ def _build_tool_query(tool_name, tool_input):
 
     Routes by tool type to extract the most meaningful keywords
     rather than dumping raw parameters into the query.
+
+    If tool_input contains '_narration' (injected by PreToolUse enrichment),
+    it's prepended to the tool-derived query for richer semantic matching.
     """
     if not isinstance(tool_input, dict):
         return tool_name
 
+    # Extract narration if injected by PreToolUse enrichment
+    narration = tool_input.pop("_narration", None)
+
+    tool_query = _extract_tool_keywords(tool_name, tool_input)
+
+    # Combine narration + tool query
+    if narration and tool_query:
+        return f"{narration} {tool_query}"
+    return narration or tool_query
+
+
+def _extract_tool_keywords(tool_name, tool_input):
+    """Extract semantic keywords from tool name and input parameters."""
     if tool_name == "Bash":
         cmd = tool_input.get("command", "")
         parts = cmd.split()
         if not parts:
-            return None  # skip empty commands
+            return None
 
         base_cmd = parts[0]
 
-        # Git commands — use subcommand for semantic search
         if base_cmd == "git":
             subcmd = parts[1] if len(parts) > 1 else ""
             git_queries = {
@@ -413,7 +428,6 @@ def _build_tool_query(tool_name, tool_input):
             }
             return git_queries.get(subcmd, f"git {subcmd}")
 
-        # GitHub CLI
         if base_cmd == "gh":
             subcmd = " ".join(parts[1:3]) if len(parts) > 2 else parts[1] if len(parts) > 1 else ""
             gh_queries = {
@@ -425,12 +439,10 @@ def _build_tool_query(tool_name, tool_input):
             }
             return gh_queries.get(subcmd, f"github {subcmd}")
 
-        # Test runners
         if base_cmd in ("jest", "pytest", "cypress", "vitest", "npx"):
             test_hint = " ".join(parts[:3])
             return f"testing {test_hint}"
 
-        # npm/yarn/pnpm scripts
         if base_cmd in ("npm", "yarn", "pnpm"):
             script = parts[1] if len(parts) > 1 else ""
             if script in ("test", "t"):
@@ -439,11 +451,9 @@ def _build_tool_query(tool_name, tool_input):
                 return f"{parts[2]} script"
             return f"{base_cmd} {script}"
 
-        # Package install
         if base_cmd in ("pip", "uv"):
             return f"python package {' '.join(parts[1:3])}"
 
-        # Generic — use first 3 words
         return " ".join(parts[:3])
 
     if tool_name == "Edit":
@@ -451,7 +461,6 @@ def _build_tool_query(tool_name, tool_input):
         if not file_path:
             return None
 
-        # Extract file extension and meaningful path segments
         import os
         basename = os.path.basename(file_path)
         ext = os.path.splitext(basename)[1]
@@ -467,7 +476,6 @@ def _build_tool_query(tool_name, tool_input):
             ".md": "documentation markdown",
         }
 
-        # Cypress/Storybook file patterns
         if ".cy." in basename:
             context = "cypress testing"
         elif ".stories." in basename:
@@ -477,7 +485,6 @@ def _build_tool_query(tool_name, tool_input):
         else:
             context = ext_context.get(ext, "")
 
-        # Use last 2-3 path segments for project context
         path_parts = file_path.split("/")
         path_context = "/".join(path_parts[-3:]) if len(path_parts) > 3 else file_path
 
@@ -498,11 +505,10 @@ def _build_tool_query(tool_name, tool_input):
         return f"{skill} skill" if skill else None
 
     if tool_name == "Task":
-        # Task tool has a description field
         desc = tool_input.get("description", "")
         return desc if desc else None
 
-    # For other tools, use whatever params are available
+    # Generic — use whatever params are available
     keywords = [tool_name]
     for key in ("file_path", "path", "pattern", "query"):
         val = tool_input.get(key, "")

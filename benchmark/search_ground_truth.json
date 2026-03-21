@@ -1,30 +1,703 @@
 {
-  "_doc": "Ground truth labels for search benchmark. expect: 'relevant' (exact match expected, expected_ids required), 'useful' (topically relevant results expected but no specific engram ID known), 'abstain' (query too vague, should return nothing or score < threshold). expected_ids: engram IDs that are correct matches (empty for useful/abstain).",
+  "_doc": "Ground truth labels for search benchmark. expect: 'relevant' (exact match expected, expected_ids required), 'useful' (topically relevant results expected but no specific engram ID known), 'abstain' (query too vague, should return nothing or score < threshold). expected_ids: engram IDs that are correct matches (empty for useful/abstain). type: prompt|tool|post_tool.",
   "labels": [
-    {"idx": 1, "query": "I remember we already do LLM assistem dedup", "expect": "relevant", "expected_ids": [75, 211], "note": "dedup engrams should rank high"},
-    {"idx": 3, "query": "how are tasks merged?", "expect": "relevant", "expected_ids": [255], "note": "task/issue numbering engram"},
-    {"idx": 4, "query": "[Request interrupted by user]", "expect": "abstain", "expected_ids": [], "note": "no meaningful query"},
-    {"idx": 5, "query": "how are tags merged?", "expect": "relevant", "expected_ids": [200, 304], "note": "tag merging engrams"},
-    {"idx": 7, "query": "yes, this is the idea I had", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
-    {"idx": 8, "query": "During deduplication we can do another pass of getting tags", "expect": "relevant", "expected_ids": [200], "note": "dedup tag handling"},
-    {"idx": 12, "query": "let's work on one of these issues", "expect": "abstain", "expected_ids": [], "note": "no topic signal"},
-    {"idx": 13, "query": "still running?", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
-    {"idx": 14, "query": "can we consider 039 done?", "expect": "abstain", "expected_ids": [], "note": "session-specific reference"},
-    {"idx": 16, "query": "yes it should extraction automatically set prerequisites.repos", "expect": "relevant", "expected_ids": [41, 267], "note": "prerequisites + extraction"},
-    {"idx": 19, "query": "Check what title actually does on Button.Circular", "expect": "relevant", "expected_ids": [416], "note": "Picasso Button.Circular engram"},
-    {"idx": 21, "query": "what's going on?", "expect": "abstain", "expected_ids": [], "note": "no topic signal"},
-    {"idx": 22, "query": "[Request interrupted by user for tool use]", "expect": "abstain", "expected_ids": [], "note": "no meaningful query"},
-    {"idx": 23, "query": "The ticket is in TODO, not in review", "expect": "relevant", "expected_ids": [128, 129], "note": "TODO comment lint rules"},
-    {"idx": 24, "query": "Yeah, that's true", "expect": "abstain", "expected_ids": [], "note": "conversational filler"},
-    {"idx": 25, "query": "The checklist is missing from the PR description", "expect": "relevant", "expected_ids": [162, 400, 377], "note": "PR template engrams"},
-    {"idx": 26, "query": "I need to allow different parts of the toptal-workflow", "expect": "relevant", "expected_ids": [381, 389], "note": "toptal-workflow hook config"},
-    {"idx": 30, "query": "Something with Clarify.md", "expect": "relevant", "expected_ids": [401], "note": "clarify agent output path"},
-    {"idx": 32, "query": "actually let's do it, delete the file before finishing", "expect": "relevant", "expected_ids": [401], "note": "clarify file cleanup"},
-    {"idx": 34, "query": "review this PR https://github.com/toptal/topkit/pull/1084", "expect": "relevant", "expected_ids": [162, 400], "note": "PR review engrams"},
-    {"idx": 35, "query": "let's discuss happo", "expect": "relevant", "expected_ids": [333, 398], "note": "happo screenshot testing"},
-    {"idx": 43, "query": "the toptal workflow blocks commits in all repos?", "expect": "relevant", "expected_ids": [381], "note": "toptal-workflow global blocking"},
-    {"idx": 47, "query": "let's dive deeper into what it would take to migrate davinci", "expect": "useful", "expected_ids": [], "note": "migration related, should surface migration engrams"},
-    {"idx": 48, "query": "Let's do the similar analysis for npm and update the doc", "expect": "useful", "expected_ids": [], "note": "npm migration, should surface versioning/migration engrams"},
-    {"idx": 52, "query": "I mean disable it", "expect": "abstain", "expected_ids": [], "note": "too vague without context"}
+    {
+      "idx": 1,
+      "query": "I remember we already do LLM assistem dedup",
+      "expect": "relevant",
+      "expected_ids": [
+        75,
+        211
+      ],
+      "note": "dedup engrams should rank high",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 3,
+      "query": "how are tasks merged?",
+      "expect": "relevant",
+      "expected_ids": [
+        255
+      ],
+      "note": "task/issue numbering engram",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 4,
+      "query": "[Request interrupted by user]",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "no meaningful query",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 5,
+      "query": "how are tags merged?",
+      "expect": "relevant",
+      "expected_ids": [
+        200,
+        304
+      ],
+      "note": "tag merging engrams",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 7,
+      "query": "yes, this is the idea I had",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 8,
+      "query": "During deduplication we can do another pass of getting tags",
+      "expect": "relevant",
+      "expected_ids": [
+        200
+      ],
+      "note": "dedup tag handling",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 12,
+      "query": "let's work on one of these issues",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "no topic signal",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 13,
+      "query": "still running?",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 14,
+      "query": "can we consider 039 done?",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "session-specific reference",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 16,
+      "query": "yes it should extraction automatically set prerequisites.repos",
+      "expect": "relevant",
+      "expected_ids": [
+        41,
+        267
+      ],
+      "note": "prerequisites + extraction",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 19,
+      "query": "Check what title actually does on Button.Circular",
+      "expect": "relevant",
+      "expected_ids": [
+        416
+      ],
+      "note": "Picasso Button.Circular engram",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 21,
+      "query": "what's going on?",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "no topic signal",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 22,
+      "query": "[Request interrupted by user for tool use]",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "no meaningful query",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 23,
+      "query": "The ticket is in TODO, not in review",
+      "expect": "relevant",
+      "expected_ids": [
+        128,
+        129
+      ],
+      "note": "TODO comment lint rules",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 24,
+      "query": "Yeah, that's true",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 25,
+      "query": "The checklist is missing from the PR description",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        400,
+        377
+      ],
+      "note": "PR template engrams",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 26,
+      "query": "I need to allow different parts of the toptal-workflow",
+      "expect": "relevant",
+      "expected_ids": [
+        381,
+        389
+      ],
+      "note": "toptal-workflow hook config",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 30,
+      "query": "Something with Clarify.md",
+      "expect": "relevant",
+      "expected_ids": [
+        401
+      ],
+      "note": "clarify agent output path",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 32,
+      "query": "actually let's do it, delete the file before finishing",
+      "expect": "relevant",
+      "expected_ids": [
+        401
+      ],
+      "note": "clarify file cleanup",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 34,
+      "query": "review this PR https://github.com/toptal/topkit/pull/1084",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        400
+      ],
+      "note": "PR review engrams",
+      "repo": "topkit"
+    },
+    {
+      "idx": 35,
+      "query": "let's discuss happo",
+      "expect": "relevant",
+      "expected_ids": [
+        333,
+        398
+      ],
+      "note": "happo screenshot testing",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 43,
+      "query": "the toptal workflow blocks commits in all repos?",
+      "expect": "relevant",
+      "expected_ids": [
+        381
+      ],
+      "note": "toptal-workflow global blocking",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 47,
+      "query": "let's dive deeper into what it would take to migrate davinci",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "migration related, should surface migration engrams",
+      "repo": "toptal"
+    },
+    {
+      "idx": 48,
+      "query": "Let's do the similar analysis for npm and update the doc",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "npm migration, should surface versioning/migration engrams",
+      "repo": "toptal"
+    },
+    {
+      "idx": 52,
+      "query": "I mean disable it",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "too vague without context",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 53,
+      "query": "How does happo generate this hash normally",
+      "expect": "relevant",
+      "expected_ids": [
+        362,
+        368
+      ],
+      "note": "happo asset hash generation",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 54,
+      "query": "Happo (staff-portal/cypress) — Job failed  - this job fails in CI, how to reproduce locally",
+      "expect": "relevant",
+      "expected_ids": [
+        354,
+        333
+      ],
+      "note": "happo cypress CI failure + local repro",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 55,
+      "query": "What does the Cypress Visual Tests check do?",
+      "expect": "relevant",
+      "expected_ids": [
+        334,
+        354
+      ],
+      "note": "happo cypress check explanation",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 56,
+      "query": "What about this cypress integration workflow, I can't tell which one that is from the list of checks",
+      "expect": "relevant",
+      "expected_ids": [
+        234,
+        334
+      ],
+      "note": "cypress CI workflow identification",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 57,
+      "query": "let's upgrade cypress to version 13, what's the version of happo we use, we need to check compatibility",
+      "expect": "relevant",
+      "expected_ids": [
+        327,
+        343
+      ],
+      "note": "cypress 13 + happo compatibility",
+      "repo": "talent-activation-frontend"
+    },
+    {
+      "idx": 58,
+      "query": "It's running 1 billion chunks again https://github.com/toptal/staff-portal/actions",
+      "expect": "relevant",
+      "expected_ids": [
+        132,
+        163
+      ],
+      "note": "CI chunk explosion, job fragments",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 59,
+      "query": "is the toptal workflow enabled?",
+      "expect": "relevant",
+      "expected_ids": [
+        381,
+        7
+      ],
+      "note": "toptal-workflow enablement check",
+      "repo": "talent-activation-frontend"
+    },
+    {
+      "idx": 60,
+      "query": "remove co-authored by from the commits, rebase master and force push",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "git command instruction, no engram needed",
+      "repo": "sourcing-extension"
+    },
+    {
+      "idx": 61,
+      "query": "what's the workflow to actually release?",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "release workflow — should surface sourcing-extension release engrams",
+      "repo": "sourcing-extension"
+    },
+    {
+      "idx": 62,
+      "query": "Our PR fails too in some tests https://github.com/toptal/staff-portal/actions/runs/",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "CI failure investigation, should surface testing engrams",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 63,
+      "query": "yes, continue the workflow",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "talent-activation-frontend"
+    },
+    {
+      "idx": 64,
+      "query": "dont push",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "too short, no topic signal",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 65,
+      "query": "did it complete?",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 66,
+      "query": "sounds good",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 67,
+      "query": "do we log the tags?",
+      "expect": "relevant",
+      "expected_ids": [
+        295
+      ],
+      "note": "tag logging in engrammar CLI",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 68,
+      "query": "it's in staff-portal",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "too vague, no topic",
+      "repo": "engrammar"
+    },
+    {
+      "idx": 69,
+      "query": "we have via-dacica-27-10-25.sql in downloads, we need to populate our docker db with it",
+      "expect": "relevant",
+      "expected_ids": [
+        207
+      ],
+      "note": "docker db population, root user",
+      "repo": "via-dacica"
+    },
+    {
+      "idx": 70,
+      "query": "make me an admin, rocodesign@gmail.com",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "app-specific command, no engram",
+      "repo": "via-dacica"
+    },
+    {
+      "idx": 71,
+      "query": "dependencies upgrade with package manager migration at the core of it",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "package migration scope, should surface migration engrams",
+      "repo": "toptal"
+    },
+    {
+      "idx": 72,
+      "query": "git commit conventions",
+      "expect": "relevant",
+      "expected_ids": [
+        129
+      ],
+      "note": "tool query: git commit — TODO lint rule",
+      "repo": "staff-portal",
+      "type": "tool"
+    },
+    {
+      "idx": 73,
+      "query": "pull request create description template",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        400
+      ],
+      "note": "tool query: gh pr create — PR template",
+      "repo": "staff-portal",
+      "type": "tool"
+    },
+    {
+      "idx": 74,
+      "query": "testing npx cypress run",
+      "expect": "relevant",
+      "expected_ids": [
+        106,
+        334
+      ],
+      "note": "tool query: cypress run — testing engrams",
+      "repo": "staff-portal",
+      "type": "tool"
+    },
+    {
+      "idx": 75,
+      "query": "let's push the branch and create a new PR as is",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        163
+      ],
+      "note": "PR creation — label + template engrams",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 76,
+      "query": "Here it is",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "conversational filler",
+      "repo": "staff-portal"
+    },
+    {
+      "idx": 77,
+      "query": "Let me find the relevant component that shows the expanded priority profile",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "post_tool: grep for component — should surface React component engrams",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "idx": 78,
+      "query": "Let me find the PR template and fix the PR description.",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        400
+      ],
+      "note": "post_tool: PR template search",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "idx": 79,
+      "query": "Now moving to the clarify step — delegating codebase research",
+      "expect": "relevant",
+      "expected_ids": [
+        234,
+        401
+      ],
+      "note": "post_tool: clarify step engrams",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "idx": 80,
+      "query": "Let me investigate the Happo orchestration flow to understand the CI pipeline",
+      "expect": "relevant",
+      "expected_ids": [
+        354,
+        334,
+        358
+      ],
+      "note": "post_tool: happo CI pipeline investigation",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "idx": 81,
+      "query": "Branch pushed. Now creating the PR.",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        163
+      ],
+      "note": "post_tool: PR creation after push",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "idx": 82,
+      "type": "prompt",
+      "query": "how does the benchmark sweep optimizer work",
+      "repo": "staff-portal",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "engrammar-scoped engrams #419/#420 should be excluded by repo prereq",
+      "scenario": "repo_prereq_exclude"
+    },
+    {
+      "idx": 83,
+      "type": "prompt",
+      "query": "detect_prompt_tags is matching everything, not prompt-specific",
+      "repo": "via-dacica",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "engrammar-scoped #415 should be excluded, no relevant via-dacica engrams",
+      "scenario": "repo_prereq_exclude"
+    },
+    {
+      "idx": 84,
+      "type": "prompt",
+      "query": "Button.Circular title prop not working",
+      "repo": "staff-portal",
+      "expect": "relevant",
+      "expected_ids": [
+        416
+      ],
+      "note": "#416 has repos=['staff-portal'], should match from staff-portal",
+      "scenario": "repo_prereq_include"
+    },
+    {
+      "idx": 85,
+      "type": "prompt",
+      "query": "benchmark sweep min_vector_sim vs min_top1_score",
+      "repo": "engrammar",
+      "expect": "relevant",
+      "expected_ids": [
+        420,
+        419
+      ],
+      "note": "#420/#419 have repos=['engrammar'], should match from engrammar",
+      "scenario": "repo_prereq_include"
+    },
+    {
+      "idx": 86,
+      "type": "prompt",
+      "query": "TODO comments need a Jira ticket number to pass linting",
+      "repo": "via-dacica",
+      "expect": "relevant",
+      "expected_ids": [
+        129
+      ],
+      "note": "#129 has no repo prereq — TODO lint rule should surface everywhere",
+      "scenario": "cross_repo_generic"
+    },
+    {
+      "idx": 87,
+      "type": "prompt",
+      "query": "PR description is missing the template checklist",
+      "repo": "sourcing-extension",
+      "expect": "relevant",
+      "expected_ids": [
+        162,
+        400
+      ],
+      "note": "#162/#400 have no repo prereq — PR template engrams should surface from any repo",
+      "scenario": "cross_repo_generic"
+    },
+    {
+      "idx": 88,
+      "type": "prompt",
+      "query": "toptal-workflow hook is blocking my commits",
+      "repo": "screening-wizard-frontend",
+      "expect": "relevant",
+      "expected_ids": [
+        381
+      ],
+      "note": "#381 has no repo prereq — workflow blocking engram is cross-repo",
+      "scenario": "cross_repo_generic"
+    },
+    {
+      "idx": 89,
+      "type": "prompt",
+      "query": "happo finalize is failing with a 404 zip error",
+      "repo": "talent-activation-frontend",
+      "expect": "relevant",
+      "expected_ids": [
+        358,
+        371
+      ],
+      "note": "happo engrams have no repo prereq, should surface from any repo using happo",
+      "scenario": "cross_repo_domain"
+    },
+    {
+      "idx": 90,
+      "type": "prompt",
+      "query": "happo-cypress is not compatible with our Cypress version",
+      "repo": "screening-wizard-frontend",
+      "expect": "relevant",
+      "expected_ids": [
+        327,
+        343
+      ],
+      "note": "happo-cypress compat engrams should surface from any repo",
+      "scenario": "cross_repo_domain"
+    },
+    {
+      "idx": 91,
+      "type": "prompt",
+      "query": "Picasso Select searchThreshold option count",
+      "repo": "engrammar",
+      "expect": "relevant",
+      "expected_ids": [
+        174
+      ],
+      "note": "#174 has no repo prereq — Picasso knowledge is generic, should surface even from engrammar",
+      "scenario": "cross_repo_domain"
+    },
+    {
+      "idx": 92,
+      "type": "prompt",
+      "query": "Google Sheets budget spreadsheet column names",
+      "repo": "staff-portal",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "#372 has tags=['repo:via-dacica'] — too niche for staff-portal context",
+      "scenario": "soft_prereq_exclude"
+    },
+    {
+      "idx": 93,
+      "type": "prompt",
+      "query": "production publish workflow self-cancels when branch is not release/bump",
+      "repo": "sourcing-extension",
+      "expect": "relevant",
+      "expected_ids": [
+        321
+      ],
+      "note": "#321 pinned with tags=['repo:sourcing-extension'] — should surface in correct repo",
+      "scenario": "soft_prereq_include"
+    },
+    {
+      "idx": 94,
+      "type": "prompt",
+      "query": "the Publish to Production workflow cancelled itself",
+      "repo": "staff-portal",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "#321 has tags=['repo:sourcing-extension'] — should NOT surface from staff-portal",
+      "scenario": "soft_prereq_exclude"
+    },
+    {
+      "idx": 95,
+      "type": "tool",
+      "query": "editing react typescript components/PriorityProfile/PriorityProfileDetail.tsx",
+      "repo": "staff-portal",
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "tool query: editing .tsx in staff-portal — should surface React/Picasso engrams",
+      "scenario": "tool_repo_context"
+    },
+    {
+      "idx": 96,
+      "type": "tool",
+      "query": "python package uv pip install",
+      "repo": "engrammar",
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "tool query: pip install is too generic, should abstain",
+      "scenario": "tool_abstain"
+    }
   ]
 }

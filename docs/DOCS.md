@@ -8,6 +8,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System internals: search pipeline, database schema, embeddings, hooks, daemon |
 | [CLI.md](CLI.md) | All 21 CLI commands with usage and examples |
 | [CHEATSHEET.md](CHEATSHEET.md) | Quick reference for CLI, MCP tools, tags, and common workflows |
+| [CONFIG.md](CONFIG.md) | Config file defaults, deployment behavior, and option reference |
 | [evaluation.md](evaluation.md) | Evaluation pipeline, EMA scoring, tag relevance filtering |
 | [STATUS.md](STATUS.md) | What works well, current pitfalls, future improvements |
 
@@ -17,6 +18,7 @@
 |------|-------|
 | Get started | [README.md](../README.md) |
 | See all CLI commands | [CLI.md](CLI.md) |
+| Review config options | [CONFIG.md](CONFIG.md) |
 | Use MCP tools in Claude Code | [CHEATSHEET.md](CHEATSHEET.md#mcp-tools) |
 | Understand search ranking | [ARCHITECTURE.md](ARCHITECTURE.md#search-architecture) |
 | Understand auto-pin | [ARCHITECTURE.md](ARCHITECTURE.md#auto-pin-algorithm) |

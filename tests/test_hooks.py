@@ -22,6 +22,7 @@ _DEFAULT_CONFIG = {
         "prompt_enabled": True,
         "tool_use_enabled": True,
         "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+        "min_score_prompt": 0.50,
     },
     "display": {
         "max_engrams_per_prompt": 3,
@@ -175,7 +176,7 @@ class TestPrompt:
     def test_returns_engrams(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"prompt": "How to use react hooks?", "session_id": "sess-1"})
         with patch("src.infra.client.send_request", return_value={
-                 "results": [{"id": 1, "text": "Use hooks correctly", "category": "dev"}],
+                 "results": [{"id": 1, "text": "Use hooks correctly", "category": "dev", "score": 0.95}],
              }), \
              patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
             from hooks.on_prompt import main
