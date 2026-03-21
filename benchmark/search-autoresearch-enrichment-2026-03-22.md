@@ -121,14 +121,39 @@ Post-tool strategies (15 queries):
 
 No config changes promoted. The production config already matches hook_current.
 
+## CWD-aware Sweep (1620 configs, 9.6s)
+
+With cwd now flowing through precompute, the sweep can properly evaluate abstention thresholds.
+
+**Sweep winner**: `abstain_threshold: 0.65` (all other params match current production)
+
+| Metric | Baseline (0.55) | Sweep (0.65) | Delta |
+|--------|----------------|-------------|-------|
+| Composite | 0.4118 | **0.3879** | -0.024 |
+| P@1 | **56%** | 52% | -4pp |
+| P@3 | **74%** | 70% | -4pp |
+| Abstain | 50% | **65%** | +15pp |
+| Class sep | 0.349 | **0.417** | +0.07 |
+
+**Decision: stay at 0.55.** The 0.65 threshold blocks 2 legitimate queries (Q01 "LLM dedup" sim=0.53, Q30 "Clarify.md" sim=0.62) for +15pp abstain. The hooks optimize for recall — noise that leaks through gets penalized downstream by the tag relevance evaluator, which feeds back into future searches. Over-filtering at the hook level removes the evaluator's ability to learn from those signals.
+
+Other sweep findings:
+- `min_top1_score: 0.0` and `min_score_margin: 0.0` confirmed — post-scoring filters don't help
+- Tag params (`weight_content_tag: 0.25`, `tag_sim_floor: 0.50`, `tag_sim_ceiling: 0.80`, `prompt_tag_threshold: 0.60`) all match production — stable across both no-cwd and cwd sweeps
+
+## Promotion Decision
+
+**No config changes promoted.** Production config (hook_current) is validated:
+- Best balanced composite (0.4118)
+- P@1=56%, P@3=74%, useful=86%
+- Abstention at 0.55 is the right recall/precision trade-off for hooks
+
 ## Next Steps
 
-1. **Improve abstain accuracy**: The low-information query filter catches obvious filler but misses borderline cases. Add more patterns or a vector-sim-based abstention calibrated to the cwd-aware score distribution.
+1. **Improve tool query P@1 (12%)**: `_build_tool_query` produces overly generic queries. Narration injection for PreToolUse would help — post_tool data shows narration is the strongest signal.
 
-2. **Improve tool query P@1**: `_build_tool_query` produces overly generic queries. Narration injection for PreToolUse (currently off by default) would help — the ablation shows narration is the strongest signal for tool-context searches.
+2. **Populate engram_repo_stats**: Repo prior subsystem adds zero value because stats table is empty. Auto-pin pipeline needs to run.
 
-3. **Populate engram_repo_stats**: The repo prior subsystem is dead weight because the stats table is empty. Running the auto-pin pipeline would populate it and potentially unlock cross-repo filtering.
+3. **Session-based holdout validation**: All results are on the full labeled set. Leave-one-session-out would catch overfitting.
 
-4. **Session-based holdout validation**: Current results are on the full labeled set. With 15+ sessions, leave-one-session-out validation would catch overfitting.
-
-5. **Calibrate abstention to cwd-aware scores**: The 0.30 threshold for abstain evaluation was set for the no-cwd score distribution (0.08-0.33). With cwd, scores are 0.49-0.80 — the threshold should be raised to ~0.50.
+4. **Increase repo_mismatch_penalty**: Currently -0.08, too small to filter cross-repo noise when base scores are 0.65+. Per EG#272, needs to be larger or combined with stronger tag-based gating.
