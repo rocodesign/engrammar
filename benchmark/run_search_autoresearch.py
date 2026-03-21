@@ -621,7 +621,8 @@ def cmd_ablation():
         for i, q in enumerate(queries):
             t0 = time.time()
             try:
-                hits, meta = search(q["prompt"], return_diagnostics=True, skip_prerequisites=True, top_k=5)
+                cwd = (q.get("turn_data") or {}).get("cwd")
+                hits, meta = search(q["prompt"], return_diagnostics=True, cwd=cwd, top_k=5)
             except Exception as e:
                 hits, meta = [], {"error": str(e)}
             elapsed = (time.time() - t0) * 1000
@@ -698,9 +699,6 @@ def cmd_single_eval(scoring_overrides=None):
 
     cfg_mod._config_cache = None
     config = cfg_mod.load_config()
-    # Disable hook-level abstention for benchmark — let compute_metrics judge scores
-    config["scoring"]["abstain_threshold"] = 0.0
-    config["scoring"]["min_top1_score"] = 0.0
     if scoring_overrides:
         config["scoring"].update(scoring_overrides)
 
@@ -710,7 +708,8 @@ def cmd_single_eval(scoring_overrides=None):
     for i, q in enumerate(queries):
         t0 = time.time()
         try:
-            hits, meta = search(q["prompt"], return_diagnostics=True, skip_prerequisites=True, top_k=5)
+            cwd = (q.get("turn_data") or {}).get("cwd")
+            hits, meta = search(q["prompt"], return_diagnostics=True, cwd=cwd, top_k=5)
         except Exception as e:
             hits, meta = [], {"error": str(e)}
         elapsed = (time.time() - t0) * 1000
@@ -960,8 +959,6 @@ def cmd_enrich_compare(scoring_overrides=None):
 
     cfg_mod._config_cache = None
     config = cfg_mod.load_config()
-    config["scoring"]["abstain_threshold"] = 0.0
-    config["scoring"]["min_top1_score"] = 0.0
     if scoring_overrides:
         config["scoring"].update(scoring_overrides)
 
@@ -990,7 +987,8 @@ def cmd_enrich_compare(scoring_overrides=None):
 
             t0 = time.time()
             try:
-                hits, meta = search(enriched, return_diagnostics=True, skip_prerequisites=True, top_k=5)
+                cwd = (q.get("turn_data") or {}).get("cwd")
+                hits, meta = search(enriched, return_diagnostics=True, cwd=cwd, top_k=5)
             except Exception as e:
                 hits, meta = [], {"error": str(e)}
             elapsed = (time.time() - t0) * 1000

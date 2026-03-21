@@ -3,109 +3,132 @@
 ## Setup
 
 - 116 queries, 87 labeled (59 prompt, 13 tool, 15 post_tool)
-- 8 repos (staff-portal 34, engrammar 17, talent-activation-frontend 4, sourcing-extension 4, via-dacica 4, toptal 3, screening-wizard-frontend 2, topkit 1)
-- Ground truth: 40 relevant, 22 abstain, 7 useful, plus 15 scenario queries testing repo filtering
-- Benchmark uses `skip_prerequisites=True` (no cwd/repo context)
+- 8 repos, all queries now have cwd from session transcripts
+- Ground truth: 40 relevant, 22 abstain, 7 useful, plus scenario queries
+- Benchmark passes `cwd` to `search()` — repo prior, prerequisites, and abstention all active
 
-## Enrichment Strategy Comparison
+## Run 1: Without cwd (skip_prerequisites=True)
 
-Strategies tested on prompt queries (101 queries after excluding post_tool):
+All scores compressed to 0.08-0.33 range. Abstention blocked everything.
+Forced `abstain_threshold: 0.0` as workaround — produced P@1=33%, P@3=61%.
+**Root cause**: no cwd means no repo detection, vector sims ~0.48 (below 0.55 threshold).
+
+## Run 2: With cwd (proper context)
+
+### Baseline (hook_current config)
+
+| Metric | Value |
+|--------|-------|
+| P@1 | **56%** |
+| P@3 | **74%** |
+| Useful accuracy | **80%** |
+| Abstain accuracy | **42%** |
+| Class separation | **0.293** |
+| Composite | **0.4440** |
+| Composite (hook) | **0.4671** |
+| Composite (interactive) | **0.3679** |
+| Avg latency | 89ms |
+
+Score range now 0.49-0.80, with relevant queries averaging 0.690 and abstain averaging 0.397.
+
+### Enrichment Strategy Comparison
+
+Prompt strategies (101 queries):
 
 | Strategy | P@1 | P@3 | Abstain | Useful | Sep | Composite |
 |----------|-----|-----|---------|--------|-----|-----------|
-| raw | 38% | 67% | 71% | 0% | 0.107 | 0.5455 |
-| strip | 38% | 67% | 71% | 0% | 0.107 | 0.5455 |
-| strip+file | 38% | 67% | 71% | 0% | 0.107 | 0.5455 |
-| strip+prior | 36% | 64% | 71% | 0% | 0.109 | 0.5585 |
-| full | 36% | 64% | 71% | 0% | 0.109 | 0.5585 |
+| **raw** | **60%** | **81%** | 42% | 86% | 0.310 | **0.4089** |
+| strip | 60% | 81% | 42% | 86% | 0.310 | 0.4089 |
+| strip+file | 60% | 81% | 42% | 86% | 0.310 | 0.4089 |
+| strip+prior | 57% | 81% | 42% | 86% | 0.312 | 0.4170 |
+| full | 57% | 81% | 42% | 86% | 0.312 | 0.4170 |
 
 Post-tool strategies (15 queries):
 
 | Strategy | P@1 | P@3 | Useful | Sep | Composite |
 |----------|-----|-----|--------|-----|-----------|
-| narration+tool | 8% | 58% | 33% | 0.251 | 0.7957 |
-| narration only | 17% | 42% | 33% | 0.256 | 0.7994 |
-| tool only | 25% | 33% | 0% | 0.288 | 0.8171 |
+| **narration+tool** | **42%** | **58%** | **67%** | 0.698 | **0.6010** |
+| narration only | 42% | 50% | 67% | 0.630 | 0.6245 |
+| tool only | 25% | 25% | 33% | 0.612 | 0.7680 |
 
-### Key Findings
+**Key findings:**
 
-1. **raw = strip for all practical purposes.** Only 2 queries have IDE tags, so stripping has near-zero aggregate impact. The tag content is short enough that it doesn't meaningfully shift embeddings.
+1. **raw = strip = strip+file** — IDE context is too rare (2/116) to move aggregates. No evidence to enable injection yet.
 
-2. **strip+prior slightly hurts P@1** (-2pp) by injecting prior assistant text that shifts the embedding away from the query's core intent. 4 queries diverged — in 3 cases the prior context pushed the top result to a wrong engram.
+2. **strip+prior hurts P@1** (-3pp) by diluting intent. Q30 "Something with Clarify.md" flips from correct (#401) to wrong (#5) when prior assistant text is injected.
 
-3. **Post-tool: narration+tool has best P@3 (58%)** — narration provides the intent signal that makes tool context useful. Tool-only has better P@1 (25%) but much worse P@3 (33%) — it's a sharper but narrower signal.
+3. **Post-tool: narration+tool is clearly best** — P@3=58% vs tool-only 25%. Narration provides intent; tool context provides specificity. The combination works.
 
-4. **Post-tool: narration-only has best P@1** among narration strategies (17%) — the narration alone is often a better search query than the combined narration+tool text, because tool context (file paths) can dilute the semantic signal.
+4. **tool-only is insufficient** — P@1=25%, P@3=25%, useful=33%. File paths alone are too ambiguous.
 
-### Remaining Issue
+### Per-query divergence
 
-Useful accuracy is 0% across all prompt strategies — queries labeled "useful" score below the 0.40 threshold because the benchmark runs without cwd context, producing compressed scores in the 0.08-0.33 range.
+6 queries diverged between strategies:
+- Q30 "Something with Clarify.md": strip finds #401 (correct), strip+prior shifts to #5 (wrong) — prior text about a completely different topic contaminates the query
+- Q00/Q20: IDE-context queries — strip+file shifts top result but neither has ground truth labels, so impact is neutral
 
-## Control Ablation
-
-6 presets from `semantic_only` to `hook_current`, measuring incremental subsystem contribution:
+### Control Ablation
 
 | Preset | P@1 | P@3 | Abstain | Useful | Composite | Hook | Interactive |
 |--------|-----|-----|---------|--------|-----------|------|-------------|
-| semantic_only | 0% | 52% | 100% | 10% | 0.6339 | 0.5598 | 0.7170 |
-| semantic_plus_tags | 30% | 63% | 75% | 10% | **0.5628** | **0.5341** | 0.6270 |
-| semantic_plus_tags_repo | 30% | 63% | 75% | 10% | 0.5628 | 0.5341 | 0.6270 |
-| semantic_plus_filters | 0% | 0% | 100% | 0% | 0.7500 | 0.6500 | 0.9000 |
-| hook_current | 0% | 0% | 100% | 0% | 0.7500 | 0.6500 | 0.9000 |
-| interactive_current | 33% | 61% | 71% | 10% | 0.5639 | 0.5403 | **0.6274** |
+| semantic_only | 50% | 76% | 33% | 80% | 0.4934 | 0.5230 | 0.3974 |
+| semantic_plus_tags | 56% | 72% | 29% | 80% | 0.4850 | 0.5197 | 0.3921 |
+| semantic_plus_tags_repo | 56% | 72% | 29% | 80% | 0.4850 | 0.5197 | 0.3921 |
+| semantic_plus_filters | 56% | 72% | 42% | 80% | 0.4478 | 0.4701 | 0.3737 |
+| **hook_current** | **56%** | **74%** | **42%** | **80%** | **0.4440** | **0.4671** | **0.3679** |
+| interactive_current | 56% | 74% | 29% | 80% | 0.4813 | 0.5169 | 0.3865 |
 
-### Subsystem Contributions (delta from semantic_only)
+**Subsystem contributions** (delta from semantic_only):
 
 | Added subsystem | Composite | P@1 | Abstain |
 |-----------------|-----------|-----|---------|
-| + content tags | **+0.071** | **+30%** | -25% |
+| + content tags | +0.008 | +6% | -4% |
 | + repo prior | +0.000 | +0% | +0% |
-| + abstention filters | -0.116 | +0% | +0% |
-| + all (hook_current) | -0.116 | +0% | +0% |
+| + abstention filters | +0.046 | +6% | +8% |
+| + all (hook_current) | **+0.049** | +6% | +8% |
 
-### Key Findings
+**Key findings:**
 
-1. **Content tag affinity is the single biggest contributor** — +0.071 composite improvement, +30% P@1. This validates the per-tag matching approach from the previous autoresearch.
+1. **Abstention filters are the biggest composite contributor** (+0.046) — they correctly suppress 42% of abstain queries, significantly improving the composite score.
 
-2. **Repo prior adds zero value** in the benchmark context. This is because `skip_prerequisites=True` means no cwd is detected, so repo_match_boost/penalty never fires. In production (with cwd), it would help.
+2. **Content tags provide marginal P@1 lift** (+6%) but hurt abstain accuracy (-4%) — they make the system more confident on both correct and incorrect matches.
 
-3. **Abstention filters are too aggressive** for the benchmark context — they block all queries because vector similarities without cwd are below the 0.55 threshold. `semantic_plus_filters` and `hook_current` both show 0% P@1.
+3. **Repo prior adds nothing** — identical results with and without it. The `engram_repo_stats` table is empty, so repo_match_boost/penalty never fires. This subsystem needs match data to be useful.
 
-4. **`interactive_current` is the best overall config** (composite 0.5639) — it keeps tags and repo prior but disables abstention, which is correct for the benchmark's no-cwd context.
+4. **hook_current is the best balanced config** (composite 0.4440). The feedback weight (+0.20) provides the final 2pp P@3 lift from 72% to 74%.
 
-5. **Hook vs Interactive objectives diverge clearly**: semantic_only wins on hook objective (abstain=100%) but is worst on interactive (no P@1). interactive_current is best overall balanced.
+5. **Dual objectives diverge**: hook_current wins on hook objective (0.4671) while semantic_only wins on interactive (0.3974) — confirming the need for separate configs.
 
-## Baseline Single Eval
+### Bucket Metrics (hook_current)
 
-Current production config with abstention disabled:
+| Bucket | P@1 | P@3 | Abstain | Useful | n |
+|--------|-----|-----|---------|--------|---|
+| expect:relevant | 57% | 75% | — | — | 53 |
+| expect:abstain | — | — | 42% | — | 24 |
+| expect:useful | — | — | — | 80% | 10 |
+| type:prompt | 73% | 91% | 48% | 80% | 59 |
+| type:tool | 12% | 50% | 0% | 100% | 13 |
+| type:post_tool | 42% | 50% | 0% | 67% | 15 |
 
-| Metric | Value |
-|--------|-------|
-| P@1 | 33% |
-| P@3 | 61% |
-| Useful accuracy | 10% |
-| Abstain accuracy | 71% |
-| Class separation | 0.101 |
-| Composite | 0.5639 |
-| Avg latency | 57ms |
+**Key gaps:**
+- **tool queries P@1=12%** — `_build_tool_query` reconstructions are too generic. "editing react typescript component" doesn't match specific engrams.
+- **abstain accuracy 42%** — 14/24 abstain queries still score above 0.30 threshold. Most are short vague queries ("dont push", "did it complete?") that happen to embed near some engram.
+- **post_tool P@1=42%** — narration helps but top-1 precision is still weak because narration text is often about methodology ("Let me check...") not domain.
 
-### Score Distribution
+## Promotion Decision
 
-- Relevant queries: avg score 0.278
-- Abstain queries: avg score 0.177
-- Score range: 0.08 to 0.78 (most in 0.23-0.33)
-- Only 1 query above 0.50 (Q86 "TODO comments" at 0.779)
+**hook_current is validated as the best config** — composite 0.4440, P@1=56%, P@3=74%, useful=80%.
+
+No config changes promoted. The production config already matches hook_current.
 
 ## Next Steps
 
-1. **The benchmark needs cwd context.** Without it, repo prior and abstention can't be evaluated. Add `cwd` field to search_queries.json based on session transcript paths, and pass it to `search()`.
+1. **Improve abstain accuracy**: The low-information query filter catches obvious filler but misses borderline cases. Add more patterns or a vector-sim-based abstention calibrated to the cwd-aware score distribution.
 
-2. **Enrichment has minimal impact with current data.** Only 2/116 queries have IDE context. To properly evaluate enrichment, either:
-   - Collect more sessions from IDE (VS Code) where IDE tags are present
-   - Or inject synthetic IDE context for a subset of queries
+2. **Improve tool query P@1**: `_build_tool_query` produces overly generic queries. Narration injection for PreToolUse (currently off by default) would help — the ablation shows narration is the strongest signal for tool-context searches.
 
-3. **Post-tool narration is valuable but undertested.** 15 post_tool queries show narration+tool giving the best P@3. More real PostToolUse events from diverse repos would strengthen this.
+3. **Populate engram_repo_stats**: The repo prior subsystem is dead weight because the stats table is empty. Running the auto-pin pipeline would populate it and potentially unlock cross-repo filtering.
 
-4. **Content tags are the proven winner.** Future sweeps should focus on tag affinity parameters (already optimized in previous autoresearch) rather than trying to squeeze more from enrichment.
+4. **Session-based holdout validation**: Current results are on the full labeled set. With 15+ sessions, leave-one-session-out validation would catch overfitting.
 
-5. **Hook vs interactive configs should be separate.** The abstention thresholds that work for hook injection (high min_score, aggressive filtering) are catastrophic for interactive search. Ship two configs.
+5. **Calibrate abstention to cwd-aware scores**: The 0.30 threshold for abstain evaluation was set for the no-cwd score distribution (0.08-0.33). With cwd, scores are 0.49-0.80 — the threshold should be raised to ~0.50.
