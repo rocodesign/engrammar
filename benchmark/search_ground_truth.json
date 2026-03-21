@@ -698,6 +698,200 @@
       "expected_ids": [],
       "note": "tool query: pip install is too generic, should abstain",
       "scenario": "tool_abstain"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        161
+      ],
+      "note": "post_tool: PR review grep — should find PR label engram",
+      "idx": 97,
+      "query": "PR Review: [NEWOFF-614] Add expanded recommendation",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "post_tool: found component — should surface React component patterns",
+      "idx": 98,
+      "query": "Found it. The expanded view is in PriorityProfileItemDetailView",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "post_tool: permissions investigation — should surface permission-related engrams",
+      "idx": 99,
+      "query": "Let me check the current permissions setup and figure out what needs to change",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        370
+      ],
+      "note": "post_tool: CI matrix projects flag — build_image workflow",
+      "idx": 100,
+      "query": "Now let me look at how the CI matrix generates the --projects flag for each chun",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        360
+      ],
+      "note": "post_tool: HAPPO_DEBUG env var",
+      "idx": 101,
+      "query": "Not set anywhere yet. Let me add HAPPO_DEBUG=true to the CI workflow environment",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        330,
+        332
+      ],
+      "note": "post_tool: happo in continuous_deployment — two configs engram",
+      "idx": 102,
+      "query": "The continuous_deployment workflow also uses happo. Let me add the same env vars",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        334,
+        353
+      ],
+      "note": "post_tool: happo no snapshots — CI check engram",
+      "idx": 103,
+      "query": "There's the problem. Every single chunk says [HAPPO] No snapshots captured",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        355
+      ],
+      "note": "post_tool: happo ESM/require incompatibility",
+      "idx": 104,
+      "query": "The issue is clear: npx happo uses require() which doesn't work with ESM modules",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        368
+      ],
+      "note": "post_tool: HAPPO_ASSET_HASH_SALT grep — salt per-run engram",
+      "idx": 105,
+      "query": "I see the CI workflow still references HAPPO_ASSET_HASH_SALT in the environment",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        235
+      ],
+      "note": "post_tool: workflow review gate skipped",
+      "idx": 106,
+      "query": "The review gate is false — it was skipped. The state jumped straight to implemen",
+      "repo": "staff-portal",
+      "type": "post_tool"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        29,
+        98
+      ],
+      "note": "tool: edit .tsx — type vs interface convention",
+      "type": "tool",
+      "idx": 107,
+      "query": "editing react typescript component apps/priority-profiles/src/components/Priorit",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        106,
+        51
+      ],
+      "note": "tool: edit .cy.tsx — cypress testing conventions",
+      "type": "tool",
+      "idx": 108,
+      "query": "editing cypress testing apps/priority-profiles/src/components/PriorityProfile.cy",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "tool: edit generic python — too vague for specific engram",
+      "type": "tool",
+      "idx": 109,
+      "query": "editing python engrammar/search/engine.py",
+      "repo": "engrammar"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        106,
+        38
+      ],
+      "note": "tool: write .cy.tsx — cypress + cy.contains convention",
+      "type": "tool",
+      "idx": 110,
+      "query": "writing PriorityProfile.cy.tsx apps/priority-profiles/src/components/PriorityPro",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "abstain",
+      "expected_ids": [],
+      "note": "tool: git rebase — no specific engram for this",
+      "type": "tool",
+      "idx": 111,
+      "query": "git rebase workflow",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "useful",
+      "expected_ids": [],
+      "note": "tool: jest watch — should surface testing engrams",
+      "type": "tool",
+      "idx": 112,
+      "query": "testing npx jest --watchAll",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        332,
+        334
+      ],
+      "note": "tool: storybook visual CI — happo storybook engrams",
+      "type": "tool",
+      "idx": 113,
+      "query": "npm run storybook:test:visual:ci",
+      "repo": "staff-portal"
+    },
+    {
+      "expect": "relevant",
+      "expected_ids": [
+        381
+      ],
+      "note": "tool: Skill toptal-workflow — should find workflow engram",
+      "type": "tool",
+      "idx": 114,
+      "query": "toptal-workflow:start skill",
+      "repo": "staff-portal"
     }
   ]
 }

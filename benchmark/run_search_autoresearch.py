@@ -32,6 +32,68 @@ QUERIES_PATH = os.path.join(os.path.dirname(__file__), "search_queries.json")
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results", "autoresearch")
 ABSTAIN_SCORE_THRESHOLD = 0.30
 
+# ---------------------------------------------------------------------------
+# Control presets: named scoring configs for subsystem ablation
+# Each zeroes out a specific subsystem to measure its contribution.
+# ---------------------------------------------------------------------------
+
+CONTROL_PRESETS = {
+    # Semantic search only — no tags, no repo prior, no feedback, no gating
+    "semantic_only": {
+        "weight_content_tag": 0.0,
+        "weight_feedback": 0.0,
+        "repo_match_boost": 0.0,
+        "repo_mismatch_penalty": 0.0,
+        "abstain_threshold": 0.0,
+        "min_top1_score": 0.0,
+    },
+    # Semantic + content tag affinity — no repo/feedback/gating
+    "semantic_plus_tags": {
+        "weight_content_tag": 0.25,
+        "weight_feedback": 0.0,
+        "repo_match_boost": 0.0,
+        "repo_mismatch_penalty": 0.0,
+        "abstain_threshold": 0.0,
+        "min_top1_score": 0.0,
+    },
+    # Semantic + tags + repo prior — no feedback/gating
+    "semantic_plus_tags_repo": {
+        "weight_content_tag": 0.25,
+        "weight_feedback": 0.0,
+        "repo_match_boost": 0.05,
+        "repo_mismatch_penalty": -0.08,
+        "abstain_threshold": 0.0,
+        "min_top1_score": 0.0,
+    },
+    # Semantic + tags + filters (gating) — no repo/feedback
+    "semantic_plus_filters": {
+        "weight_content_tag": 0.25,
+        "weight_feedback": 0.0,
+        "repo_match_boost": 0.0,
+        "repo_mismatch_penalty": 0.0,
+        "abstain_threshold": 0.55,
+        "min_top1_score": 0.40,
+    },
+    # Current production config (hook mode — higher min_score, abstention on)
+    "hook_current": {
+        "weight_content_tag": 0.25,
+        "weight_feedback": 0.20,
+        "repo_match_boost": 0.05,
+        "repo_mismatch_penalty": -0.08,
+        "abstain_threshold": 0.55,
+        "min_top1_score": 0.40,
+    },
+    # Interactive search mode — no abstention, lower thresholds
+    "interactive_current": {
+        "weight_content_tag": 0.25,
+        "weight_feedback": 0.20,
+        "repo_match_boost": 0.05,
+        "repo_mismatch_penalty": -0.08,
+        "abstain_threshold": 0.0,
+        "min_top1_score": 0.0,
+    },
+}
+
 # Enrichment presets for --enrich flag
 ENRICHMENT_PRESETS = {
     "none": {
@@ -61,6 +123,22 @@ def load_ground_truth():
 def load_queries():
     with open(QUERIES_PATH) as f:
         return json.load(f)
+
+
+def build_query_gt_map(queries, ground_truth):
+    """Map query list indices to ground truth idx values.
+
+    Queries are 0-indexed in the list; ground truth labels use their own
+    sparse idx (1, 3, 4, 5, ...). Match by comparing prompt text prefixes.
+    """
+    mapping = {}
+    for i, q in enumerate(queries):
+        prompt_prefix = q["prompt"][:60]
+        for g in ground_truth:
+            if g["query"][:60] in prompt_prefix or prompt_prefix[:40] in g["query"]:
+                mapping[i] = g["idx"]
+                break
+    return mapping
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +523,7 @@ def compute_metrics(results, gt_by_idx):
     useful_acc = useful_correct / max(useful_total, 1)
     abstain_acc = abstain_correct / max(abstain_total, 1)
 
-    # Composite score (lower is better)
+    # Composite score (lower is better) — balanced objective
     # P@1 35%, P@3 20%, abstain 25%, class sep 10%, useful 10%
     composite = 1.0 - (
         0.35 * p1
@@ -453,6 +531,24 @@ def compute_metrics(results, gt_by_idx):
         + 0.25 * abstain_acc
         + 0.10 * min(class_separation, 1.0)
         + 0.10 * useful_acc
+    )
+
+    # Hook objective — weights abstain heavily, tolerates dropping low-confidence useful
+    composite_hook = 1.0 - (
+        0.30 * p1
+        + 0.15 * p3
+        + 0.35 * abstain_acc
+        + 0.10 * min(class_separation, 1.0)
+        + 0.10 * useful_acc
+    )
+
+    # Interactive objective — weights useful/P@3, penalizes over-abstention
+    composite_interactive = 1.0 - (
+        0.25 * p1
+        + 0.30 * p3
+        + 0.10 * abstain_acc
+        + 0.10 * min(class_separation, 1.0)
+        + 0.25 * useful_acc
     )
 
     return {
@@ -466,13 +562,128 @@ def compute_metrics(results, gt_by_idx):
         "avg_useful_score": round(avg_useful, 4),
         "avg_abstain_score": round(avg_abstain, 4),
         "composite": round(composite, 4),
+        "composite_hook": round(composite_hook, 4),
+        "composite_interactive": round(composite_interactive, 4),
         "labeled_queries": precision_total + abstain_total + useful_total,
     }
+
+
+def compute_bucket_metrics(results, gt_by_idx):
+    """Break down metrics by query bucket (relevant/useful/abstain) and type (prompt/tool/post_tool)."""
+    gt_list = list(gt_by_idx.values())
+    results_by_idx = {r["idx"]: r for r in results}
+
+    buckets = {}
+    for gt in gt_list:
+        idx = gt["idx"]
+        r = results_by_idx.get(idx)
+        if not r:
+            continue
+
+        bucket = gt["expect"]
+        qtype = gt.get("type", "prompt")
+
+        for key in [f"expect:{bucket}", f"type:{qtype}"]:
+            buckets.setdefault(key, []).append(r)
+
+    bucket_metrics = {}
+    for key, bucket_results in buckets.items():
+        bucket_metrics[key] = compute_metrics(bucket_results, gt_by_idx)
+
+    return bucket_metrics
 
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
+
+def cmd_ablation():
+    """Run control preset ablations and compare subsystem contributions."""
+    from engrammar.search.engine import search
+    import engrammar.core.config as cfg_mod
+
+    queries = load_queries()
+    gt = load_ground_truth()
+    gt_by_idx = {g["idx"]: g for g in gt}
+    q_gt_map = build_query_gt_map(queries, gt)
+
+    all_results = {}
+
+    for preset_name, overrides in CONTROL_PRESETS.items():
+        cfg_mod._config_cache = None
+        config = cfg_mod.load_config()
+        config["scoring"].update(overrides)
+
+        results = []
+        total_time = 0
+
+        for i, q in enumerate(queries):
+            t0 = time.time()
+            try:
+                hits, meta = search(q["prompt"], return_diagnostics=True, skip_prerequisites=True, top_k=5)
+            except Exception as e:
+                hits, meta = [], {"error": str(e)}
+            elapsed = (time.time() - t0) * 1000
+            total_time += elapsed
+
+            was_filtered = meta.get("abstained", False) or meta.get("skip_reason", "")
+            results.append({
+                "idx": q_gt_map.get(i, i),
+                "hits": [{"id": h["id"], "score": h["score"], "text": h["text"][:80]}
+                         for h in hits[:5]],
+                "filtered": bool(was_filtered),
+            })
+
+        metrics = compute_metrics(results, gt_by_idx)
+        metrics["avg_latency_ms"] = round(total_time / max(len(results), 1), 1)
+        bucket = compute_bucket_metrics(results, gt_by_idx)
+        all_results[preset_name] = {"metrics": metrics, "bucket_metrics": bucket}
+        print(f"  {preset_name}: composite={metrics['composite']:.4f} "
+              f"hook={metrics['composite_hook']:.4f} "
+              f"interactive={metrics['composite_interactive']:.4f}", flush=True)
+
+    # Print comparison table
+    print("\n" + "=" * 110)
+    print("  Control Preset Ablation")
+    print("=" * 110)
+    print(f"  {'Preset':<25s} {'P@1':>5s} {'P@3':>5s} {'Abst':>5s} {'Usef':>5s} "
+          f"{'Sep':>6s} {'Composite':>9s} {'Hook':>9s} {'Interact':>9s} {'ms':>5s}")
+    print("-" * 110)
+
+    for name in CONTROL_PRESETS:
+        m = all_results[name]["metrics"]
+        print(f"  {name:<25s} {m['precision_at_1']:>4.0%} {m['precision_at_3']:>4.0%} "
+              f"{m['abstain_accuracy']:>4.0%} {m['useful_accuracy']:>4.0%} "
+              f"{m['class_separation']:>6.3f} {m['composite']:>9.4f} "
+              f"{m['composite_hook']:>9.4f} {m['composite_interactive']:>9.4f} "
+              f"{m['avg_latency_ms']:>4.0f}")
+
+    # Subsystem deltas (incremental contribution)
+    print("\n--- Subsystem Contribution (delta from semantic_only) ---")
+    base = all_results["semantic_only"]["metrics"]
+    for name in ["semantic_plus_tags", "semantic_plus_tags_repo", "semantic_plus_filters", "hook_current"]:
+        m = all_results[name]["metrics"]
+        delta_c = base["composite"] - m["composite"]  # positive = improvement
+        delta_p1 = m["precision_at_1"] - base["precision_at_1"]
+        delta_abs = m["abstain_accuracy"] - base["abstain_accuracy"]
+        print(f"  + {name:<25s} composite: {delta_c:+.4f}  P@1: {delta_p1:+.2%}  abstain: {delta_abs:+.2%}")
+
+    # Bucket breakdown for best config
+    print("\n--- Bucket Metrics (hook_current) ---")
+    for key, bm in sorted(all_results["hook_current"]["bucket_metrics"].items()):
+        print(f"  {key:<20s} P@1={bm['precision_at_1']:.0%} P@3={bm['precision_at_3']:.0%} "
+              f"abstain={bm['abstain_accuracy']:.0%} useful={bm['useful_accuracy']:.0%} "
+              f"n={bm['labeled_queries']}")
+
+    # Save
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    outpath = os.path.join(RESULTS_DIR, f"ablation-{timestamp}.json")
+    serializable = {k: v for k, v in all_results.items()}
+    with open(outpath, "w") as f:
+        json.dump({"timestamp": timestamp, "presets": serializable}, f, indent=2)
+    print(f"\nSaved to {outpath}")
 
 def cmd_single_eval(scoring_overrides=None):
     """Run a single evaluation and print results."""
@@ -483,9 +694,13 @@ def cmd_single_eval(scoring_overrides=None):
     queries = load_queries()
     gt = load_ground_truth()
     gt_by_idx = {g["idx"]: g for g in gt}
+    q_gt_map = build_query_gt_map(queries, gt)
 
     cfg_mod._config_cache = None
     config = cfg_mod.load_config()
+    # Disable hook-level abstention for benchmark — let compute_metrics judge scores
+    config["scoring"]["abstain_threshold"] = 0.0
+    config["scoring"]["min_top1_score"] = 0.0
     if scoring_overrides:
         config["scoring"].update(scoring_overrides)
 
@@ -503,7 +718,7 @@ def cmd_single_eval(scoring_overrides=None):
 
         was_filtered = meta.get("abstained", False) or meta.get("skip_reason", "")
         results.append({
-            "idx": i,
+            "idx": q_gt_map.get(i, i),
             "query": q["prompt"][:100],
             "hits": [{"id": h["id"], "score": h["score"], "text": h["text"][:80], "diag": h.get("_diag", {})}
                      for h in hits[:5]],
@@ -662,15 +877,221 @@ def cmd_report():
               f"| {json.dumps(r['config'])}")
 
 
+def _build_enriched_query(q, strategy):
+    """Build a search query from a benchmark entry using the given enrichment strategy.
+
+    Strategies:
+        raw         — pass prompt as-is (includes IDE tags, system tags)
+        strip       — strip IDE/system tags only
+        strip+file  — strip tags, prepend [file: path] if available
+        strip+prior — strip tags, prepend prior_assistant for vague queries
+        full        — strip tags, inject file + prior_assistant
+        post_tool:narration+tool — narration + tool context (post_tool default)
+        post_tool:narration      — narration only
+        post_tool:tool           — tool context only
+    """
+    import re
+
+    prompt = q["prompt"]
+    td = q.get("turn_data", {}) or {}
+    qtype = q.get("type", "prompt")
+
+    def strip_tags(text):
+        text = re.sub(r'<ide_opened_file>.*?</ide_opened_file>\s*', '', text, flags=re.DOTALL)
+        text = re.sub(r'<ide_selection>.*?</ide_selection>\s*', '', text, flags=re.DOTALL)
+        text = re.sub(r'<task-notification>.*?</task-notification>\s*', '', text, flags=re.DOTALL)
+        text = re.sub(r'<system-reminder>.*?</system-reminder>\s*', '', text, flags=re.DOTALL)
+        return text.strip()
+
+    if strategy == "raw":
+        return prompt[:400]
+
+    if qtype == "post_tool":
+        narration = td.get("narration", "")
+        tool_input = td.get("tool_input", {})
+        tool_name = td.get("tool_name", "")
+
+        tool_ctx = ""
+        if tool_name == "Read":
+            path = tool_input.get("file_path", "")
+            if path:
+                segments = path.split("/")
+                tool_ctx = "/".join(segments[-3:]) if len(segments) > 3 else path
+        elif tool_name in ("Grep", "Glob"):
+            tool_ctx = tool_input.get("pattern", "")
+
+        if strategy == "post_tool:narration+tool":
+            parts = [p for p in [narration[:200], tool_ctx] if p]
+            return " ".join(parts) if parts else prompt
+        elif strategy == "post_tool:narration":
+            return narration[:200] if narration else prompt
+        elif strategy == "post_tool:tool":
+            return tool_ctx if tool_ctx else prompt
+
+    # For prompt/tool types
+    clean = strip_tags(prompt) if strategy != "raw" else prompt
+
+    if strategy == "strip":
+        return clean[:300]
+
+    if strategy in ("strip+file", "full"):
+        ide_file = td.get("ide_file", "")
+        if ide_file:
+            clean = f"[file: {ide_file}] {clean}"
+
+    if strategy in ("strip+prior", "full"):
+        prior = td.get("prior_assistant", "")
+        if prior and len(clean.split()) < 8:
+            # Only inject prior for short/vague queries
+            clean = f"{prior[:150]} {clean}"
+
+    return clean[:400]
+
+
+def cmd_enrich_compare(scoring_overrides=None):
+    """Compare enrichment strategies across all queries."""
+    from engrammar.search.engine import search
+    from engrammar.search.query_filter import is_low_information
+    import engrammar.core.config as cfg_mod
+
+    queries = load_queries()
+    gt = load_ground_truth()
+    gt_by_idx = {g["idx"]: g for g in gt}
+
+    cfg_mod._config_cache = None
+    config = cfg_mod.load_config()
+    config["scoring"]["abstain_threshold"] = 0.0
+    config["scoring"]["min_top1_score"] = 0.0
+    if scoring_overrides:
+        config["scoring"].update(scoring_overrides)
+
+    # Strategies to compare
+    strategies = ["raw", "strip", "strip+file", "strip+prior", "full"]
+    post_tool_strategies = ["post_tool:narration+tool", "post_tool:narration", "post_tool:tool"]
+
+    all_strategy_results = {}
+
+    q_gt_map = build_query_gt_map(queries, gt)
+
+    for strategy in strategies + post_tool_strategies:
+        results = []
+        total_time = 0
+
+        for i, q in enumerate(queries):
+            qtype = q.get("type", "prompt")
+
+            # Skip post_tool strategies for non-post_tool queries and vice versa
+            if strategy.startswith("post_tool:") and qtype != "post_tool":
+                continue
+            if not strategy.startswith("post_tool:") and qtype == "post_tool":
+                continue
+
+            enriched = _build_enriched_query(q, strategy)
+
+            t0 = time.time()
+            try:
+                hits, meta = search(enriched, return_diagnostics=True, skip_prerequisites=True, top_k=5)
+            except Exception as e:
+                hits, meta = [], {"error": str(e)}
+            elapsed = (time.time() - t0) * 1000
+            total_time += elapsed
+
+            was_filtered = meta.get("abstained", False) or meta.get("skip_reason", "")
+            gt_idx = q_gt_map.get(i, i)
+            results.append({
+                "idx": gt_idx,
+                "query": enriched[:100],
+                "original": q["prompt"][:80],
+                "hits": [{"id": h["id"], "score": h["score"], "text": h["text"][:80]}
+                         for h in hits[:5]],
+                "filtered": bool(was_filtered),
+                "time_ms": round(elapsed, 1),
+            })
+
+        if not results:
+            continue
+
+        metrics = compute_metrics(results, gt_by_idx)
+        metrics["avg_latency_ms"] = round(total_time / max(len(results), 1), 1)
+        metrics["total_queries"] = len(results)
+        all_strategy_results[strategy] = {"metrics": metrics, "results": results}
+
+    # Print comparison table
+    print("\n" + "=" * 90)
+    print("  Enrichment Strategy Comparison")
+    print("=" * 90)
+    print(f"  {'Strategy':<25s} {'P@1':>6s} {'P@3':>6s} {'Abstain':>8s} {'Useful':>7s} "
+          f"{'Sep':>6s} {'Composite':>10s} {'Queries':>8s} {'Latency':>8s}")
+    print("-" * 90)
+
+    for strategy in strategies + post_tool_strategies:
+        if strategy not in all_strategy_results:
+            continue
+        m = all_strategy_results[strategy]["metrics"]
+        print(f"  {strategy:<25s} {m['precision_at_1']:>5.0%} {m['precision_at_3']:>5.0%} "
+              f"{m['abstain_accuracy']:>7.0%} {m['useful_accuracy']:>6.0%} "
+              f"{m['class_separation']:>6.3f} {m['composite']:>9.4f} "
+              f"{m['total_queries']:>7d} {m['avg_latency_ms']:>6.0f}ms")
+
+    print("-" * 90)
+
+    # Find best prompt strategy
+    prompt_strategies = {k: v for k, v in all_strategy_results.items() if not k.startswith("post_tool:")}
+    if prompt_strategies:
+        best = min(prompt_strategies.items(), key=lambda x: x[1]["metrics"]["composite"])
+        print(f"\n  Best prompt strategy: {best[0]} (composite={best[1]['metrics']['composite']:.4f})")
+
+    # Per-query diff: show where strategies diverge
+    print("\n--- Per-query divergence (strip vs strip+prior) ---")
+    for strategy_a, strategy_b in [("strip", "strip+prior"), ("strip", "strip+file")]:
+        if strategy_a not in all_strategy_results or strategy_b not in all_strategy_results:
+            continue
+        ra = {r["idx"]: r for r in all_strategy_results[strategy_a]["results"]}
+        rb = {r["idx"]: r for r in all_strategy_results[strategy_b]["results"]}
+        diffs = 0
+        for idx in ra:
+            if idx not in rb:
+                continue
+            a_top = ra[idx]["hits"][0]["id"] if ra[idx]["hits"] else None
+            b_top = rb[idx]["hits"][0]["id"] if rb[idx]["hits"] else None
+            a_score = ra[idx]["hits"][0]["score"] if ra[idx]["hits"] else 0
+            b_score = rb[idx]["hits"][0]["score"] if rb[idx]["hits"] else 0
+            if a_top != b_top or abs(a_score - b_score) > 0.05:
+                g = gt_by_idx.get(idx)
+                label = g["query"][:40] if g else ra[idx]["original"][:40]
+                expected = g["expected_ids"][:2] if g else []
+                print(f"  Q{idx:02d} {strategy_a}: #{a_top}({a_score:.3f}) vs "
+                      f"{strategy_b}: #{b_top}({b_score:.3f}) expected={expected} | {label}")
+                diffs += 1
+        if diffs == 0:
+            print(f"  (no divergence between {strategy_a} and {strategy_b})")
+
+    # Save results
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    outpath = os.path.join(RESULTS_DIR, f"enrich-{timestamp}.json")
+    serializable = {k: {"metrics": v["metrics"]} for k, v in all_strategy_results.items()}
+    with open(outpath, "w") as f:
+        json.dump({"timestamp": timestamp, "strategies": serializable}, f, indent=2)
+    print(f"\nSaved to {outpath}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Search autoresearch loop")
     parser.add_argument("--sweep", action="store_true", help="Grid sweep over parameters")
+    parser.add_argument("--enrich", action="store_true", help="Compare enrichment strategies")
+    parser.add_argument("--ablation", action="store_true", help="Run control preset ablations")
     parser.add_argument("--report", action="store_true", help="Show best config from results")
     parser.add_argument("--override", type=str, help="JSON scoring overrides for single eval")
     args = parser.parse_args()
 
     if args.sweep:
         cmd_sweep()
+    elif args.enrich:
+        overrides = json.loads(args.override) if args.override else None
+        cmd_enrich_compare(overrides)
+    elif args.ablation:
+        cmd_ablation()
     elif args.report:
         cmd_report()
     else:
