@@ -2,8 +2,23 @@
 
 - Priority: High (highest)
 - Complexity: C2
-- Status: Open
+- Status: Completed
 - Depends on: #039 (`engram_tags` table must exist, env tags dropped from scoring)
+- Completed: 2026-03-20
+
+## What shipped
+
+- Tag vocab index: `build_tag_vocab_index()` in embeddings.py, stores `tag_vocab_embeddings.npy` + `tag_vocab_labels.json`
+- Prompt tag detection: `detect_prompt_tags()` in `src/search/prompt_tags.py`
+- Content tag affinity scoring: engine.py section 3.6, prompt-derived tags vs per-engram content tags
+- Config: `weight_content_tag`, `weight_feedback`, `prompt_tag_top_k`, `prompt_tag_threshold`
+- Vocab index built during setup/rebuild CLI
+- Backfill command: `engrammar backfill-tags --llm` for cold start
+
+## Remaining refinement (not blocking close)
+
+- **Feedback prior not yet prompt-contextual**: engine.py:168 computes feedback from all of an engram's content tags (generic prior), not keyed by prompt-derived tags as described below. This will matter once content tag relevance data accumulates from evaluation.
+- **Repo prior is fixed boost/penalty**, not a normalized scoring component. Overlaps with #018 (scoring normalization).
 
 ## Problem
 

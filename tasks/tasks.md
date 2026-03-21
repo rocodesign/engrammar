@@ -31,15 +31,11 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [ ] **#018 Normalize and blend scoring with configurable weights** `C2`
   - `tasks/open/[1]-018-widen-tag-penalty/task.md`
-- [ ] **#020 Extract tags from user prompt for dynamic tag affinity** `C2`
-  - `tasks/open/[1]-020-prompt-derived-tags/task.md`
 - [ ] **#019 Lower tag relevance evidence threshold** `C1`
   - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
 
 ### Medium
 
-- [ ] **#003 LLM-assisted engram deduplication** `C2` `absorbs: #004`
-  - `tasks/open/[2]-003-lesson-dedup-too-weak/task.md`
 - [ ] **#005 Incremental embedding index update** `C2`
   - `tasks/open/[2]-005-incremental-embedding-index/task.md`
 - [ ] **#009 Richer tool-use context for PreToolUse search** `C2`
@@ -76,6 +72,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[1]-011-coalesced-turn-extraction-queue/task.md`
 - [x] **#017 Add minimum score threshold for prompt search** `C1`
   - `tasks/completed/[1]-017-reduce-injection-noise/task.md`
+- [x] **#020 Prompt-derived content tag affinity** `C2`
+  - `tasks/completed/[1]-020-prompt-derived-tags/task.md`
 - [x] **#021 LLM-selected relevant tags during extraction** `C2`
   - `tasks/completed/[1]-021-extraction-relevant-tags/task.md`
 
@@ -83,6 +81,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [x] **#002 Fix extraction prompt wrong categories** `C1`
   - `tasks/completed/[2]-002-extraction-wrong-categories/task.md`
+- [x] **#003 LLM-assisted engram deduplication** `C2`
+  - `tasks/completed/[2]-003-lesson-dedup-too-weak/task.md`
 
 ### Low
 
