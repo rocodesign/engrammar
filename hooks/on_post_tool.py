@@ -230,10 +230,14 @@ def main():
             })
             return
 
-        # Record shown engrams
+        # Record shown engrams and update match stats
         if session_id:
+            from engrammar.core.db import update_match_stats
+            from engrammar.search.environment import _detect_repo
+            hook_repo = _detect_repo(cwd=hook_cwd) if hook_cwd else None
             for r in results:
                 record_shown_engram(session_id, r["id"], "PostToolUse")
+                update_match_stats(r["id"], repo=hook_repo)
 
         # Log event
         try:

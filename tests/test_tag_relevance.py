@@ -225,6 +225,23 @@ class TestAutoPinUnpin:
 
         assert row["pinned"] == 0
 
+    def test_no_pin_with_low_positive_rate(self, test_db):
+        """Should not pin when positive rate is below PIN_POSITIVE_RATE even if avg score is high."""
+        lid = add_engram(text="Test", category="test", db_path=test_db)
+
+        # Mix of positive and negative evals — avg score may be above threshold
+        # but positive rate is below 80%
+        for _ in range(4):
+            update_tag_relevance(lid, {"ts": 0.9}, weight=2.0, db_path=test_db)
+        for _ in range(3):
+            update_tag_relevance(lid, {"ts": -0.5}, weight=2.0, db_path=test_db)
+
+        conn = get_connection(test_db)
+        row = conn.execute("SELECT pinned FROM engrams WHERE id = ?", (lid,)).fetchone()
+        conn.close()
+
+        assert row["pinned"] == 0
+
 
 class TestTagRelevanceWithEvidence:
     """Test get_tag_relevance_with_evidence() function."""

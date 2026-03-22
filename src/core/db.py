@@ -376,7 +376,7 @@ def find_auto_pin_tag_subsets(engram_id, threshold=AUTO_PIN_THRESHOLD, db_path=N
 
 
 def update_match_stats(engram_id, repo=None, tags=None, db_path=None):
-    """Increment times_matched (global + per-repo) and auto-pin if repo threshold reached.
+    """Increment times_matched (global + per-repo).
 
     Args:
         engram_id: the engram that matched
@@ -403,35 +403,6 @@ def update_match_stats(engram_id, repo=None, tags=None, db_path=None):
                times_matched = times_matched + 1, last_matched = ?""",
             (engram_id, repo, now, now),
         )
-
-        # Check repo-based auto-pin threshold
-        row = conn.execute(
-            "SELECT times_matched FROM engram_repo_stats WHERE engram_id = ? AND repo = ?",
-            (engram_id, repo),
-        ).fetchone()
-
-        if row and row["times_matched"] >= AUTO_PIN_THRESHOLD:
-            engram = conn.execute(
-                "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
-            ).fetchone()
-
-            if engram and not engram["pinned"]:
-                # Auto-pin with repo prerequisite
-                existing = {}
-                if engram["prerequisites"]:
-                    try:
-                        existing = json.loads(engram["prerequisites"])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-                repos = set(existing.get("repos", []))
-                repos.add(repo)
-                existing["repos"] = sorted(repos)
-
-                conn.execute(
-                    "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(existing), now, engram_id),
-                )
 
     # engram_tag_stats no longer written (env tags deprecated as stored signal per #039)
 
@@ -719,6 +690,7 @@ EMA_ALPHA = 0.3
 SCORE_CLAMP = (-3.0, 3.0)
 MIN_EVIDENCE_FOR_PIN = 5
 PIN_THRESHOLD = 0.6
+PIN_POSITIVE_RATE = 0.8  # 80% of evaluations must be positive
 UNPIN_THRESHOLD = 0.2
 
 
@@ -1010,7 +982,12 @@ def merge_content_tags(survivor_id, absorbed_ids, db_path=None):
 
 
 def check_and_apply_pin_decisions(engram_id, db_path=None):
-    """Auto-pin at avg > PIN_THRESHOLD with enough evidence, auto-unpin at avg < UNPIN_THRESHOLD.
+    """Auto-pin when shown frequently AND consistently useful, auto-unpin when score drops.
+
+    Pin criteria (all must be met):
+    - Enough evaluations (>= MIN_EVIDENCE_FOR_PIN)
+    - High average relevance score (> PIN_THRESHOLD)
+    - High positive rate (>= PIN_POSITIVE_RATE of evaluations are positive)
 
     Only auto-unpins if the engram was auto-pinned (has "auto_pinned": true in prerequisites).
     Manual pins are never auto-unpinned.
@@ -1030,8 +1007,11 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
         conn.close()
         return None
 
-    total_evals = sum(r["positive_evals"] + r["negative_evals"] for r in rows)
+    total_positive = sum(r["positive_evals"] for r in rows)
+    total_negative = sum(r["negative_evals"] for r in rows)
+    total_evals = total_positive + total_negative
     avg_score = sum(r["score"] for r in rows) / len(rows)
+    positive_rate = total_positive / total_evals if total_evals > 0 else 0.0
 
     engram = conn.execute(
         "SELECT pinned, prerequisites FROM engrams WHERE id = ?", (engram_id,)
@@ -1044,7 +1024,10 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
     now = datetime.utcnow().isoformat()
     result = None
 
-    if not engram["pinned"] and avg_score > PIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
+    if (not engram["pinned"]
+            and avg_score > PIN_THRESHOLD
+            and total_evals >= MIN_EVIDENCE_FOR_PIN
+            and positive_rate >= PIN_POSITIVE_RATE):
         # Auto-pin — mark as auto_pinned but do NOT set prerequisites.tags
         # (tags are content tags in engram_tags table, not hard prerequisites)
         existing = {}

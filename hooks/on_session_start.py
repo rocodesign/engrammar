@@ -100,9 +100,11 @@ def main():
         # Add pinned engrams if any matched
         if matching:
             if session_id:
-                from engrammar.core.db import record_shown_engram
+                from engrammar.core.db import record_shown_engram, update_match_stats
+                hook_repo = env.get("repo")
                 for p in matching:
                     record_shown_engram(session_id, p["id"], "SessionStart")
+                    update_match_stats(p["id"], repo=hook_repo)
 
             try:
                 from engrammar.core.db import log_hook_event

@@ -161,10 +161,14 @@ def main():
         if not new_results:
             return
 
-        # Record shown engrams in DB
+        # Record shown engrams in DB and update match stats
         if session_id:
+            from engrammar.core.db import update_match_stats
+            from engrammar.search.environment import _detect_repo
+            hook_repo = _detect_repo(cwd=hook_cwd) if hook_cwd else None
             for r in new_results:
                 record_shown_engram(session_id, r["id"], "UserPromptSubmit")
+                update_match_stats(r["id"], repo=hook_repo)
 
         # Log event
         try:

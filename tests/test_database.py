@@ -161,18 +161,20 @@ def test_auto_pin_at_threshold():
         for _ in range(AUTO_PIN_THRESHOLD):
             update_match_stats(engram_id, repo="app-repo", db_path=db_path)
 
-        # Should be auto-pinned with repo prerequisite
+        # Should NOT auto-pin from match count alone (requires evaluator data)
         conn = get_connection(db_path)
         engram = conn.execute(
-            "SELECT pinned, prerequisites FROM engrams WHERE id = ?",
+            "SELECT pinned FROM engrams WHERE id = ?",
             (engram_id,)
+        ).fetchone()
+        repo_row = conn.execute(
+            "SELECT times_matched FROM engram_repo_stats WHERE engram_id = ? AND repo = ?",
+            (engram_id, "app-repo"),
         ).fetchone()
         conn.close()
 
-        assert engram["pinned"] == 1
-        prereqs = json.loads(engram["prerequisites"])
-        assert "repos" in prereqs
-        assert "app-repo" in prereqs["repos"]
+        assert engram["pinned"] == 0
+        assert repo_row["times_matched"] == AUTO_PIN_THRESHOLD
 
 
 def test_per_repo_match_tracking():

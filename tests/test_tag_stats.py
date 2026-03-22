@@ -227,21 +227,24 @@ class TestAutoPin:
 
         assert row["prerequisites"] is None
 
-    def test_repo_based_auto_pin_still_works(self, test_db):
-        """Should still support repo-based auto-pin."""
+    def test_repo_match_stats_no_auto_pin(self, test_db):
+        """update_match_stats increments repo counters but does not auto-pin."""
         engram_id = _create_engram(test_db)
 
-        for _ in range(AUTO_PIN_THRESHOLD):
+        for _ in range(AUTO_PIN_THRESHOLD + 5):
             update_match_stats(engram_id, repo="app-repo", db_path=test_db)
 
         conn = get_connection(test_db)
         row = conn.execute(
-            "SELECT pinned, prerequisites FROM engrams WHERE id = ?",
+            "SELECT pinned FROM engrams WHERE id = ?",
             (engram_id,),
+        ).fetchone()
+        # Repo stats tracked
+        repo_row = conn.execute(
+            "SELECT times_matched FROM engram_repo_stats WHERE engram_id = ? AND repo = ?",
+            (engram_id, "app-repo"),
         ).fetchone()
         conn.close()
 
-        assert row["pinned"] == 1
-        prereqs = json.loads(row["prerequisites"])
-        assert "repos" in prereqs
-        assert "app-repo" in prereqs["repos"]
+        assert row["pinned"] == 0  # No auto-pin from match count alone
+        assert repo_row["times_matched"] == AUTO_PIN_THRESHOLD + 5
