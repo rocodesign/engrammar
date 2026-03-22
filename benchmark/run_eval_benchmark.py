@@ -713,11 +713,13 @@ def cmd_attribution(args):
             print(f"    {tag:20s} sim={sim:.2f}  uniform={u:+.3f}  weighted={w:+.3f}{marker}")
         print()
 
-    # Save results
+    # Save results (same folder pattern as main eval benchmark)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     run_id = time.strftime("%Y%m%d-%H%M%S")
-    outpath = RESULTS_DIR / f"attribution-{run_id}.json"
-    with open(outpath, "w") as f:
+    run_dir = RESULTS_DIR / f"attribution-{run_id}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(run_dir / "summary.json", "w") as f:
         json.dump({
             "run_id": run_id,
             "mode": "simulated" if simulate_mode else "real",
@@ -729,9 +731,40 @@ def cmd_attribution(args):
                 "tags_zeroed": tags_zeroed,
                 "avg_concentration": round(avg_concentration, 4),
             },
-            "comparisons": all_comparisons[:50],  # cap to avoid huge files
+            "comparisons": all_comparisons,
         }, f, indent=2)
-    print(f"\nSaved to {outpath}")
+
+    # Markdown report
+    md = [
+        f"# Attribution Benchmark — {run_id}\n",
+        f"**Mode**: {'simulated (env_tags as proxy)' if simulate_mode else 'real (prompt_tags from hooks)'}  ",
+        f"**Sessions**: {len(sessions)}  ",
+        f"**Engram evaluations**: {len(all_comparisons)}\n",
+        "## Stats\n",
+        f"| Metric | Value |",
+        f"|--------|-------|",
+        f"| Tags compared | {total_tags} |",
+        f"| Preserved (similar signal) | {tags_preserved} ({tags_preserved/max(total_tags,1):.0%}) |",
+        f"| Reduced >50% | {tags_reduced} ({tags_reduced/max(total_tags,1):.0%}) |",
+        f"| Zeroed (below floor) | {tags_zeroed} ({tags_zeroed/max(total_tags,1):.0%}) |",
+        f"| Concentration ratio | {avg_concentration:.2f} |",
+        "",
+        "## Examples\n",
+        "| Engram | Tag | Sim | Uniform | Weighted | Delta |",
+        "|--------|-----|----:|--------:|---------:|------:|",
+    ]
+    for comp in all_comparisons[:15]:
+        for tag in comp["content_tags"]:
+            sim = comp["tag_sims"].get(tag, 0)
+            u = comp["uniform"].get(tag, 0)
+            w = comp["weighted"].get(tag, 0)
+            delta = w - u
+            md.append(f"| #{comp['engram_id']} | {tag} | {sim:.2f} | {u:+.3f} | {w:+.3f} | {delta:+.3f} |")
+
+    with open(run_dir / "report.md", "w") as f:
+        f.write("\n".join(md))
+
+    print(f"\nSaved to {run_dir}")
 
 
 # --- Main ---
