@@ -76,18 +76,17 @@ def detect_prompt_tags(query, top_k=3, threshold=0.60):
     # Sort by adjusted score
     weighted_scores.sort(key=lambda x: x[2], reverse=True)
 
-    # Gap-based filtering: only keep tags significantly above the pack
-    # This handles the high baseline (~0.55-0.65) of BGE embeddings
-    if len(weighted_scores) >= 2:
+    # Gap-based filtering: only keep tags significantly above the pack.
+    # This handles the high baseline (~0.55-0.65) of BGE embeddings.
+    # Skip when few tags pass — if ≤ top_k tags survived the threshold +
+    # selectivity checks, the query already has narrow topic signal.
+    if len(weighted_scores) > top_k:
         top_score = weighted_scores[0][2]
-        # Compute median of all above-threshold scores
         median_score = weighted_scores[len(weighted_scores) // 2][2]
         gap = top_score - median_score
-        # If the gap is too small, all scores are in the noise band — abstain
         min_gap = 0.03
         if gap < min_gap:
             return []
-        # Only keep tags within 60% of the gap from the top
         cutoff = top_score - gap * 0.6
         weighted_scores = [(i, l, s) for i, l, s in weighted_scores if s >= cutoff]
 
