@@ -38,18 +38,34 @@ def main():
         if transcript_path and "/subagents/" in transcript_path:
             return
 
-        # Write session audit (shown engrams + env tags) for evaluation
+        # Write session audit (shown engrams + env tags + prompt context) for evaluation
         try:
-            from engrammar.core.db import get_shown_engram_ids, write_session_audit
+            from engrammar.core.db import get_shown_engram_ids, get_shown_engram_context, write_session_audit
 
             shown_ids = get_shown_engram_ids(session_id)
             if shown_ids:
                 from engrammar.search.environment import detect_environment
                 env = detect_environment()
+
+                # Build engram_context: per-engram prompt tags for evaluation attribution
+                engram_context = {}
+                try:
+                    ctx_rows = get_shown_engram_context(session_id)
+                    for row in ctx_rows:
+                        eid = row["engram_id"]
+                        engram_context[str(eid)] = {
+                            "prompt_tags": row.get("prompt_tags"),
+                            "query_text": row.get("query_text"),
+                            "hook_event": row.get("hook_event"),
+                        }
+                except Exception:
+                    pass
+
                 write_session_audit(
                     session_id, list(shown_ids),
                     env.get("tags", []), env.get("repo", ""),
                     transcript_path=transcript_path,
+                    engram_context=engram_context or None,
                 )
         except Exception as e:
             log_error("Stop", "write_session_audit", e)

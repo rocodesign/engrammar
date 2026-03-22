@@ -212,13 +212,32 @@ def main():
         if not new_results:
             return
 
+        # Detect prompt tags from the tool query for evaluation attribution
+        prompt_tags = None
+        try:
+            from engrammar.search.engine import _build_tool_query
+            tool_query = _build_tool_query(tool_name, dict(tool_input) if isinstance(tool_input, dict) else {})
+            if tool_query:
+                from engrammar.search.prompt_tags import detect_prompt_tags
+                pt_config = config.get("scoring", {})
+                prompt_tags = detect_prompt_tags(
+                    tool_query,
+                    top_k=pt_config.get("prompt_tag_top_k", 3),
+                    threshold=pt_config.get("prompt_tag_threshold", 0.60),
+                )
+        except Exception:
+            pass
+
         # Record shown engrams in DB and update match stats
         if session_id:
             from engrammar.core.db import update_match_stats
             from engrammar.search.environment import _detect_repo
             hook_repo = _detect_repo(cwd=hook_cwd) if hook_cwd else None
             for r in new_results:
-                record_shown_engram(session_id, r["id"], "PreToolUse")
+                record_shown_engram(
+                    session_id, r["id"], "PreToolUse",
+                    prompt_tags=prompt_tags, query_text=tool_query if tool_query else None,
+                )
                 update_match_stats(r["id"], repo=hook_repo)
 
         # Log event

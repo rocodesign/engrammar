@@ -439,6 +439,301 @@ Return strict JSON:
     return results
 
 
+# --- Attribution comparison (#030) ---
+
+
+def _attribution_weight(sim, floor=0.20, ceiling=1.0):
+    """Shifted sigmoid: high similarity → disproportionately more weight."""
+    if sim <= floor:
+        return 0.0
+    normalized = (sim - floor) / (ceiling - floor)
+    return min(normalized ** 2, 1.0)
+
+
+def compute_tag_sims(content_tags, prompt_tag_names):
+    """Compute per-content-tag best similarity against prompt tags.
+
+    Returns dict {content_tag: best_cosine_sim} or None on failure.
+    """
+    try:
+        import numpy as np
+        from engrammar.core.embeddings import embed_batch
+
+        if not content_tags or not prompt_tag_names:
+            return None
+
+        all_tags = list(content_tags) + list(prompt_tag_names)
+        embeddings = embed_batch(all_tags)
+
+        n_content = len(content_tags)
+        c_embs = embeddings[:n_content]
+        p_embs = embeddings[n_content:]
+
+        c_norms = np.linalg.norm(c_embs, axis=1, keepdims=True) + 1e-10
+        p_norms = np.linalg.norm(p_embs, axis=1, keepdims=True) + 1e-10
+        sim_matrix = (c_embs / c_norms) @ (p_embs / p_norms).T
+
+        best_sims = sim_matrix.max(axis=1)
+        return {tag: float(best_sims[i]) for i, tag in enumerate(content_tags)}
+    except Exception:
+        return None
+
+
+def cmd_attribution(args):
+    """Compare uniform vs weighted tag attribution on real session data.
+
+    For each session with eval results, computes what tag_relevance scores
+    would look like under both strategies and reports the differences.
+    """
+    from engrammar.core.db import get_connection, get_content_tags
+
+    print("Loading sessions with engram_context for attribution comparison...")
+    conn = get_connection()
+
+    # Find sessions that have engram_context (from #016/#030 data capture)
+    rows = conn.execute("""
+        SELECT session_id, shown_engram_ids, env_tags, repo, engram_context, transcript_path
+        FROM session_audit
+        WHERE shown_engram_ids != '[]'
+        ORDER BY rowid DESC
+        LIMIT ?
+    """, (args.sessions * 5,)).fetchall()
+
+    sessions_with_ctx = []
+    sessions_without_ctx = []
+    for row in rows:
+        shown_ids = json.loads(row["shown_engram_ids"])
+        if not shown_ids:
+            continue
+        ctx_raw = row["engram_context"] if "engram_context" in row.keys() else None
+        ctx = {}
+        if ctx_raw:
+            try:
+                ctx = json.loads(ctx_raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        entry = {
+            "session_id": row["session_id"],
+            "shown_engram_ids": shown_ids,
+            "env_tags": json.loads(row["env_tags"]),
+            "repo": row["repo"] or "unknown",
+            "engram_context": ctx,
+        }
+        if ctx:
+            sessions_with_ctx.append(entry)
+        else:
+            sessions_without_ctx.append(entry)
+
+    conn.close()
+
+    print(f"Sessions with engram_context: {len(sessions_with_ctx)}")
+    print(f"Sessions without (legacy): {len(sessions_without_ctx)}")
+
+    if not sessions_with_ctx:
+        print("\nNo sessions have engram_context yet. The data capture hooks need to")
+        print("run first (deploy.sh, then use Claude for a few sessions).")
+        print(f"\nFalling back to simulating attribution on {min(len(sessions_without_ctx), args.sessions)} legacy sessions...")
+        sessions = sessions_without_ctx[:args.sessions]
+        simulate_mode = True
+    else:
+        sessions = sessions_with_ctx[:args.sessions]
+        simulate_mode = False
+
+    if not sessions:
+        print("No sessions found.")
+        return
+
+    # Collect engram IDs and load texts + content tags
+    all_ids = set()
+    for s in sessions:
+        all_ids.update(s["shown_engram_ids"])
+    engram_texts = load_engram_texts(list(all_ids))
+
+    engram_content_tags = {}
+    for eid in all_ids:
+        tags = get_content_tags(eid)
+        if tags:
+            engram_content_tags[eid] = tags
+
+    # Run evaluations (or load cached)
+    print(f"\nRunning evaluations on {len(sessions)} sessions with {args.models[0]}...\n")
+    all_comparisons = []
+
+    for si, session in enumerate(sessions):
+        sid = session["session_id"]
+        shown = [eid for eid in session["shown_engram_ids"] if eid in engram_texts]
+        if not shown:
+            continue
+
+        # Get transcript
+        t_path = None
+        try:
+            conn2 = get_connection()
+            r = conn2.execute(
+                "SELECT transcript_path FROM session_audit WHERE session_id = ?",
+                (sid,)
+            ).fetchone()
+            conn2.close()
+            if r:
+                t_path = r["transcript_path"]
+        except Exception:
+            pass
+
+        transcript = ""
+        if t_path and Path(t_path).exists():
+            transcript = _read_transcript_file(t_path)
+        if not transcript:
+            transcript = _find_transcript_by_session(sid)
+        if not transcript:
+            print(f"  {sid[:12]}: no transcript — skip")
+            continue
+
+        eval_session = {
+            "session_id": sid,
+            "shown_engram_ids": shown,
+            "env_tags": session["env_tags"],
+            "repo": session["repo"],
+            "transcript": transcript,
+        }
+
+        print(f"  [{si+1}/{len(sessions)}] {sid[:12]} ({len(shown)} engrams)...", end=" ", flush=True)
+        result = run_evaluation(eval_session, engram_texts, args.models[0])
+        if "error" in result:
+            print(f"ERROR: {result['error'][:40]}")
+            continue
+
+        evaluations = result["evaluations"]
+        print(f"{len(evaluations)} evals in {result['elapsed_s']:.1f}s")
+
+        # Compare attribution strategies per engram
+        for ev in evaluations:
+            eid = ev.get("engram_id")
+            tag_scores = ev.get("tag_scores", {})
+            if not eid or not tag_scores:
+                continue
+
+            content_tags = engram_content_tags.get(eid, [])
+            if not content_tags:
+                continue
+
+            avg_signal = sum(tag_scores.values()) / len(tag_scores)
+            if avg_signal == 0:
+                continue
+
+            # Strategy 1: Uniform (current)
+            uniform_scores = {ct: avg_signal for ct in content_tags}
+
+            # Strategy 2: Weighted attribution
+            ctx = session["engram_context"].get(str(eid), {})
+            prompt_tags = ctx.get("prompt_tags") if ctx else None
+
+            if simulate_mode or not prompt_tags:
+                # Simulate: use env_tags as proxy for prompt tags (rough)
+                prompt_tag_names = session["env_tags"][:3]
+            else:
+                prompt_tag_names = [t for t, _s in prompt_tags]
+
+            tag_sims = compute_tag_sims(content_tags, prompt_tag_names)
+            weighted_scores = {}
+            if tag_sims:
+                for ct in content_tags:
+                    sim = tag_sims.get(ct, 0)
+                    weight = _attribution_weight(sim)
+                    weighted_scores[ct] = avg_signal * weight
+            else:
+                weighted_scores = uniform_scores.copy()
+
+            all_comparisons.append({
+                "engram_id": eid,
+                "session_id": sid[:12],
+                "avg_signal": round(avg_signal, 3),
+                "content_tags": content_tags,
+                "prompt_tags": prompt_tag_names[:3],
+                "uniform": {k: round(v, 4) for k, v in uniform_scores.items()},
+                "weighted": {k: round(v, 4) for k, v in weighted_scores.items()},
+                "tag_sims": {k: round(v, 3) for k, v in (tag_sims or {}).items()},
+            })
+
+    if not all_comparisons:
+        print("\nNo comparisons produced. Need sessions with evaluated engrams.")
+        return
+
+    # Analyze
+    print(f"\n{'=' * 70}")
+    print(f"  Attribution Comparison: {len(all_comparisons)} engram evaluations")
+    print(f"{'=' * 70}\n")
+
+    # How much does weighted differ from uniform?
+    total_tags = 0
+    tags_zeroed = 0  # weighted zeroed out a tag that uniform scored
+    tags_reduced = 0  # weighted significantly reduced (>50% lower)
+    tags_preserved = 0  # weighted kept similar signal
+    concentration_ratios = []  # max_weighted / sum_weighted (higher = more concentrated)
+
+    for comp in all_comparisons:
+        uniform = comp["uniform"]
+        weighted = comp["weighted"]
+        w_values = list(weighted.values())
+        if not w_values:
+            continue
+
+        total_sum = sum(abs(v) for v in w_values)
+        max_val = max(abs(v) for v in w_values) if w_values else 0
+        if total_sum > 0:
+            concentration_ratios.append(max_val / total_sum)
+
+        for tag in uniform:
+            total_tags += 1
+            u_val = abs(uniform.get(tag, 0))
+            w_val = abs(weighted.get(tag, 0))
+            if u_val > 0.01 and w_val < 0.01:
+                tags_zeroed += 1
+            elif u_val > 0.01 and w_val < u_val * 0.5:
+                tags_reduced += 1
+            else:
+                tags_preserved += 1
+
+    avg_concentration = sum(concentration_ratios) / len(concentration_ratios) if concentration_ratios else 0
+
+    print(f"Total tag scores compared: {total_tags}")
+    print(f"  Preserved (similar signal):  {tags_preserved} ({tags_preserved/max(total_tags,1):.0%})")
+    print(f"  Reduced (>50% lower):        {tags_reduced} ({tags_reduced/max(total_tags,1):.0%})")
+    print(f"  Zeroed (below floor):         {tags_zeroed} ({tags_zeroed/max(total_tags,1):.0%})")
+    print(f"  Avg concentration ratio:      {avg_concentration:.2f} (1.0 = all signal on one tag)")
+
+    # Show examples
+    print(f"\n--- Example comparisons (first 10) ---\n")
+    for comp in all_comparisons[:10]:
+        print(f"  Engram #{comp['engram_id']} | signal={comp['avg_signal']:+.2f} | prompt_tags={comp['prompt_tags']}")
+        for tag in comp["content_tags"]:
+            sim = comp["tag_sims"].get(tag, 0)
+            u = comp["uniform"].get(tag, 0)
+            w = comp["weighted"].get(tag, 0)
+            marker = " <<<" if abs(u - w) > 0.05 else ""
+            print(f"    {tag:20s} sim={sim:.2f}  uniform={u:+.3f}  weighted={w:+.3f}{marker}")
+        print()
+
+    # Save results
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    run_id = time.strftime("%Y%m%d-%H%M%S")
+    outpath = RESULTS_DIR / f"attribution-{run_id}.json"
+    with open(outpath, "w") as f:
+        json.dump({
+            "run_id": run_id,
+            "mode": "simulated" if simulate_mode else "real",
+            "total_comparisons": len(all_comparisons),
+            "stats": {
+                "total_tags": total_tags,
+                "tags_preserved": tags_preserved,
+                "tags_reduced": tags_reduced,
+                "tags_zeroed": tags_zeroed,
+                "avg_concentration": round(avg_concentration, 4),
+            },
+            "comparisons": all_comparisons[:50],  # cap to avoid huge files
+        }, f, indent=2)
+    print(f"\nSaved to {outpath}")
+
+
 # --- Main ---
 
 
@@ -454,7 +749,13 @@ def main():
                         help="Engrams to judge per session (default: 5)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show session stats without calling LLM")
+    parser.add_argument("--attribution", action="store_true",
+                        help="Compare uniform vs weighted tag attribution (#030)")
     args = parser.parse_args()
+
+    if args.attribution:
+        cmd_attribution(args)
+        return
 
     print(f"Loading {args.sessions} sessions from session_audit...")
     sessions = load_test_sessions(n=args.sessions)

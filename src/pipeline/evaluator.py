@@ -18,6 +18,83 @@ from engrammar.core.prompt_loader import load_prompt
 
 _prompt_cache = {}
 
+# Attribution curve parameters for #030
+_ATTRIBUTION_FLOOR = 0.20
+_ATTRIBUTION_CEILING = 1.0
+
+
+def _attribution_weight(sim, floor=_ATTRIBUTION_FLOOR, ceiling=_ATTRIBUTION_CEILING):
+    """Shifted sigmoid: convert tag similarity to evaluation attribution weight.
+
+    High-similarity tags get disproportionately more signal.
+    Tags below floor get zero attribution (natural cutoff).
+
+    Curve:  weight = ((sim - floor) / (ceiling - floor)) ** 2
+        sim 0.95 → 0.88
+        sim 0.80 → 0.56
+        sim 0.40 → 0.06
+        sim 0.20 → 0.00
+    """
+    if sim <= floor:
+        return 0.0
+    normalized = (sim - floor) / (ceiling - floor)
+    return min(normalized ** 2, 1.0)
+
+
+def _compute_weighted_attribution(content_tags, prompt_tags, eval_signal):
+    """Distribute eval signal across content tags weighted by prompt tag similarity.
+
+    For each content tag, compute best cosine similarity against prompt tags,
+    then apply shifted sigmoid to determine how much of the eval signal it receives.
+
+    Args:
+        content_tags: list of engram content tag strings
+        prompt_tags: list of (tag, score) tuples from prompt tag detection
+        eval_signal: float, the evaluation verdict to distribute
+
+    Returns:
+        dict mapping content_tag -> weighted_score, or None if computation fails
+    """
+    try:
+        import numpy as np
+        from engrammar.core.embeddings import embed_batch
+
+        prompt_tag_names = [t for t, _s in prompt_tags]
+        if not prompt_tag_names or not content_tags:
+            return None
+
+        # Embed all tags
+        all_tags = list(content_tags) + prompt_tag_names
+        embeddings = embed_batch(all_tags)
+
+        n_content = len(content_tags)
+        content_embs = embeddings[:n_content]
+        prompt_embs = embeddings[n_content:]
+
+        # Normalize
+        c_norms = np.linalg.norm(content_embs, axis=1, keepdims=True) + 1e-10
+        p_norms = np.linalg.norm(prompt_embs, axis=1, keepdims=True) + 1e-10
+        content_normed = content_embs / c_norms
+        prompt_normed = prompt_embs / p_norms
+
+        # Sim matrix: (n_content, n_prompt)
+        sim_matrix = content_normed @ prompt_normed.T
+
+        # Per content tag: best similarity against any prompt tag
+        best_sims = sim_matrix.max(axis=1)  # (n_content,)
+
+        # Apply shifted sigmoid and distribute signal
+        weighted_scores = {}
+        for i, tag in enumerate(content_tags):
+            weight = _attribution_weight(float(best_sims[i]))
+            if weight > 0:
+                weighted_scores[tag] = eval_signal * weight
+
+        return weighted_scores if weighted_scores else None
+
+    except Exception:
+        return None
+
 
 def _get_prompt(name):
     """Load and cache a prompt from prompts/ directory."""
@@ -233,6 +310,15 @@ def run_evaluation_for_session(session_id, db_path=None):
     repo = row["repo"]
     transcript_path = row["transcript_path"] if "transcript_path" in row.keys() else None
 
+    # Load per-engram prompt context for weighted attribution (#030)
+    engram_context = {}
+    try:
+        ctx_raw = row["engram_context"] if "engram_context" in row.keys() else None
+        if ctx_raw:
+            engram_context = json.loads(ctx_raw)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
     if not shown_engram_ids:
         conn.close()
         return True  # Nothing to evaluate
@@ -278,22 +364,34 @@ def run_evaluation_for_session(session_id, db_path=None):
         _mark_session_status(session_id, "failed", db_path)
         return False
 
-    # Accumulate scores — rekey to content tags (per #039)
-    # LLM still returns tag_scores keyed by env tags for now,
-    # but we also score against each engram's content tags
+    # Accumulate scores with weighted tag attribution (#030)
     try:
         from engrammar.core.db import update_tag_relevance, get_content_tags
         for ev in evaluations:
             engram_id = ev.get("engram_id")
             tag_scores = ev.get("tag_scores", {})
             if engram_id and tag_scores:
-                # Score env-tag-keyed results (legacy, will phase out)
+                # Score env-tag-keyed results (legacy repo signal, keep dampened)
                 update_tag_relevance(engram_id, tag_scores, weight=1.0, db_path=db_path)
-                # Also derive content tag scores from overall signal
+
+                # Content tag scoring with weighted attribution
                 content_tags = get_content_tags(engram_id, db_path=db_path)
                 if content_tags:
-                    # Use average of LLM tag_scores as signal for content tags
                     avg_signal = sum(tag_scores.values()) / len(tag_scores) if tag_scores else 0
+
+                    # Try weighted attribution via prompt tag similarity
+                    ctx = engram_context.get(str(engram_id), {})
+                    prompt_tags = ctx.get("prompt_tags") if ctx else None
+
+                    if prompt_tags and avg_signal != 0:
+                        weighted_scores = _compute_weighted_attribution(
+                            content_tags, prompt_tags, avg_signal
+                        )
+                        if weighted_scores:
+                            update_tag_relevance(engram_id, weighted_scores, weight=1.0, db_path=db_path)
+                            continue
+
+                    # Fallback: uniform distribution (old behavior for pre-#030 audit records)
                     content_scores = {ct: avg_signal for ct in content_tags}
                     update_tag_relevance(engram_id, content_scores, weight=1.0, db_path=db_path)
     except ImportError:

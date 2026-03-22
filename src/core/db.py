@@ -91,6 +91,8 @@ def init_db(db_path=None):
             engram_id INTEGER NOT NULL,
             hook_event TEXT NOT NULL,
             shown_at TEXT NOT NULL,
+            prompt_tags TEXT DEFAULT NULL,
+            query_text TEXT DEFAULT NULL,
             UNIQUE(session_id, engram_id)
         );
 
@@ -112,7 +114,8 @@ def init_db(db_path=None):
             env_tags TEXT NOT NULL,
             repo TEXT,
             timestamp TEXT NOT NULL,
-            transcript_path TEXT DEFAULT NULL
+            transcript_path TEXT DEFAULT NULL,
+            engram_context TEXT DEFAULT NULL
         );
 
         -- Evaluation tracking, separate from extraction pipeline
@@ -180,6 +183,17 @@ def init_db(db_path=None):
 
     # Index requires dedup_verified column — must be after migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_dedup_queue ON engrams(deprecated, dedup_verified, id)")
+
+    # Migration: add prompt_tags and query_text to session_shown_engrams
+    sse_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_shown_engrams)").fetchall()]
+    if sse_columns and "prompt_tags" not in sse_columns:
+        conn.execute("ALTER TABLE session_shown_engrams ADD COLUMN prompt_tags TEXT DEFAULT NULL")
+    if sse_columns and "query_text" not in sse_columns:
+        conn.execute("ALTER TABLE session_shown_engrams ADD COLUMN query_text TEXT DEFAULT NULL")
+
+    # Migration: add engram_context to session_audit
+    if audit_columns and "engram_context" not in audit_columns:
+        conn.execute("ALTER TABLE session_audit ADD COLUMN engram_context TEXT DEFAULT NULL")
 
     # Migration: add scores column to hook_event_log
     hel_columns = [r[1] for r in conn.execute("PRAGMA table_info(hook_event_log)").fetchall()]
@@ -583,17 +597,55 @@ def increment_engram_occurrence(engram_id, new_sessions=None, db_path=None):
     conn.close()
 
 
-def record_shown_engram(session_id, engram_id, hook_event, db_path=None):
-    """Record that a engram was shown during a session (DB-based, replaces file tracking)."""
+def record_shown_engram(session_id, engram_id, hook_event, db_path=None, prompt_tags=None, query_text=None):
+    """Record that a engram was shown during a session (DB-based, replaces file tracking).
+
+    Args:
+        prompt_tags: list of (tag, score) tuples from prompt tag detection
+        query_text: the search query that triggered this match (truncated)
+    """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
+    tags_json = json.dumps(prompt_tags) if prompt_tags else None
+    query_trunc = query_text[:200] if query_text else None
     conn.execute(
-        """INSERT OR IGNORE INTO session_shown_engrams (session_id, engram_id, hook_event, shown_at)
-           VALUES (?, ?, ?, ?)""",
-        (session_id, engram_id, hook_event, now),
+        """INSERT OR IGNORE INTO session_shown_engrams
+           (session_id, engram_id, hook_event, shown_at, prompt_tags, query_text)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (session_id, engram_id, hook_event, now, tags_json, query_trunc),
     )
     conn.commit()
     conn.close()
+
+
+def get_shown_engram_context(session_id, db_path=None):
+    """Get shown engrams with their prompt context for evaluation.
+
+    Returns:
+        list of dicts with engram_id, hook_event, prompt_tags, query_text
+    """
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        """SELECT engram_id, hook_event, prompt_tags, query_text
+           FROM session_shown_engrams WHERE session_id = ?""",
+        (session_id,),
+    ).fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        tags = None
+        if r["prompt_tags"]:
+            try:
+                tags = json.loads(r["prompt_tags"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        results.append({
+            "engram_id": r["engram_id"],
+            "hook_event": r["hook_event"],
+            "prompt_tags": tags,
+            "query_text": r["query_text"],
+        })
+    return results
 
 
 def get_shown_engram_ids(session_id, db_path=None):
@@ -618,14 +670,21 @@ def clear_session_shown(session_id, db_path=None):
     conn.close()
 
 
-def write_session_audit(session_id, shown_engram_ids, env_tags, repo, transcript_path=None, db_path=None):
-    """Write audit record of what was shown in a session."""
+def write_session_audit(session_id, shown_engram_ids, env_tags, repo, transcript_path=None, engram_context=None, db_path=None):
+    """Write audit record of what was shown in a session.
+
+    Args:
+        engram_context: optional dict mapping engram_id (str) to
+            {prompt_tags, query_text, hook_event} for evaluation attribution
+    """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
+    ctx_json = json.dumps(engram_context) if engram_context else None
     conn.execute(
-        """INSERT OR REPLACE INTO session_audit (session_id, shown_engram_ids, env_tags, repo, timestamp, transcript_path)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (session_id, json.dumps(sorted(shown_engram_ids)), json.dumps(sorted(env_tags)), repo, now, transcript_path),
+        """INSERT OR REPLACE INTO session_audit
+           (session_id, shown_engram_ids, env_tags, repo, timestamp, transcript_path, engram_context)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (session_id, json.dumps(sorted(shown_engram_ids)), json.dumps(sorted(env_tags)), repo, now, transcript_path, ctx_json),
     )
     conn.commit()
     conn.close()
