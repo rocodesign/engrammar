@@ -25,7 +25,8 @@ DEFAULT_CONFIG = {
     "hooks": {
         "prompt_enabled": True,
         "tool_use_enabled": True,
-        "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+        "post_tool_enabled": False,
+        "skip_tools": [],
         "min_score_prompt": 0.50,
         "min_score_tool": 0.40,
         "prerequisites_min_score": 0.3,
@@ -38,8 +39,8 @@ DEFAULT_CONFIG = {
             "max_query_length": 300,
         },
         "pre_tool": {
-            "inject_narration": False,
-            "narration_max_length": 150,
+            "inject_narration": True,
+            "narration_max_length": 200,
         },
         "post_tool": {
             "inject_narration": True,

@@ -158,12 +158,19 @@ def main():
             return
 
         data = json.loads(raw)
+
+        # Check if PostToolUse is enabled in config
+        from engrammar.core.config import load_config
+        config = load_config()
+        if not config["hooks"].get("post_tool_enabled", True):
+            return
+
         tool_name = data.get("tool_name", "")
         tool_input = data.get("tool_input", {})
         session_id = data.get("session_id")
         transcript_path = data.get("transcript_path")
 
-        # Only target tools that PreToolUse skips
+        # Only target specific tools
         if tool_name not in TARGET_TOOLS:
             return
 
@@ -184,9 +191,6 @@ def main():
                 return
 
         # Build search query
-        from engrammar.core.config import load_config
-        config = load_config()
-
         query = _build_query(narration, tool_name, tool_input, config=config)
         if not query:
             return

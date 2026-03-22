@@ -5,7 +5,8 @@
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
-    "skip_tools": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"],
+    "post_tool_enabled": false,
+    "skip_tools": [],
     "min_score_prompt": 0.5,
     "min_score_tool": 0.4,
     "prerequisites_min_score": 0.3
@@ -18,8 +19,8 @@
       "max_query_length": 300
     },
     "pre_tool": {
-      "inject_narration": false,
-      "narration_max_length": 150
+      "inject_narration": true,
+      "narration_max_length": 200
     },
     "post_tool": {
       "inject_narration": true,

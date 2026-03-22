@@ -13,6 +13,9 @@ import os
 ENGRAMMAR_HOME = os.environ.get("ENGRAMMAR_HOME", os.path.expanduser("~/.engrammar"))
 sys.path.insert(0, ENGRAMMAR_HOME)
 
+# State file for narration dedup (avoid searching same narration repeatedly)
+STATE_FILE = os.path.join(ENGRAMMAR_HOME, ".pre_tool_state.json")
+
 
 def _extract_narration(transcript_path):
     """Read the last assistant narration text from the transcript.
@@ -159,16 +162,34 @@ def main():
         show_categories = config["display"]["show_categories"]
 
         # Optionally enrich tool query with narration from transcript
+        narration = None
         enrich = config.get("query_enrichment", {}).get("pre_tool", {})
         if enrich.get("inject_narration"):
             transcript_path = data.get("transcript_path")
             if transcript_path:
                 narration = _extract_narration(transcript_path)
                 if narration:
-                    max_len = enrich.get("narration_max_length", 150)
+                    max_len = enrich.get("narration_max_length", 200)
                     narration = narration[:max_len]
                     tool_input = dict(tool_input) if isinstance(tool_input, dict) else {}
                     tool_input["_narration"] = narration
+
+        # Narration dedup: for narration-dependent tools (Read, Glob, Grep, etc.),
+        # skip if same narration was already searched this session. Tools with rich
+        # input (Edit, Bash, Write) always search — narration is just a bonus for them.
+        NARRATION_DEPENDENT_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
+        session_id = data.get("session_id")
+        if narration and session_id and tool_name in NARRATION_DEPENDENT_TOOLS:
+            try:
+                import time
+                state = {}
+                if os.path.exists(STATE_FILE):
+                    with open(STATE_FILE, "r") as _f:
+                        state = json.load(_f)
+                if state.get("session_id") == session_id and state.get("last_narration") == narration:
+                    return
+            except Exception:
+                pass
 
         # Try daemon, fall back to direct
         hook_cwd = data.get("cwd")
@@ -207,6 +228,19 @@ def main():
             log_hook_event(session_id, "PreToolUse", [r["id"] for r in new_results], context=tool_name, scores=scores)
         except Exception:
             pass
+
+        # Update narration dedup state
+        if narration and session_id:
+            try:
+                import time
+                with open(STATE_FILE, "w") as _f:
+                    json.dump({
+                        "session_id": session_id,
+                        "last_narration": narration,
+                        "last_search_time": time.time(),
+                    }, _f)
+            except Exception:
+                pass
 
         context = format_engrams_block(new_results, show_categories=show_categories)
         output = make_hook_output("PreToolUse", context)
