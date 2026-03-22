@@ -1,6 +1,6 @@
 # Task: Adaptive Transcript Context for Evaluation
 
-- Priority: Medium
+- Priority: Medium → consider High (enables #030)
 - Complexity: C2
 - Status: Open
 
@@ -64,6 +64,14 @@ This complements `#014` (extraction observability) but is scoped to evaluation c
 The current evaluator judges per-tag relevance but has no direct "was this specific engram helpful?" signal. The Stop hook knows which engrams were shown (via `session_audit.shown_engram_ids`) and the transcript reveals whether the user or assistant acted on them. Adding a per-engram utility judgment ("was this engram referenced, applied, or ignored?") to the evaluation prompt would provide a stronger feedback signal than tag-level relevance alone.
 
 This feeds back to extraction quality: engrams that are consistently ignored across sessions are candidates for deprecation or rewording, even if their tags are topically relevant.
+
+### 6. Local windows around hook events (2026-03-22)
+
+The strongest version of this: the Stop hook already knows *which turn* each engram was shown at (turn offsets). Instead of head+tail of the full transcript, extract a window around each hook event — the user prompt that triggered the search, the assistant response that may have acted on the engram, and the next user turn (which reveals whether the advice was accepted or corrected).
+
+This gives the evaluator exactly the context it needs: "here's the engram, here's the moment it was shown, here's what happened next." The head+tail approach hopes the relevant interaction lands in one of the two slices. Local windows guarantee it.
+
+This is a prerequisite for #030 (weighted tag attribution) to work well — sharper evaluator verdicts mean the attribution weights distribute signal more accurately. A bad verdict from truncated context gets amplified by the wrong tags.
 
 ## Non-goals
 

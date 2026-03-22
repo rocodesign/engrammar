@@ -33,6 +33,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[1]-018-widen-tag-penalty/task.md`
 - [ ] **#019 Lower tag relevance evidence threshold** `C1`
   - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
+- [ ] **#030 Weighted tag attribution for evaluation** `C2`
+  - `tasks/open/[1]-030-weighted-tag-attribution-evaluation/task.md`
 
 ### Medium
 
