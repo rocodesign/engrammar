@@ -17,32 +17,27 @@ def test_os_prerequisite():
     assert check_prerequisites(prereqs, {"os": "linux"}) is False
 
 
-def test_repo_prerequisite_fail_closed():
-    """Repo prerequisites should fail-closed when repo is unknown.
+def test_repo_prerequisite_is_soft():
+    """Repo prerequisites are no longer a hard gate — repo is a soft signal via content tags.
 
-    This is the security fix - engrams requiring specific repos should
-    NOT leak into contexts where repo detection fails.
+    prerequisites.repos is kept for metadata but does not block retrieval.
     """
     prereqs = {"repos": ["app-repo"]}
 
-    # Should match when in correct repo
+    # Should pass regardless of repo context
     assert check_prerequisites(prereqs, {"repo": "app-repo"}) is True
-
-    # Should reject when in wrong repo
-    assert check_prerequisites(prereqs, {"repo": "other-repo"}) is False
-
-    # CRITICAL: Should reject when repo is None (fail-closed, not fail-open)
-    assert check_prerequisites(prereqs, {"repo": None}) is False
-    assert check_prerequisites(prereqs, {}) is False
+    assert check_prerequisites(prereqs, {"repo": "other-repo"}) is True
+    assert check_prerequisites(prereqs, {"repo": None}) is True
+    assert check_prerequisites(prereqs, {}) is True
 
 
-def test_multiple_repos():
-    """Should match if in any of the specified repos."""
+def test_multiple_repos_soft():
+    """Repo prerequisites should always pass (soft signal only)."""
     prereqs = {"repos": ["app-repo", "platform"]}
     assert check_prerequisites(prereqs, {"repo": "app-repo"}) is True
     assert check_prerequisites(prereqs, {"repo": "platform"}) is True
-    assert check_prerequisites(prereqs, {"repo": "other"}) is False
-    assert check_prerequisites(prereqs, {"repo": None}) is False
+    assert check_prerequisites(prereqs, {"repo": "other"}) is True
+    assert check_prerequisites(prereqs, {"repo": None}) is True
 
 
 def test_mcp_servers_prerequisite():
@@ -79,12 +74,13 @@ def test_combined_prerequisites():
     }
     assert check_prerequisites(prereqs, env_all_match) is True
 
-    # Missing one prerequisite should fail
+    # Missing one prerequisite should fail (OS and MCP are still hard gates)
     env_wrong_os = {**env_all_match, "os": "linux"}
     assert check_prerequisites(prereqs, env_wrong_os) is False
 
+    # Repo is a soft signal — no longer blocks
     env_no_repo = {**env_all_match, "repo": None}
-    assert check_prerequisites(prereqs, env_no_repo) is False
+    assert check_prerequisites(prereqs, env_no_repo) is True
 
     env_no_mcp = {**env_all_match, "mcp_servers": []}
     assert check_prerequisites(prereqs, env_no_mcp) is False
@@ -96,8 +92,9 @@ def test_json_string_prerequisites():
     prereqs_dict = {"repos": ["app-repo"]}
     prereqs_json = json.dumps(prereqs_dict)
 
+    # Repo is soft — both should pass
     assert check_prerequisites(prereqs_json, {"repo": "app-repo"}) is True
-    assert check_prerequisites(prereqs_json, {"repo": None}) is False
+    assert check_prerequisites(prereqs_json, {"repo": None}) is True
 
 
 def test_invalid_prerequisites_format():

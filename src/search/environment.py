@@ -77,7 +77,7 @@ def check_structural_prerequisites(prerequisites, env=None):
     is handled separately via tag relevance scores.
 
     Args:
-        prerequisites: dict with optional keys: os, repo, repos, mcp_servers, paths, tags
+        prerequisites: dict with optional keys: os, mcp_servers, paths, tags
         env: environment dict (auto-detected if None)
 
     Returns:
@@ -112,7 +112,7 @@ def check_prerequisites(prerequisites, env=None):
     """Check if current environment meets engram prerequisites.
 
     Args:
-        prerequisites: dict with optional keys: os, repo, repos, mcp_servers, requires
+        prerequisites: dict with optional keys: os, mcp_servers, paths
         env: environment dict (auto-detected if None)
 
     Returns:
@@ -141,17 +141,8 @@ def check_prerequisites(prerequisites, env=None):
         if env["os"] not in req_os:
             return False
 
-    # Check repo (fail-closed: reject if engram requires repos but we don't know which repo we're in)
-    req_repos = prerequisites.get("repos") or prerequisites.get("repo")
-    if req_repos:
-        if isinstance(req_repos, str):
-            req_repos = [req_repos]
-        # Reject if repo detection failed or we're not in git
-        if not env.get("repo"):
-            return False
-        # Reject if we're in a different repo
-        if env["repo"] not in req_repos:
-            return False
+    # Repo is a soft signal via repo:X content tags, not a hard gate.
+    # prerequisites.repos is kept for metadata but no longer blocks retrieval.
 
     # Check paths (directory prefix match, e.g. "~/work/acme")
     req_paths = prerequisites.get("paths")

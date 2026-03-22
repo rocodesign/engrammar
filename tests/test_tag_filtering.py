@@ -104,7 +104,8 @@ class TestPrerequisiteChecking:
             "repos": ["app-repo"],
             "tags": ["frontend"]
         }
-        assert check_prerequisites(prereqs, env) is False
+        # Repo is now a soft signal — no longer blocks
+        assert check_prerequisites(prereqs, env) is True
 
 
 class TestEngramTagChecking:
@@ -242,10 +243,11 @@ class TestStructuralPrerequisites:
         prereqs = {"os": "darwin", "tags": ["frontend"]}
         assert check_structural_prerequisites(prereqs, env) is False
 
-    def test_still_checks_repo(self):
+    def test_repo_is_soft_signal(self):
+        """Repo is no longer a hard gate — always passes."""
         env = {"repo": "other-repo", "tags": ["frontend"]}
         prereqs = {"repos": ["app-repo"], "tags": ["frontend"]}
-        assert check_structural_prerequisites(prereqs, env) is False
+        assert check_structural_prerequisites(prereqs, env) is True
 
     def test_json_string_prerequisites(self):
         env = {"os": "darwin", "tags": []}

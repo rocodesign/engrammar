@@ -1,7 +1,7 @@
 """Extract engrams from Claude Code session facets.
 
 Reads session facets from ~/.claude/usage-data/facets/, sends friction sessions
-to Claude haiku for analysis, and imports extracted engrams into the Engrammar DB.
+to Claude for analysis, and imports extracted engrams into the Engrammar DB.
 """
 
 import glob
@@ -586,7 +586,7 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
         extracted: list of engram dicts from Haiku (with 'engram', 'category', etc.)
         session_id: the source session ID
         env_tags: list of environment tag strings for this session
-        repo: source repo name — set as prerequisites.repos for project-specific engrams
+        repo: source repo name — added as repo:X content tag for soft scoring
 
     Returns:
         tuple of (added_count, merged_count)
@@ -600,7 +600,6 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
             category = "general/" + category
         source_sessions = [session_id]
         project_signals = engram_data.get("project_signals", [])
-        scope = engram_data.get("scope", "general")
         # Content tags from LLM extraction (new field, per #039)
         content_tags = engram_data.get("content_tags", [])
         # Legacy field — env-relevant subset, used only for backward compat logging
@@ -612,13 +611,11 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
         # Infer structural prerequisites only (no tags — those go to engram_tags)
         prerequisites = _infer_prerequisites(text, project_signals)
 
-        # Set repo prerequisite for project-specific engrams
-        if repo and scope == "project-specific":
-            if prerequisites is None:
-                prerequisites = {}
-            existing_repos = set(prerequisites.get("repos", []))
-            existing_repos.add(repo)
-            prerequisites["repos"] = sorted(existing_repos)
+        # Add repo as a content tag (repo:X format) for soft scoring
+        if repo:
+            repo_tag = f"repo:{repo}"
+            if repo_tag not in content_tags:
+                content_tags.append(repo_tag)
 
         existing = find_similar_engram(text)
         if existing:
