@@ -59,6 +59,12 @@ Log enough metadata to tune the policy:
 
 This complements `#014` (extraction observability) but is scoped to evaluation context selection.
 
+### 5. Per-engram utility signal (2026-03-22)
+
+The current evaluator judges per-tag relevance but has no direct "was this specific engram helpful?" signal. The Stop hook knows which engrams were shown (via `session_audit.shown_engram_ids`) and the transcript reveals whether the user or assistant acted on them. Adding a per-engram utility judgment ("was this engram referenced, applied, or ignored?") to the evaluation prompt would provide a stronger feedback signal than tag-level relevance alone.
+
+This feeds back to extraction quality: engrams that are consistently ignored across sessions are candidates for deprecation or rewording, even if their tags are topically relevant.
+
 ## Non-goals
 
 - Recombining extraction and evaluation into one LLM call

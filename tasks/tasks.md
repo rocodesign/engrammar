@@ -51,6 +51,19 @@ This file is the index. Detailed task writeups live under `tasks/`.
 - [ ] **#022 Add session observational memory layer** `C3`
   - `tasks/open/[2]-022-session-observational-memory/task.md`
 
+- [ ] **#024 Query-type-aware scoring profiles** `C2`
+  - `tasks/open/[2]-024-query-type-scoring-profiles/task.md`
+- [ ] **#025 Multi-tag match count for reranking** `C1`
+  - `tasks/open/[2]-025-multi-tag-match-reranking/task.md`
+- [ ] **#026 BM25 token overlap as abstention signal** `C1`
+  - `tasks/open/[2]-026-bm25-overlap-abstention/task.md`
+- [ ] **#027 Dedup precision/recall benchmark** `C2`
+  - `tasks/open/[2]-027-dedup-precision-recall-benchmark/task.md`
+- [ ] **#028 Semantic cluster deduplication** `C3`
+  - `tasks/open/[2]-028-semantic-cluster-dedup/task.md`
+- [ ] **#029 Extraction quality benchmark** `C2`
+  - `tasks/open/[2]-029-extraction-quality-benchmark/task.md`
+
 ### Low
 
 - [ ] **#013 Batch processing for extracted engrams** `C2`
@@ -94,6 +107,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 ## Ideas
 
 - `tasks/ideas/session-end-reflection.md`
-- `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries `→ see #017`
-- `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF
+- `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries `→ partially implemented via min_vector_sim, see #017`
+- `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF `→ autoresearch testing plan added`
 - `tasks/ideas/tool-use-previous-turn-retrieval.md` — Give extraction LLM an on-demand tool to retrieve the previous turn for detecting inflection points
+- `tasks/ideas/tag-vocab-normalization.md` — Merge near-duplicate tags in vocab; also prevent bloat at extraction time `→ write-time constraint added`
+- `tasks/ideas/enrichment-ground-truth-data.md` — Add `prior_assistant` fields to search_queries.json to enable enrichment strategy testing
