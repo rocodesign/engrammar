@@ -600,6 +600,7 @@ def cmd_attribution(args):
         "v2_relevance": "evaluation/tag_relevance_v2.md",
         "v3_causal": "evaluation/tag_relevance_v3.md",
         "v4_conservative": "evaluation/tag_relevance_v4.md",
+        "v5_structural": "evaluation/tag_relevance_v5.md",
     }
     # Use --prompts to select which variants to run (default: all)
     if args.prompts:
