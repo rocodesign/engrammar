@@ -476,11 +476,19 @@ def run_evaluation_for_session(session_id, db_path=None):
 
     shown_engrams = [{"id": r["id"], "text": r["text"]} for r in engrams]
 
-    # Find transcript — prefer local windows around hook events (#016),
-    # fall back to head+tail excerpt for legacy sessions
+    # Find transcript — combine local windows (#016) with head+tail fallback.
+    # Local windows provide precise context for matched engrams;
+    # head+tail covers engrams from tool/session-start hooks that don't
+    # match a specific user turn.
     transcript = ""
 
-    # Try local windows first: extract context around the turns where engrams were shown
+    # Always get head+tail as the baseline
+    if transcript_path and os.path.isfile(transcript_path):
+        transcript = _read_transcript_file(transcript_path)
+    if not transcript:
+        transcript = _find_transcript_excerpt(session_id)
+
+    # Prepend local windows for engrams with prompt context (#016)
     if transcript_path and os.path.isfile(transcript_path) and engram_context:
         try:
             from engrammar.core.db import get_shown_engram_context
@@ -488,16 +496,9 @@ def run_evaluation_for_session(session_id, db_path=None):
             if shown_ctx:
                 local = _extract_local_windows(transcript_path, shown_ctx)
                 if local:
-                    transcript = local
+                    transcript = local + "\n\n--- Session overview (head+tail) ---\n\n" + transcript
         except Exception:
             pass
-
-    # Fall back to head+tail excerpt
-    if not transcript:
-        if transcript_path and os.path.isfile(transcript_path):
-            transcript = _read_transcript_file(transcript_path)
-        if not transcript:
-            transcript = _find_transcript_excerpt(session_id)
 
     # Call Claude for evaluation — batch large sets to avoid quality degradation
     BATCH_SIZE = 15
