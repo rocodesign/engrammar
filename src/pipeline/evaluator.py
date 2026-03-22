@@ -103,6 +103,146 @@ def _get_prompt(name):
     return _prompt_cache[name]
 
 
+def _parse_transcript_turns(transcript_path):
+    """Parse a transcript JSONL into a list of (timestamp, role, text) turns.
+
+    Only includes user and assistant turns with text content.
+    Strips engrammar injection blocks to avoid self-referential evaluation.
+    """
+    import re
+    _ENGRAMMAR_BLOCK_RE = re.compile(
+        r"\[ENGRAMMAR_V1\].*?\[/ENGRAMMAR_V1\]", re.DOTALL
+    )
+
+    turns = []
+    try:
+        with open(transcript_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                if entry.get("type") not in ("user", "assistant"):
+                    continue
+
+                message_obj = entry.get("message", {})
+                content = message_obj.get("content", "")
+
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    content = " ".join(text_parts)
+                elif not isinstance(content, str):
+                    continue
+
+                content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
+                if not content:
+                    continue
+
+                role = message_obj.get("role", entry.get("type", ""))
+                ts = entry.get("timestamp", "")
+                turns.append((ts, role, content))
+    except Exception:
+        pass
+    return turns
+
+
+def _extract_local_windows(transcript_path, shown_context, max_chars_per_window=2000):
+    """Extract transcript windows around the turns where engrams were shown.
+
+    For each shown engram, finds the user prompt that triggered the search
+    and extracts: [user prompt] + [assistant response] + [next user turn].
+    This gives the evaluator exactly the context needed to judge whether
+    the engram's advice was acted on.
+
+    Args:
+        transcript_path: path to the session JSONL
+        shown_context: list of dicts from get_shown_engram_context() with
+            engram_id, hook_event, query_text, shown_at timestamp
+        max_chars_per_window: max chars per window
+
+    Returns:
+        str: combined windows with markers, or empty string on failure
+    """
+    turns = _parse_transcript_turns(transcript_path)
+    if not turns:
+        return ""
+
+    # Index turns by approximate timestamp for matching
+    # shown_at is ISO format like "2026-03-22T14:29:33.905126"
+    # transcript timestamps are "2026-03-22T00:14:11.934Z"
+    # Find the user turn whose text best matches the query_text
+
+    windows = []
+    seen_turn_indices = set()
+
+    for ctx in shown_context:
+        query = ctx.get("query_text", "")
+        if not query:
+            continue
+
+        # Find the user turn that best matches this query
+        best_idx = None
+        best_overlap = 0
+        query_words = set(query.lower().split()[:10])
+
+        for i, (ts, role, text) in enumerate(turns):
+            if role != "user":
+                continue
+            turn_words = set(text.lower().split()[:20])
+            overlap = len(query_words & turn_words)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_idx = i
+
+        if best_idx is None or best_overlap < 2:
+            continue
+
+        # Skip if we already have a window for this turn
+        if best_idx in seen_turn_indices:
+            continue
+        seen_turn_indices.add(best_idx)
+
+        # Extract window: [user prompt] + [assistant response(s)] + [next user turn]
+        window_parts = []
+        chars = 0
+
+        # The triggering user turn
+        _, role, text = turns[best_idx]
+        truncated = text[:max_chars_per_window // 3]
+        window_parts.append(f"user: {truncated}")
+        chars += len(truncated)
+
+        # Following turns (assistant response + next user reaction)
+        for j in range(best_idx + 1, min(best_idx + 6, len(turns))):
+            ts_j, role_j, text_j = turns[j]
+            remaining = max_chars_per_window - chars
+            if remaining < 100:
+                break
+            truncated_j = text_j[:remaining]
+            window_parts.append(f"{role_j}: {truncated_j}")
+            chars += len(truncated_j)
+            # Stop after first user response (the reaction)
+            if role_j == "user":
+                break
+
+        if window_parts:
+            engram_ids = [c["engram_id"] for c in shown_context
+                          if c.get("query_text") == query]
+            header = f"[Context for engram(s) {engram_ids}]"
+            windows.append(header + "\n" + "\n".join(window_parts))
+
+    if not windows:
+        return ""
+
+    return "\n\n---\n\n".join(windows)
+
+
 def _find_transcript_excerpt(session_id, max_chars=6000):
     """Search ~/.claude/projects/ for a JSONL matching this session ID.
 
@@ -336,12 +476,28 @@ def run_evaluation_for_session(session_id, db_path=None):
 
     shown_engrams = [{"id": r["id"], "text": r["text"]} for r in engrams]
 
-    # Find transcript — use stored path if available, fall back to glob search
+    # Find transcript — prefer local windows around hook events (#016),
+    # fall back to head+tail excerpt for legacy sessions
     transcript = ""
-    if transcript_path and os.path.isfile(transcript_path):
-        transcript = _read_transcript_file(transcript_path)
+
+    # Try local windows first: extract context around the turns where engrams were shown
+    if transcript_path and os.path.isfile(transcript_path) and engram_context:
+        try:
+            from engrammar.core.db import get_shown_engram_context
+            shown_ctx = get_shown_engram_context(session_id, db_path=db_path)
+            if shown_ctx:
+                local = _extract_local_windows(transcript_path, shown_ctx)
+                if local:
+                    transcript = local
+        except Exception:
+            pass
+
+    # Fall back to head+tail excerpt
     if not transcript:
-        transcript = _find_transcript_excerpt(session_id)
+        if transcript_path and os.path.isfile(transcript_path):
+            transcript = _read_transcript_file(transcript_path)
+        if not transcript:
+            transcript = _find_transcript_excerpt(session_id)
 
     # Call Claude for evaluation — batch large sets to avoid quality degradation
     BATCH_SIZE = 15
