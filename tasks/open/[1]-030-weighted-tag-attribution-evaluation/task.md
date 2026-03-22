@@ -95,6 +95,30 @@ The existing env-tag/repo evaluation with dampened formula stays unchanged — i
 - Compare composite score with old uniform attribution vs new weighted attribution
 - Expect stronger class_separation as feedback signal concentrates on relevant tags
 
+## MetaClaw-inspired: Per-turn relevance scoring
+
+MetaClaw's PRM scores **each assistant response** individually with a majority-vote process reward model, rather than evaluating the whole session as a unit. Currently engrammar evaluates engram relevance at the session level.
+
+### Idea: Turn-level attribution
+
+Instead of one verdict per engram per session, score relevance **per turn where the engram was active**:
+
+- The audit already records `hook_event` and `shown_at` timestamps per engram
+- The evaluator could segment the transcript by turns and ask: "Was this engram useful for the response that followed its injection?"
+- Per-turn scores are then aggregated (weighted by recency or turn importance) into the session-level verdict
+
+### Why this helps
+
+- An engram injected at SessionStart that's useful for turn 3 but irrelevant for turns 7-15 currently gets a diluted score
+- Per-turn scoring would give it a strong positive for turn 3 and neutral for the rest
+- Combined with weighted tag attribution, this makes the feedback signal much more precise
+
+### Trade-off
+
+- More LLM calls per evaluation (one per turn-engram pair vs one per session)
+- Could be approximated: only score the turn immediately following injection rather than all turns
+- Consider as a future enhancement after the base weighted attribution is working
+
 ## Files
 
 - `src/search/engine.py` — expose per-engram tag_sims in diagnostics

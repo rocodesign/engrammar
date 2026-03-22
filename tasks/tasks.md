@@ -35,6 +35,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
 - [ ] **#030 Weighted tag attribution for evaluation** `C2`
   - `tasks/open/[1]-030-weighted-tag-attribution-evaluation/task.md`
+- [ ] **#031 Preserve evaluation context through dedup merges** `C1`
+  - `tasks/open/[1]-031-preserve-evaluation-context-through-dedup/task.md`
 
 ### Medium
 
@@ -65,6 +67,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-028-semantic-cluster-dedup/task.md`
 - [ ] **#029 Extraction quality benchmark** `C2`
   - `tasks/open/[2]-029-extraction-quality-benchmark/task.md`
+- [ ] **#039 Failure-driven engram evolution** `C3` `depends-on: #012, #031`
+  - `tasks/open/[2]-039-failure-driven-engram-evolution/task.md`
+- [ ] **#040 Engram versioning for evaluation integrity** `C2`
+  - `tasks/open/[2]-040-engram-versioning-evaluation-integrity/task.md`
 
 ### Low
 
@@ -72,6 +78,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[3]-013-batch-extracted-engram-processing/task.md`
 - [ ] **#014 Add extraction pipeline observability** `C1`
   - `tasks/open/[3]-014-extraction-pipeline-observability/task.md`
+- [ ] **#041 Robust LLM output parsing with fallback strategies** `C1`
+  - `tasks/open/[3]-041-robust-llm-output-parsing/task.md`
 
 ## Completed Tasks
 
@@ -109,8 +117,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
 ## Ideas
 
 - `tasks/ideas/session-end-reflection.md`
+- `tasks/ideas/metaclaw-inspired-adaptation-loop.md` — Explore a retrieval-first adaptation loop: failure-driven engram rewrites, idle-time learning jobs, and benchmark-gated evolution inspired by MetaClaw `→ promoted: #039 (evolution), idle scheduling added to #015`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries `→ partially implemented via min_vector_sim, see #017`
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF `→ autoresearch testing plan added`
 - `tasks/ideas/tool-use-previous-turn-retrieval.md` — Give extraction LLM an on-demand tool to retrieve the previous turn for detecting inflection points
 - `tasks/ideas/tag-vocab-normalization.md` — Merge near-duplicate tags in vocab; also prevent bloat at extraction time `→ write-time constraint added`
 - `tasks/ideas/enrichment-ground-truth-data.md` — Add `prior_assistant` fields to search_queries.json to enable enrichment strategy testing
+- `tasks/ideas/metaclaw-inspired-skill-lifecycle.md` — Session-end synthesis, procedural extraction, versioned evidence, and idle-window maintenance inspired by MetaClaw `→ promoted: #040 (versioning), provenance added to #031, per-turn scoring added to #030`
