@@ -479,18 +479,133 @@ def compute_tag_sims(content_tags, prompt_tag_names):
         return None
 
 
-def cmd_attribution(args):
-    """Compare uniform vs weighted tag attribution on real session data.
+def _run_eval_with_prompt(session, engram_texts, model, prompt_name="evaluation/tag_relevance.md"):
+    """Run evaluation using a specific prompt template. Returns parsed result dict."""
+    shown = [eid for eid in session["shown_engram_ids"] if eid in engram_texts]
+    if not shown:
+        return {"error": "no engrams found", "elapsed_s": 0}
 
-    For each session with eval results, computes what tag_relevance scores
-    would look like under both strategies and reports the differences.
+    engrams_block = "\n".join(
+        f"- ID {eid}: {engram_texts[eid]}" for eid in shown if eid in engram_texts
+    )
+
+    prompt = _get_prompt(prompt_name).format(
+        repo=session["repo"],
+        env_tags=json.dumps(session["env_tags"]),
+        engrams_block=engrams_block,
+        transcript=session["transcript"],
+    )
+
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+    env["ENGRAMMAR_INTERNAL_RUN"] = "1"
+
+    start = time.time()
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", model,
+             "--output-format", "text", "--no-session-persistence"],
+            capture_output=True, text=True, timeout=300,
+            env=env, stdin=subprocess.DEVNULL,
+        )
+        elapsed = time.time() - start
+
+        if result.returncode != 0:
+            return {"error": f"exit {result.returncode}: {result.stderr[:200]}", "elapsed_s": elapsed}
+
+        output = result.stdout.strip()
+        if output.startswith("```"):
+            lines = output.split("\n")[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            output = "\n".join(lines)
+
+        try:
+            evaluations = json.loads(output)
+        except json.JSONDecodeError:
+            m = re.search(r'\[.*\]', output, re.DOTALL)
+            if m:
+                try:
+                    evaluations = json.loads(m.group())
+                except json.JSONDecodeError:
+                    return {"error": f"JSON parse failed: {output[:200]}", "elapsed_s": elapsed}
+            else:
+                return {"error": f"no JSON array: {output[:200]}", "elapsed_s": elapsed}
+
+        return {"evaluations": evaluations, "elapsed_s": elapsed}
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "elapsed_s": 300}
+    except Exception as e:
+        return {"error": str(e), "elapsed_s": time.time() - start}
+
+
+def _summarize_eval_yield(evaluations):
+    """Summarize evaluation yield: how many engrams got non-zero scores, by tier."""
+    applied = 0
+    relevant = 0
+    neutral = 0
+    negative = 0
+
+    for ev in evaluations:
+        tag_scores = ev.get("tag_scores", {})
+        relevance = ev.get("relevance", "")
+
+        if relevance:
+            # v2 prompt with explicit relevance field
+            if relevance == "applied":
+                applied += 1
+            elif relevance == "relevant":
+                relevant += 1
+            elif relevance == "negative":
+                negative += 1
+            else:
+                neutral += 1
+        else:
+            # v1 prompt: infer from tag_scores
+            if not tag_scores:
+                neutral += 1
+            else:
+                avg = sum(tag_scores.values()) / len(tag_scores)
+                if avg > 0.3:
+                    applied += 1
+                elif avg > 0:
+                    relevant += 1
+                elif avg < -0.1:
+                    negative += 1
+                else:
+                    neutral += 1
+
+    total = len(evaluations)
+    return {
+        "total": total,
+        "applied": applied,
+        "relevant": relevant,
+        "neutral": neutral,
+        "negative": negative,
+        "yield_rate": round((applied + relevant) / max(total, 1), 4),
+    }
+
+
+def cmd_attribution(args):
+    """Compare evaluation prompts and attribution strategies.
+
+    Runs each session through multiple prompt variants (v1 strict, v2 relevance-aware)
+    and models, comparing eval yield and attribution distribution.
     """
     from engrammar.core.db import get_connection, get_content_tags
 
-    print("Loading sessions with engram_context for attribution comparison...")
+    # Prompt variants to compare
+    prompt_variants = {
+        "v1_strict": "evaluation/tag_relevance.md",
+        "v2_relevance": "evaluation/tag_relevance_v2.md",
+    }
+
+    # Models to test
+    models = args.models if args.models else ["haiku"]
+
+    print("Loading sessions for attribution comparison...")
     conn = get_connection()
 
-    # Find sessions that have engram_context (from #016/#030 data capture)
     rows = conn.execute("""
         SELECT session_id, shown_engram_ids, env_tags, repo, engram_context, transcript_path
         FROM session_audit
@@ -499,9 +614,11 @@ def cmd_attribution(args):
         LIMIT ?
     """, (args.sessions * 5,)).fetchall()
 
-    sessions_with_ctx = []
-    sessions_without_ctx = []
+    sessions = []
+    simulate_mode = True
     for row in rows:
+        if len(sessions) >= args.sessions:
+            break
         shown_ids = json.loads(row["shown_engram_ids"])
         if not shown_ids:
             continue
@@ -510,38 +627,39 @@ def cmd_attribution(args):
         if ctx_raw:
             try:
                 ctx = json.loads(ctx_raw)
+                if ctx:
+                    simulate_mode = False
             except (json.JSONDecodeError, TypeError):
                 pass
-        entry = {
+
+        # Get transcript
+        t_path = row["transcript_path"] if "transcript_path" in row.keys() else None
+        transcript = ""
+        if t_path and Path(t_path).exists():
+            transcript = _read_transcript_file(t_path)
+        if not transcript:
+            transcript = _find_transcript_by_session(row["session_id"])
+        if not transcript:
+            continue
+
+        sessions.append({
             "session_id": row["session_id"],
             "shown_engram_ids": shown_ids,
             "env_tags": json.loads(row["env_tags"]),
             "repo": row["repo"] or "unknown",
             "engram_context": ctx,
-        }
-        if ctx:
-            sessions_with_ctx.append(entry)
-        else:
-            sessions_without_ctx.append(entry)
-
+            "transcript": transcript,
+        })
     conn.close()
 
-    print(f"Sessions with engram_context: {len(sessions_with_ctx)}")
-    print(f"Sessions without (legacy): {len(sessions_without_ctx)}")
-
-    if not sessions_with_ctx:
-        print("\nNo sessions have engram_context yet. The data capture hooks need to")
-        print("run first (deploy.sh, then use Claude for a few sessions).")
-        print(f"\nFalling back to simulating attribution on {min(len(sessions_without_ctx), args.sessions)} legacy sessions...")
-        sessions = sessions_without_ctx[:args.sessions]
-        simulate_mode = True
-    else:
-        sessions = sessions_with_ctx[:args.sessions]
-        simulate_mode = False
-
     if not sessions:
-        print("No sessions found.")
+        print("No sessions with transcripts found.")
         return
+
+    print(f"Found {len(sessions)} sessions")
+    print(f"Context mode: {'real prompt_tags' if not simulate_mode else 'simulated (env_tags proxy)'}")
+    print(f"Models: {models}")
+    print(f"Prompts: {list(prompt_variants.keys())}\n")
 
     # Collect engram IDs and load texts + content tags
     all_ids = set()
@@ -555,9 +673,8 @@ def cmd_attribution(args):
         if tags:
             engram_content_tags[eid] = tags
 
-    # Run evaluations (or load cached)
-    print(f"\nRunning evaluations on {len(sessions)} sessions with {args.models[0]}...\n")
-    all_comparisons = []
+    # Run all combos: model × prompt_variant
+    combo_results = {}  # (model, variant) -> [{session_id, evaluations, yield_summary}]
 
     for si, session in enumerate(sessions):
         sid = session["session_id"]
@@ -565,201 +682,181 @@ def cmd_attribution(args):
         if not shown:
             continue
 
-        # Get transcript
-        t_path = None
-        try:
-            conn2 = get_connection()
-            r = conn2.execute(
-                "SELECT transcript_path FROM session_audit WHERE session_id = ?",
-                (sid,)
-            ).fetchone()
-            conn2.close()
-            if r:
-                t_path = r["transcript_path"]
-        except Exception:
-            pass
+        print(f"Session {si+1}/{len(sessions)} {sid[:12]} ({len(shown)} engrams, repo={session['repo']}):")
 
-        transcript = ""
-        if t_path and Path(t_path).exists():
-            transcript = _read_transcript_file(t_path)
-        if not transcript:
-            transcript = _find_transcript_by_session(sid)
-        if not transcript:
-            print(f"  {sid[:12]}: no transcript — skip")
-            continue
+        for model in models:
+            for vname, vprompt in prompt_variants.items():
+                key = (model, vname)
+                combo_results.setdefault(key, [])
 
-        eval_session = {
-            "session_id": sid,
-            "shown_engram_ids": shown,
-            "env_tags": session["env_tags"],
-            "repo": session["repo"],
-            "transcript": transcript,
-        }
+                print(f"  {model}/{vname}...", end=" ", flush=True)
+                result = _run_eval_with_prompt(session, engram_texts, model, vprompt)
 
-        print(f"  [{si+1}/{len(sessions)}] {sid[:12]} ({len(shown)} engrams)...", end=" ", flush=True)
-        result = run_evaluation(eval_session, engram_texts, args.models[0])
-        if "error" in result:
-            print(f"ERROR: {result['error'][:40]}")
-            continue
+                if "error" in result:
+                    print(f"ERROR: {result['error'][:40]}")
+                    continue
 
-        evaluations = result["evaluations"]
-        print(f"{len(evaluations)} evals in {result['elapsed_s']:.1f}s")
+                evaluations = result["evaluations"]
+                yield_summary = _summarize_eval_yield(evaluations)
 
-        # Compare attribution strategies per engram
-        for ev in evaluations:
-            eid = ev.get("engram_id")
-            tag_scores = ev.get("tag_scores", {})
-            if not eid or not tag_scores:
-                continue
+                print(f"applied={yield_summary['applied']} relevant={yield_summary['relevant']} "
+                      f"neutral={yield_summary['neutral']} neg={yield_summary['negative']} "
+                      f"yield={yield_summary['yield_rate']:.0%} ({result['elapsed_s']:.1f}s)")
 
-            content_tags = engram_content_tags.get(eid, [])
-            if not content_tags:
-                continue
-
-            avg_signal = sum(tag_scores.values()) / len(tag_scores)
-            if avg_signal == 0:
-                continue
-
-            # Strategy 1: Uniform (current)
-            uniform_scores = {ct: avg_signal for ct in content_tags}
-
-            # Strategy 2: Weighted attribution
-            ctx = session["engram_context"].get(str(eid), {})
-            prompt_tags = ctx.get("prompt_tags") if ctx else None
-
-            if simulate_mode or not prompt_tags:
-                # Simulate: use env_tags as proxy for prompt tags (rough)
-                prompt_tag_names = session["env_tags"][:3]
-            else:
-                prompt_tag_names = [t for t, _s in prompt_tags]
-
-            tag_sims = compute_tag_sims(content_tags, prompt_tag_names)
-            weighted_scores = {}
-            if tag_sims:
-                for ct in content_tags:
-                    sim = tag_sims.get(ct, 0)
-                    weight = _attribution_weight(sim)
-                    weighted_scores[ct] = avg_signal * weight
-            else:
-                weighted_scores = uniform_scores.copy()
-
-            all_comparisons.append({
-                "engram_id": eid,
-                "session_id": sid[:12],
-                "avg_signal": round(avg_signal, 3),
-                "content_tags": content_tags,
-                "prompt_tags": prompt_tag_names[:3],
-                "uniform": {k: round(v, 4) for k, v in uniform_scores.items()},
-                "weighted": {k: round(v, 4) for k, v in weighted_scores.items()},
-                "tag_sims": {k: round(v, 3) for k, v in (tag_sims or {}).items()},
-            })
-
-    if not all_comparisons:
-        print("\nNo comparisons produced. Need sessions with evaluated engrams.")
-        return
-
-    # Analyze
-    print(f"\n{'=' * 70}")
-    print(f"  Attribution Comparison: {len(all_comparisons)} engram evaluations")
-    print(f"{'=' * 70}\n")
-
-    # How much does weighted differ from uniform?
-    total_tags = 0
-    tags_zeroed = 0  # weighted zeroed out a tag that uniform scored
-    tags_reduced = 0  # weighted significantly reduced (>50% lower)
-    tags_preserved = 0  # weighted kept similar signal
-    concentration_ratios = []  # max_weighted / sum_weighted (higher = more concentrated)
-
-    for comp in all_comparisons:
-        uniform = comp["uniform"]
-        weighted = comp["weighted"]
-        w_values = list(weighted.values())
-        if not w_values:
-            continue
-
-        total_sum = sum(abs(v) for v in w_values)
-        max_val = max(abs(v) for v in w_values) if w_values else 0
-        if total_sum > 0:
-            concentration_ratios.append(max_val / total_sum)
-
-        for tag in uniform:
-            total_tags += 1
-            u_val = abs(uniform.get(tag, 0))
-            w_val = abs(weighted.get(tag, 0))
-            if u_val > 0.01 and w_val < 0.01:
-                tags_zeroed += 1
-            elif u_val > 0.01 and w_val < u_val * 0.5:
-                tags_reduced += 1
-            else:
-                tags_preserved += 1
-
-    avg_concentration = sum(concentration_ratios) / len(concentration_ratios) if concentration_ratios else 0
-
-    print(f"Total tag scores compared: {total_tags}")
-    print(f"  Preserved (similar signal):  {tags_preserved} ({tags_preserved/max(total_tags,1):.0%})")
-    print(f"  Reduced (>50% lower):        {tags_reduced} ({tags_reduced/max(total_tags,1):.0%})")
-    print(f"  Zeroed (below floor):         {tags_zeroed} ({tags_zeroed/max(total_tags,1):.0%})")
-    print(f"  Avg concentration ratio:      {avg_concentration:.2f} (1.0 = all signal on one tag)")
-
-    # Show examples
-    print(f"\n--- Example comparisons (first 10) ---\n")
-    for comp in all_comparisons[:10]:
-        print(f"  Engram #{comp['engram_id']} | signal={comp['avg_signal']:+.2f} | prompt_tags={comp['prompt_tags']}")
-        for tag in comp["content_tags"]:
-            sim = comp["tag_sims"].get(tag, 0)
-            u = comp["uniform"].get(tag, 0)
-            w = comp["weighted"].get(tag, 0)
-            marker = " <<<" if abs(u - w) > 0.05 else ""
-            print(f"    {tag:20s} sim={sim:.2f}  uniform={u:+.3f}  weighted={w:+.3f}{marker}")
+                combo_results[key].append({
+                    "session_id": sid,
+                    "evaluations": evaluations,
+                    "yield": yield_summary,
+                    "elapsed_s": result["elapsed_s"],
+                })
         print()
 
-    # Save results (same folder pattern as main eval benchmark)
+    # Judge pass — have a stronger model verify a sample of evaluations
+    judge_results = {}
+    if args.judge:
+        print(f"\n=== Judge verification ({args.judge}) ===\n")
+        for (model, vname), session_results in combo_results.items():
+            judge_results[(model, vname)] = []
+            for sr in session_results[:3]:  # judge first 3 sessions per combo
+                evals = sr["evaluations"]
+                # Pick highest-magnitude scores to judge
+                scored = [(ev, abs(sum(ev.get("tag_scores", {}).values())))
+                          for ev in evals if ev.get("tag_scores")]
+                scored.sort(key=lambda x: -x[1])
+                sample = scored[:args.judge_samples]
+
+                for ev, _ in sample:
+                    eid = ev.get("engram_id")
+                    if eid not in engram_texts:
+                        continue
+                    tag_scores = ev.get("tag_scores", {})
+                    relevance = ev.get("relevance", "unknown")
+                    avg = sum(tag_scores.values()) / len(tag_scores) if tag_scores else 0
+
+                    judge_prompt = f"""You are auditing an engram evaluation decision.
+
+Engram: "{engram_texts[eid]}"
+Evaluator model: {model}, prompt variant: {vname}
+Evaluation: relevance={relevance}, tag_scores={json.dumps(tag_scores)}
+Action identified: "{ev.get('action', 'N/A')}"
+Transcript quote: "{ev.get('found', 'N/A')}"
+
+Was this evaluation correct? Consider:
+1. If scored positive: does the quote prove the advice was followed?
+2. If scored "relevant": is the topic genuinely related to the session?
+3. If scored neutral: was there actually a relevant connection missed?
+
+Return strict JSON:
+{{"verdict": "correct" | "too_generous" | "too_strict" | "wrong", "confidence": 0.0-1.0, "reason": "1 sentence"}}"""
+
+                    response, elapsed = call_judge(judge_prompt, args.judge)
+                    if response:
+                        print(f"  [{model}/{vname}] #{eid} {relevance} → {response.get('verdict', '?')} "
+                              f"({response.get('confidence', 0):.1f})")
+                        judge_results[(model, vname)].append({
+                            "engram_id": eid,
+                            "relevance": relevance,
+                            "avg_score": round(avg, 3),
+                            **response,
+                        })
+
+    # Print comparison table
+    print(f"\n{'=' * 90}")
+    print(f"  Evaluation Prompt + Model Comparison")
+    print(f"{'=' * 90}\n")
+    print(f"  {'Config':<25s} {'Sessions':>8s} {'Applied':>8s} {'Relevant':>9s} {'Neutral':>8s} "
+          f"{'Neg':>5s} {'Yield':>7s} {'Avg time':>9s}")
+    print(f"  {'-'*25} {'-'*8} {'-'*8} {'-'*9} {'-'*8} {'-'*5} {'-'*7} {'-'*9}")
+
+    for (model, vname), session_results in sorted(combo_results.items()):
+        if not session_results:
+            continue
+        n = len(session_results)
+        totals = {"applied": 0, "relevant": 0, "neutral": 0, "negative": 0, "total": 0}
+        total_time = 0
+        for sr in session_results:
+            y = sr["yield"]
+            for k in totals:
+                totals[k] += y[k]
+            total_time += sr["elapsed_s"]
+        yield_rate = (totals["applied"] + totals["relevant"]) / max(totals["total"], 1)
+        avg_time = total_time / n
+
+        label = f"{model}/{vname}"
+        print(f"  {label:<25s} {n:>8d} {totals['applied']:>8d} {totals['relevant']:>9d} "
+              f"{totals['neutral']:>8d} {totals['negative']:>5d} {yield_rate:>6.0%} {avg_time:>8.1f}s")
+
+    # Judge summary
+    if judge_results:
+        print(f"\n--- Judge ({args.judge}) Summary ---\n")
+        for (model, vname), verdicts in sorted(judge_results.items()):
+            if not verdicts:
+                continue
+            correct = sum(1 for v in verdicts if v.get("verdict") == "correct")
+            too_gen = sum(1 for v in verdicts if v.get("verdict") == "too_generous")
+            too_str = sum(1 for v in verdicts if v.get("verdict") == "too_strict")
+            wrong = sum(1 for v in verdicts if v.get("verdict") == "wrong")
+            total = len(verdicts)
+            print(f"  {model}/{vname}: {correct}/{total} correct, "
+                  f"{too_gen} too generous, {too_str} too strict, {wrong} wrong")
+
+    # Save results
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     run_id = time.strftime("%Y%m%d-%H%M%S")
     run_dir = RESULTS_DIR / f"attribution-{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build serializable results
+    serializable_combos = {}
+    for (model, vname), session_results in combo_results.items():
+        serializable_combos[f"{model}/{vname}"] = [{
+            "session_id": sr["session_id"][:12],
+            "yield": sr["yield"],
+            "elapsed_s": round(sr["elapsed_s"], 1),
+            "evaluations": sr["evaluations"],
+        } for sr in session_results]
+
+    serializable_judge = {}
+    for (model, vname), verdicts in judge_results.items():
+        serializable_judge[f"{model}/{vname}"] = verdicts
+
     with open(run_dir / "summary.json", "w") as f:
         json.dump({
             "run_id": run_id,
-            "mode": "simulated" if simulate_mode else "real",
-            "total_comparisons": len(all_comparisons),
-            "stats": {
-                "total_tags": total_tags,
-                "tags_preserved": tags_preserved,
-                "tags_reduced": tags_reduced,
-                "tags_zeroed": tags_zeroed,
-                "avg_concentration": round(avg_concentration, 4),
+            "config": {
+                "models": models,
+                "prompt_variants": list(prompt_variants.keys()),
+                "sessions": len(sessions),
+                "judge": args.judge,
+                "context_mode": "real" if not simulate_mode else "simulated",
             },
-            "comparisons": all_comparisons,
+            "combos": serializable_combos,
+            "judge": serializable_judge,
         }, f, indent=2)
 
     # Markdown report
     md = [
         f"# Attribution Benchmark — {run_id}\n",
-        f"**Mode**: {'simulated (env_tags as proxy)' if simulate_mode else 'real (prompt_tags from hooks)'}  ",
+        f"**Models**: {', '.join(models)}  ",
+        f"**Prompts**: {', '.join(prompt_variants.keys())}  ",
         f"**Sessions**: {len(sessions)}  ",
-        f"**Engram evaluations**: {len(all_comparisons)}\n",
-        "## Stats\n",
-        f"| Metric | Value |",
-        f"|--------|-------|",
-        f"| Tags compared | {total_tags} |",
-        f"| Preserved (similar signal) | {tags_preserved} ({tags_preserved/max(total_tags,1):.0%}) |",
-        f"| Reduced >50% | {tags_reduced} ({tags_reduced/max(total_tags,1):.0%}) |",
-        f"| Zeroed (below floor) | {tags_zeroed} ({tags_zeroed/max(total_tags,1):.0%}) |",
-        f"| Concentration ratio | {avg_concentration:.2f} |",
-        "",
-        "## Examples\n",
-        "| Engram | Tag | Sim | Uniform | Weighted | Delta |",
-        "|--------|-----|----:|--------:|---------:|------:|",
+        f"**Judge**: {args.judge or 'none'}\n",
+        "## Eval Yield Comparison\n",
+        "| Config | Sessions | Applied | Relevant | Neutral | Neg | Yield |",
+        "|--------|--------:|--------:|---------:|--------:|----:|------:|",
     ]
-    for comp in all_comparisons[:15]:
-        for tag in comp["content_tags"]:
-            sim = comp["tag_sims"].get(tag, 0)
-            u = comp["uniform"].get(tag, 0)
-            w = comp["weighted"].get(tag, 0)
-            delta = w - u
-            md.append(f"| #{comp['engram_id']} | {tag} | {sim:.2f} | {u:+.3f} | {w:+.3f} | {delta:+.3f} |")
+
+    for (model, vname), session_results in sorted(combo_results.items()):
+        if not session_results:
+            continue
+        n = len(session_results)
+        totals = {"applied": 0, "relevant": 0, "neutral": 0, "negative": 0, "total": 0}
+        for sr in session_results:
+            for k in totals:
+                totals[k] += sr["yield"][k]
+        yield_rate = (totals["applied"] + totals["relevant"]) / max(totals["total"], 1)
+        md.append(f"| {model}/{vname} | {n} | {totals['applied']} | {totals['relevant']} | "
+                  f"{totals['neutral']} | {totals['negative']} | {yield_rate:.0%} |")
 
     with open(run_dir / "report.md", "w") as f:
         f.write("\n".join(md))
