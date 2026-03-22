@@ -595,10 +595,17 @@ def cmd_attribution(args):
     from engrammar.core.db import get_connection, get_content_tags
 
     # Prompt variants to compare
-    prompt_variants = {
+    all_prompt_variants = {
         "v1_strict": "evaluation/tag_relevance.md",
         "v2_relevance": "evaluation/tag_relevance_v2.md",
+        "v3_causal": "evaluation/tag_relevance_v3.md",
+        "v4_conservative": "evaluation/tag_relevance_v4.md",
     }
+    # Use --prompts to select which variants to run (default: all)
+    if args.prompts:
+        prompt_variants = {k: v for k, v in all_prompt_variants.items() if k in args.prompts}
+    else:
+        prompt_variants = all_prompt_variants
 
     # Models to test
     models = args.models if args.models else ["haiku"]
@@ -881,6 +888,8 @@ def main():
                         help="Show session stats without calling LLM")
     parser.add_argument("--attribution", action="store_true",
                         help="Compare uniform vs weighted tag attribution (#030)")
+    parser.add_argument("--prompts", nargs="*", default=None,
+                        help="Prompt variants to test (default: all). Options: v1_strict v2_relevance v3_causal v4_conservative")
     args = parser.parse_args()
 
     if args.attribution:
