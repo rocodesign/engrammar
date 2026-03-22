@@ -803,7 +803,7 @@ Return strict JSON:
     # Save results
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     run_id = time.strftime("%Y%m%d-%H%M%S")
-    run_dir = RESULTS_DIR / f"attribution-{run_id}"
+    run_dir = RESULTS_DIR / f"eval-attribution-{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Build serializable results
