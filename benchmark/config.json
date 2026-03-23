@@ -17,16 +17,18 @@
       "msg_max_chars": 1500
     },
     "compare-prompts": {
-      "description": "Compare v1 vs v2 prompt on best transcripts — 3 context sizes, haiku only",
+      "description": "Compare v1 vs v2 vs v3 prompt on targeted bad-extraction transcripts — 3 context sizes, haiku only",
       "models": ["haiku"],
       "context_sizes": [8000, 12000, 16000],
       "prompts": [
-        "benchmark/prompts/v1-original.md",
-        "benchmark/prompts/v2-reusable.md"
+        "benchmark/prompts/extraction/v1-original.md",
+        "benchmark/prompts/extraction/v2-reusable.md",
+        "benchmark/prompts/extraction/v3-strict-reuse.md"
       ],
       "transcripts": [
-        "benchmark/transcripts/b95af07f*.jsonl",
-        "benchmark/transcripts/392ef156*.jsonl"
+        "benchmark/transcripts/evaluation/04734f8c*.jsonl",
+        "benchmark/transcripts/evaluation/cce4fe83*.jsonl",
+        "benchmark/transcripts/evaluation/9f239111*.jsonl"
       ],
       "msg_max_chars": 1500
     },

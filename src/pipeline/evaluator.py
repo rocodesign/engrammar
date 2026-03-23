@@ -378,7 +378,7 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
         f"- ID {l['id']}: {l['text']}" for l in shown_engrams
     )
 
-    prompt = _get_prompt("evaluation/tag_relevance_v2.md").format(
+    prompt = _get_prompt("evaluation/tag_relevance.md").format(
         repo=repo or "unknown",
         env_tags=json.dumps(env_tags),
         engrams_block=engrams_block,

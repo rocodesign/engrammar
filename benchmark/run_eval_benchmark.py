@@ -39,8 +39,21 @@ _prompt_cache = {}
 
 
 def _get_prompt(name):
+    """Load prompt from prompts/ (production) or benchmark/prompts/ (variants)."""
     if name not in _prompt_cache:
-        _prompt_cache[name] = load_prompt(name)
+        # Try benchmark/prompts/ first for variant prompts, fall back to production
+        benchmark_path = PROJECT_ROOT / "benchmark" / "prompts" / name
+        if benchmark_path.exists():
+            with open(benchmark_path) as f:
+                content = f.read()
+            # Strip YAML frontmatter
+            if content.startswith("---"):
+                end = content.find("\n---", 3)
+                if end != -1:
+                    content = content[end + 4:].lstrip("\n")
+            _prompt_cache[name] = content
+        else:
+            _prompt_cache[name] = load_prompt(name)
     return _prompt_cache[name]
 
 
@@ -596,11 +609,11 @@ def cmd_attribution(args):
 
     # Prompt variants to compare
     all_prompt_variants = {
-        "v1_strict": "evaluation/tag_relevance.md",
-        "v2_relevance": "evaluation/tag_relevance_v2.md",
-        "v3_causal": "evaluation/tag_relevance_v3.md",
-        "v4_conservative": "evaluation/tag_relevance_v4.md",
-        "v5_structural": "evaluation/tag_relevance_v5.md",
+        "v1_strict": "evaluation/v1-strict.md",
+        "v2_relevance": "evaluation/tag_relevance.md",
+        "v3_causal": "evaluation/v3-causal.md",
+        "v4_conservative": "evaluation/v4-conservative.md",
+        "v5_structural": "evaluation/v5-structural.md",
     }
     # Use --prompts to select which variants to run (default: all)
     if args.prompts:
