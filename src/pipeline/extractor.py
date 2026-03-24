@@ -1113,18 +1113,21 @@ def extract_from_turn(session_id, transcript_path):
     if os.path.getsize(transcript_path) < 10_000:
         return {"extracted": 0, "merged": 0, "skipped_reason": "small_transcript"}
 
-    # Read byte offset
+    # Read byte offset — this is where extraction last ran, NOT the end of
+    # the transcript.  When content is below the threshold we intentionally
+    # do NOT advance the offset so it accumulates for the next turn.
     byte_offset = _read_turn_offset(session_id)
 
     # Read new messages from offset
     new_text, new_offset = _read_transcript_from_offset(transcript_path, byte_offset)
 
-    # Skip if no meaningful new content
-    if not new_text or len(new_text) < 50:
-        # Still update offset so we don't re-read non-message lines
-        if new_offset > byte_offset:
-            _write_turn_offset(session_id, new_offset)
-        return {"extracted": 0, "merged": 0, "skipped_reason": "too_short"}
+    # ~5000 tokens ≈ 20000 chars (avg 4 chars/token).  Don't call the LLM
+    # until enough content has accumulated — short turns just wait.
+    MIN_TURN_CHARS = 20000
+
+    if not new_text or len(new_text) < MIN_TURN_CHARS:
+        # Don't advance offset — let content accumulate for the next turn
+        return {"extracted": 0, "merged": 0, "skipped_reason": "below_threshold"}
 
     # Read prior context for continuity
     context = _read_transcript_context(transcript_path, byte_offset)
