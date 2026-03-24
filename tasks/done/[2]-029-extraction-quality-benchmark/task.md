@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Complexity: C2
-- Status: Open
+- Status: Done (superseded by #032, infrastructure built in session 2026-03-23/24)
 
 ## Problem
 
