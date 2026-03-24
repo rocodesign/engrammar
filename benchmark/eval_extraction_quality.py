@@ -157,6 +157,8 @@ def find_best_match(labeled_text, extracted_engrams, matcher):
     """Find the best matching extracted engram for a labeled engram."""
     candidate_texts = []
     for eng in extracted_engrams:
+        if not isinstance(eng, dict):
+            continue
         text = eng.get("engram", eng.get("text", ""))
         if text:
             candidate_texts.append(text)

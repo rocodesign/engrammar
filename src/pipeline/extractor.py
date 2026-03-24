@@ -403,7 +403,7 @@ def _read_transcript_messages(jsonl_path, max_chars=8000):
     return result
 
 
-def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_chars=None, msg_max_chars=1500):
+def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_chars=None, msg_max_chars=None):
     """Read a transcript JSONL and return overlapping chunks for extraction.
 
     Reads all messages, then splits into chunks at message boundaries with overlap.
@@ -414,8 +414,7 @@ def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_cha
         jsonl_path: path to transcript JSONL
         chunk_chars: target size per chunk (chars)
         overlap_chars: overlap between consecutive chunks (default: 15% of chunk_chars)
-        msg_max_chars: per-message truncation limit (higher than default 500 to
-                       preserve assistant wrong attempts needed for friction detection)
+        msg_max_chars: per-message truncation limit. None means no truncation (default).
 
     Returns:
         list of chunk strings, each ready to send to extraction
@@ -451,7 +450,7 @@ def _read_transcript_messages_chunked(jsonl_path, chunk_chars=30000, overlap_cha
                 content = _ENGRAMMAR_BLOCK_RE.sub("", content).strip()
                 role = message_obj.get("role", entry.get("type", ""))
                 if content:
-                    messages.append(f"{role}: {content[:msg_max_chars]}")
+                    messages.append(f"{role}: {content if msg_max_chars is None else content[:msg_max_chars]}")
     except Exception:
         return []
 
@@ -792,8 +791,8 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
     for i, (session_id, fpath) in enumerate(unprocessed, 1):
         print(f"[{i}/{len(unprocessed)}] {session_id[:12]}...")
 
-        transcript_text = _read_transcript_messages(fpath)
-        if not transcript_text or len(transcript_text) < 100:
+        chunks = _read_transcript_messages_chunked(fpath)
+        if not chunks:
             print("  Skipped (too short)")
             summary["skipped"] += 1
             if not dry_run:
@@ -807,7 +806,8 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
 
         if dry_run:
-            print(f"  Would analyze {len(transcript_text)} chars of transcript")
+            total_chars = sum(len(c) for c in chunks)
+            print(f"  Would analyze {total_chars} chars of transcript ({len(chunks)} chunk(s))")
             if env_tags:
                 print(f"  Tags: {', '.join(env_tags)}")
             summary["processed"] += 1
@@ -821,10 +821,17 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         # Read existing project instructions to avoid duplicating documented knowledge
         existing_instructions = _read_existing_instructions(metadata.get("cwd"))
 
-        extracted = _call_claude_for_transcript_extraction(
-            transcript_text, session_id, existing_instructions=existing_instructions,
-            env_tags=env_tags,
-        )
+        all_extracted = []
+        for ci, chunk in enumerate(chunks):
+            chunk_extracted = _call_claude_for_transcript_extraction(
+                chunk, session_id, existing_instructions=existing_instructions,
+                env_tags=env_tags,
+            )
+            all_extracted.extend(chunk_extracted)
+            if len(chunks) > 1:
+                print(f"  Chunk {ci + 1}/{len(chunks)}: {len(chunk_extracted)} candidate(s)")
+
+        extracted = all_extracted
 
         if not extracted:
             print("  No engrams extracted.")
