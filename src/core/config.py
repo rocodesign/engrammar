@@ -49,8 +49,6 @@ DEFAULT_CONFIG = {
         },
     },
     "scoring": {
-        "rrf_floor": 0.015,
-        "rrf_ceiling": 0.033,
         "weight_content_tag": 0.25,
         "weight_feedback": 0.20,
         "repo_match_boost": 0.05,

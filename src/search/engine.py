@@ -148,10 +148,13 @@ def search(
     rrf_k = max(1, len(engrams) // 5)
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
-    # 3.1. Normalize RRF scores to 0-1 using fixed anchors
+    # 3.1. Normalize RRF scores to 0-1 using k-derived anchors
+    # Anchors are derived from k so normalized scores stay stable regardless
+    # of corpus size. ceiling = theoretical max (rank 0 in both lists),
+    # floor = marginal hit (rank ~10 in one list only).
     scoring_config = config.get("scoring", {})
-    rrf_floor = scoring_config.get("rrf_floor", 0.015)
-    rrf_ceiling = scoring_config.get("rrf_ceiling", 0.033)
+    rrf_ceiling = 2.0 / (rrf_k + 1)
+    rrf_floor = 1.0 / (rrf_k + 10)
     rrf_range = rrf_ceiling - rrf_floor
     if rrf_range > 0:
         fused = [(lid, (score - rrf_floor) / rrf_range) for lid, score in fused]
