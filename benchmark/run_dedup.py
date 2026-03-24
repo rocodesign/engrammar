@@ -15,6 +15,7 @@ import argparse
 import glob
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,12 @@ sys.path.insert(0, os.environ["ENGRAMMAR_HOME"])
 
 from engrammar.core.embeddings import embed_batch
 from engrammar.core.prompt_loader import load_prompt
+from pipeline.dedup import (
+    _parse_json_response,
+    build_batches as _prod_build_batches,
+    find_candidates_bootstrap as _prod_find_candidates,
+    validate_dedup_response,
+)
 
 RESULTS_DIR = PROJECT_ROOT / "benchmark" / "results"
 
@@ -82,134 +89,57 @@ def load_engrams_from_db():
     return engrams
 
 
-# --- Candidate finding (copied from dedup.py to avoid DB deps) ---
+# --- Candidate finding (delegates to production pipeline) ---
 
 
 def find_candidates(engrams, min_sim=0.50, top_k=8):
     """Find embedding-similar candidate pairs among all engrams.
 
+    Wraps production find_candidates_bootstrap and additionally computes
+    the full similarity matrix needed for benchmark analysis/reporting.
+
     Returns:
         dict mapping engram_id -> [(other_id, similarity), ...]
         similarity matrix for analysis
     """
-    if len(engrams) < 2:
-        return {}, None
+    candidate_map = _prod_find_candidates(engrams, min_sim=min_sim, top_k=top_k)
 
-    texts = [e["text"] for e in engrams]
-    embs = embed_batch(texts)
-
-    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-10
-    normed = embs / norms
-    sim_matrix = normed @ normed.T
-
-    candidate_map = {}
-    for i, engram in enumerate(engrams):
-        scores = sim_matrix[i].copy()
-        scores[i] = -1  # exclude self
-
-        above_threshold = np.where(scores >= min_sim)[0]
-        if len(above_threshold) == 0:
-            candidate_map[engram["id"]] = []
-            continue
-
-        sorted_indices = above_threshold[np.argsort(scores[above_threshold])[::-1]][:top_k]
-        candidates = [
-            (engrams[j]["id"], float(scores[j]))
-            for j in sorted_indices
-        ]
-        candidate_map[engram["id"]] = candidates
+    # Production doesn't return the similarity matrix; compute it for reporting
+    sim_matrix = None
+    if len(engrams) >= 2:
+        texts = [e["text"] for e in engrams]
+        embs = embed_batch(texts)
+        norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-10
+        normed = embs / norms
+        sim_matrix = normed @ normed.T
 
     return candidate_map, sim_matrix
 
 
-# --- Batch building ---
+# --- Batch building (delegates to production pipeline) ---
 
 
 def build_batches(candidate_map, engrams_by_id, char_budget=6000):
-    """Group engrams+candidates into batches respecting char budget."""
-    all_ids = set(candidate_map.keys())
-    # Only batch engrams that have candidates
-    sorted_ids = sorted(uid for uid in candidate_map if candidate_map[uid])
+    """Group engrams+candidates into batches respecting char budget.
 
-    batches = []
-    current_engrams = {}
-    current_edges = []
-    current_unverified = set()
-    current_chars = 0
-
-    for uid in sorted_ids:
-        candidates = candidate_map[uid]
-        engram_chars = len(engrams_by_id[uid]["text"])
-        new_chars = engram_chars if uid not in current_engrams else 0
-        for cid, sim in candidates:
-            if cid not in current_engrams:
-                new_chars += len(engrams_by_id[cid]["text"])
-
-        if current_chars + new_chars > char_budget and current_unverified:
-            batches.append({
-                "engrams": list(current_engrams.values()),
-                "candidate_edges": current_edges,
-                "unverified_ids": current_unverified,
-            })
-            current_engrams = {}
-            current_edges = []
-            current_unverified = set()
-            current_chars = 0
-
-        if uid not in current_engrams:
-            current_engrams[uid] = _engram_payload(engrams_by_id[uid])
-            current_chars += engram_chars
-        current_unverified.add(uid)
-
-        for cid, sim in candidates:
-            if cid not in current_engrams:
-                current_engrams[cid] = _engram_payload(engrams_by_id[cid])
-                current_chars += len(engrams_by_id[cid]["text"])
-            current_edges.append({
-                "source_id": uid,
-                "target_id": cid,
-                "similarity": round(sim, 4),
-            })
-
-    if current_unverified:
-        batches.append({
-            "engrams": list(current_engrams.values()),
-            "candidate_edges": current_edges,
-            "unverified_ids": current_unverified,
-        })
-
-    return batches
+    Wraps production build_batches — in benchmark mode all engrams are
+    treated as unverified (bootstrap).
+    """
+    unverified_ids = set(candidate_map.keys())
+    return _prod_build_batches(candidate_map, engrams_by_id, unverified_ids, char_budget=char_budget)
 
 
-def _engram_payload(engram):
-    return {
-        "id": engram["id"],
-        "status": "unverified",
-        "text": engram["text"],
-        "category": engram.get("category", "general"),
-        "prerequisites": engram.get("prerequisites", {}),
-        "occurrence_count": engram.get("occurrence_count", 1),
-    }
+# --- LLM call (benchmark wrapper with model override + timing) ---
 
 
-# --- LLM call ---
+def call_benchmark_dedup_llm(batch, model, batch_id=""):
+    """Send batch to LLM for dedup decisions with model override and timing.
 
-
-_prompt_cache = {}
-
-
-def _get_prompt(name):
-    if name not in _prompt_cache:
-        _prompt_cache[name] = load_prompt(name)
-    return _prompt_cache[name]
-
-
-def call_dedup_llm(batch, model, batch_id=""):
-    """Send batch to LLM for dedup decisions. Returns parsed response or None."""
-    import subprocess
-
-    system_prompt = _get_prompt("dedup/system.md")
-    mode_snippet = _get_prompt("dedup/bootstrap.md")
+    Uses production prompt assembly and JSON parsing. Returns
+    (parsed_response, elapsed_seconds, error_string_or_None).
+    """
+    system_prompt = load_prompt("dedup/system.md")
+    mode_snippet = load_prompt("dedup/bootstrap.md")
 
     payload = {
         "mode": "bootstrap",
@@ -274,83 +204,6 @@ Return strict JSON with this schema:
         return None, 300, "timeout"
     except Exception as e:
         return None, time.time() - start, str(e)
-
-
-def _parse_json_response(text):
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except json.JSONDecodeError:
-                pass
-    return None
-
-
-# --- Validation ---
-
-
-def validate_response(response, batch):
-    """Validate dedup response. Returns (valid_groups, errors)."""
-    errors = []
-    if not isinstance(response, dict):
-        return [], ["Response is not a dict"]
-
-    groups = response.get("groups", [])
-    no_match_ids = response.get("no_match_ids", [])
-
-    if not isinstance(groups, list):
-        return [], ["groups is not a list"]
-
-    input_ids = {e["id"] for e in batch["engrams"]}
-    seen_ids = set()
-    valid_groups = []
-
-    for i, group in enumerate(groups):
-        ids = group.get("ids", [])
-        canonical = group.get("canonical_text", "")
-        confidence = group.get("confidence", 0)
-
-        group_errors = []
-        if len(ids) < 2:
-            group_errors.append(f"Group {i}: size < 2")
-        unknown = set(ids) - input_ids
-        if unknown:
-            group_errors.append(f"Group {i}: unknown IDs {unknown}")
-        duped = set(ids) & seen_ids
-        if duped:
-            group_errors.append(f"Group {i}: IDs {duped} already used")
-        if not canonical or not canonical.strip():
-            group_errors.append(f"Group {i}: empty canonical_text")
-        if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
-            group_errors.append(f"Group {i}: bad confidence {confidence}")
-
-        if group_errors:
-            errors.extend(group_errors)
-        else:
-            seen_ids.update(ids)
-            valid_groups.append(group)
-
-    for nid in no_match_ids:
-        if nid not in input_ids:
-            errors.append(f"no_match_ids: unknown ID {nid}")
-        seen_ids.add(nid)
-
-    missing = input_ids - seen_ids
-    if missing:
-        errors.append(f"Unaccounted IDs: {missing}")
-
-    return valid_groups, errors
 
 
 # --- Main ---
@@ -485,7 +338,7 @@ def main():
                       f"({len(batch['unverified_ids'])} engrams, "
                       f"{len(batch['engrams'])} total)...", end=" ", flush=True)
 
-                response, elapsed, error = call_dedup_llm(batch, model, batch_id=batch_id)
+                response, elapsed, error = call_benchmark_dedup_llm(batch, model, batch_id=batch_id)
                 total_llm_time += elapsed
 
                 if error:
@@ -494,7 +347,7 @@ def main():
                     batch_details.append({"batch": bi, "error": error, "elapsed_s": elapsed})
                     continue
 
-                valid_groups, val_errors = validate_response(response, batch)
+                valid_groups, val_errors = validate_dedup_response(response, batch, mode="bootstrap")
                 if val_errors:
                     for ve in val_errors[:3]:
                         print(f"\n      validation: {ve}", end="")
