@@ -93,6 +93,54 @@ def test_mark_sessions_processed_keeps_max(test_db):
     assert row["engrams_extracted"] == 10
 
 
+def test_mark_sessions_processed_stores_title(test_db):
+    """Session title is stored and preserved across upserts."""
+    mark_sessions_processed(
+        [{"session_id": "sess-t", "had_friction": 0, "engrams_extracted": 0,
+          "session_title": "Fix login bug"}],
+        db_path=test_db,
+    )
+
+    conn = get_connection(test_db)
+    row = conn.execute(
+        "SELECT session_title FROM processed_sessions WHERE session_id = ?",
+        ("sess-t",),
+    ).fetchone()
+    conn.close()
+    assert row["session_title"] == "Fix login bug"
+
+    # Upsert without title preserves existing title (COALESCE)
+    mark_sessions_processed(
+        [{"session_id": "sess-t", "had_friction": 1, "engrams_extracted": 3}],
+        db_path=test_db,
+    )
+
+    conn = get_connection(test_db)
+    row = conn.execute(
+        "SELECT session_title, engrams_extracted FROM processed_sessions WHERE session_id = ?",
+        ("sess-t",),
+    ).fetchone()
+    conn.close()
+    assert row["session_title"] == "Fix login bug"
+    assert row["engrams_extracted"] == 3
+
+
+def test_read_transcript_metadata_extracts_title():
+    """_read_transcript_metadata picks up ai-title from JSONL."""
+    from src.pipeline.extractor import _read_transcript_metadata
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+        f.write(json.dumps({"cwd": "/tmp/myproject"}) + "\n")
+        f.write(json.dumps({"type": "ai-title", "aiTitle": "Debug scoring issue"}) + "\n")
+        path = f.name
+
+    try:
+        metadata = _read_transcript_metadata(path)
+        assert metadata["title"] == "Debug scoring issue"
+    finally:
+        os.unlink(path)
+
+
 # --- _get_turn_coverage ---
 
 

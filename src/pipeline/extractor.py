@@ -218,16 +218,17 @@ def _maybe_backfill_prerequisites(engram_id, prerequisites, db_path=None):
 
 
 def _read_transcript_metadata(jsonl_path):
-    """Extract cwd and repo from a transcript JSONL's metadata entries.
+    """Extract cwd, repo, and session title from a transcript JSONL's metadata entries.
 
     Uses git remote origin URL to detect repo name (same as environment.py).
     Falls back to last directory segment of cwd if git is unavailable.
 
     Returns:
-        dict with 'cwd' and 'repo' (or None for each if not found)
+        dict with 'cwd', 'repo', and 'title' (or None for each if not found)
     """
     cwd = None
     repo = None
+    title = None
     try:
         with open(jsonl_path, "r") as f:
             for line in f:
@@ -239,7 +240,9 @@ def _read_transcript_metadata(jsonl_path):
                     continue
                 if not cwd and "cwd" in entry:
                     cwd = entry["cwd"]
-                if cwd:
+                if not title and entry.get("type") == "ai-title":
+                    title = entry.get("aiTitle")
+                if cwd and title:
                     break
     except Exception:
         pass
@@ -247,7 +250,7 @@ def _read_transcript_metadata(jsonl_path):
     if cwd:
         repo = _detect_repo_from_cwd(cwd)
 
-    return {"cwd": cwd, "repo": repo}
+    return {"cwd": cwd, "repo": repo, "title": title}
 
 
 def _detect_repo_from_cwd(cwd):
@@ -695,14 +698,22 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
         print(f"Session {session_id[:12]} partially covered by turn extraction "
               f"({turn_offset}/{file_size} bytes), extracting remainder...")
 
+    # Read metadata early so session_title is available for all mark calls
+    metadata = _read_transcript_metadata(transcript_path)
+    title = metadata.get("title")
+
+    def _mark(had_friction=0, engrams_extracted=0):
+        mark_sessions_processed([{
+            "session_id": session_id, "had_friction": had_friction,
+            "engrams_extracted": engrams_extracted, "session_title": title,
+        }])
+
     # Check turn coverage even for sessions not in processed_sessions
     # (turn extraction may have run but not yet marked the session)
     turn_offset, file_size = _get_turn_coverage(session_id, transcript_path)
     if turn_offset > 0 and turn_offset >= file_size * 0.9:
         print(f"Session {session_id[:12]} fully covered by turn extraction.")
-        mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-        ])
+        _mark()
         return {"extracted": 0, "merged": 0}
 
     # Read only unprocessed content (from turn offset onward, or full transcript)
@@ -710,21 +721,16 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
         remainder_text, _ = _read_transcript_from_offset(transcript_path, turn_offset)
         if not remainder_text or len(remainder_text) < 100:
             print(f"  Skipped (remainder too short)")
-            mark_sessions_processed([
-                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-            ])
+            _mark()
             return {"extracted": 0, "merged": 0}
         transcript_text = remainder_text
     else:
         transcript_text = _read_transcript_messages(transcript_path)
         if not transcript_text or len(transcript_text) < 100:
             print(f"  Skipped (too short)")
-            mark_sessions_processed([
-                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-            ])
+            _mark()
             return {"extracted": 0, "merged": 0}
 
-    metadata = _read_transcript_metadata(transcript_path)
     env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
 
     # Write session audit so _enrich_with_session_tags can look up tags
@@ -742,16 +748,12 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
 
     if not extracted:
         print("  No engrams extracted.")
-        mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-        ])
+        _mark()
         return {"extracted": 0, "merged": 0}
 
     added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
 
-    mark_sessions_processed([
-        {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
-    ])
+    _mark(had_friction=1, engrams_extracted=added + merged)
 
     # Rebuild index so new engrams are immediately searchable
     if added > 0:
@@ -832,6 +834,16 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
     summary = {"processed": 0, "extracted": 0, "merged": 0, "skipped": 0}
 
     for i, (session_id, fpath, turn_offset) in enumerate(unprocessed, 1):
+        # Read metadata early so title is available for all mark calls
+        metadata = _read_transcript_metadata(fpath)
+        title = metadata.get("title")
+
+        def _mark(had_friction=0, engrams_extracted=0, _sid=session_id, _title=title):
+            mark_sessions_processed([{
+                "session_id": _sid, "had_friction": had_friction,
+                "engrams_extracted": engrams_extracted, "session_title": _title,
+            }])
+
         if turn_offset > 0:
             print(f"[{i}/{len(unprocessed)}] {session_id[:12]} (remainder from offset {turn_offset})...")
         else:
@@ -851,13 +863,9 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
             print("  Skipped (too short)")
             summary["skipped"] += 1
             if not dry_run:
-                mark_sessions_processed([
-                    {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-                ])
+                _mark()
             continue
 
-        # Detect env tags from the transcript's working directory
-        metadata = _read_transcript_metadata(fpath)
         env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
 
         if dry_run:
@@ -890,17 +898,13 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
 
         if not extracted:
             print("  No engrams extracted.")
-            mark_sessions_processed([
-                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-            ])
+            _mark()
             summary["processed"] += 1
             continue
 
         added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
 
-        mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 1, "engrams_extracted": added + merged}
-        ])
+        _mark(had_friction=1, engrams_extracted=added + merged)
 
         # Rebuild index after each transcript so the next one can dedup against fresh embeddings
         if added > 0:
@@ -1140,7 +1144,14 @@ def extract_from_turn(session_id, transcript_path):
 
     # Get metadata and env tags
     metadata = _read_transcript_metadata(transcript_path)
+    title = metadata.get("title")
     env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
+
+    def _mark_turn(had_friction=0, engrams_extracted=0):
+        mark_sessions_processed([{
+            "session_id": session_id, "had_friction": had_friction,
+            "engrams_extracted": engrams_extracted, "session_title": title,
+        }])
 
     # Write session audit so _enrich_with_session_tags works
     if env_tags:
@@ -1159,10 +1170,7 @@ def extract_from_turn(session_id, transcript_path):
     if not extracted:
         print("  No engrams extracted from turn.")
         _write_turn_offset(session_id, new_offset)
-        # Still mark session so batch extraction sees turn coverage
-        mark_sessions_processed([
-            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
-        ])
+        _mark_turn()
         return {"extracted": 0, "merged": 0}
 
     added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
@@ -1179,12 +1187,8 @@ def extract_from_turn(session_id, transcript_path):
     # Count total engrams extracted across all turns for this session
     total_session_engrams = len(_get_session_engrams(session_id))
 
-    # Mark in processed_sessions so batch extraction knows we covered this session.
-    # We mark on every turn (upsert) so the engrams_extracted count stays current.
-    mark_sessions_processed([
-        {"session_id": session_id, "had_friction": 1 if total_session_engrams > 0 else 0,
-         "engrams_extracted": total_session_engrams}
-    ])
+    _mark_turn(had_friction=1 if total_session_engrams > 0 else 0,
+               engrams_extracted=total_session_engrams)
 
     print(f"  Turn done. Added: {added}, Merged: {merged}")
     return {"extracted": added, "merged": merged}

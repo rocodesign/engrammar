@@ -81,7 +81,8 @@ def init_db(db_path=None):
             session_id TEXT PRIMARY KEY,
             processed_at TEXT,
             had_friction INTEGER DEFAULT 0,
-            engrams_extracted INTEGER DEFAULT 0
+            engrams_extracted INTEGER DEFAULT 0,
+            session_title TEXT
         );
 
         -- Replaces .session-shown.json (fixes race condition)
@@ -199,6 +200,11 @@ def init_db(db_path=None):
     hel_columns = [r[1] for r in conn.execute("PRAGMA table_info(hook_event_log)").fetchall()]
     if hel_columns and "scores" not in hel_columns:
         conn.execute("ALTER TABLE hook_event_log ADD COLUMN scores TEXT DEFAULT NULL")
+
+    # Migration: add session_title to processed_sessions
+    ps_columns = [r[1] for r in conn.execute("PRAGMA table_info(processed_sessions)").fetchall()]
+    if ps_columns and "session_title" not in ps_columns:
+        conn.execute("ALTER TABLE processed_sessions ADD COLUMN session_title TEXT DEFAULT NULL")
 
     conn.commit()
     conn.close()
@@ -512,20 +518,23 @@ def mark_sessions_processed(sessions, db_path=None):
     """Bulk mark sessions as processed.
 
     Args:
-        sessions: list of dicts with session_id, had_friction, engrams_extracted
+        sessions: list of dicts with session_id, had_friction, engrams_extracted,
+                  and optional session_title
     """
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     for s in sessions:
         conn.execute(
             """INSERT INTO processed_sessions
-               (session_id, processed_at, had_friction, engrams_extracted)
-               VALUES (?, ?, ?, ?)
+               (session_id, processed_at, had_friction, engrams_extracted, session_title)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(session_id) DO UPDATE SET
                    processed_at = excluded.processed_at,
                    had_friction = MAX(processed_sessions.had_friction, excluded.had_friction),
-                   engrams_extracted = MAX(processed_sessions.engrams_extracted, excluded.engrams_extracted)""",
-            (s["session_id"], now, s.get("had_friction", 0), s.get("engrams_extracted", 0)),
+                   engrams_extracted = MAX(processed_sessions.engrams_extracted, excluded.engrams_extracted),
+                   session_title = COALESCE(excluded.session_title, processed_sessions.session_title)""",
+            (s["session_id"], now, s.get("had_friction", 0), s.get("engrams_extracted", 0),
+             s.get("session_title")),
         )
     conn.commit()
     conn.close()
