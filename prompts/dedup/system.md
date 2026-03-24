@@ -6,7 +6,6 @@ description: >
 goal: >
   High-precision deduplication — only merge true duplicates, never merge
   topically related but distinct engrams.
-model: haiku
 variables: []
 output_format: JSON with groups[], no_match_ids[], notes[]
 used_by:

@@ -518,9 +518,13 @@ def mark_sessions_processed(sessions, db_path=None):
     now = datetime.utcnow().isoformat()
     for s in sessions:
         conn.execute(
-            """INSERT OR IGNORE INTO processed_sessions
+            """INSERT INTO processed_sessions
                (session_id, processed_at, had_friction, engrams_extracted)
-               VALUES (?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(session_id) DO UPDATE SET
+                   processed_at = excluded.processed_at,
+                   had_friction = MAX(processed_sessions.had_friction, excluded.had_friction),
+                   engrams_extracted = MAX(processed_sessions.engrams_extracted, excluded.engrams_extracted)""",
             (s["session_id"], now, s.get("had_friction", 0), s.get("engrams_extracted", 0)),
         )
     conn.commit()

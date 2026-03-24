@@ -5,7 +5,6 @@ description: >
   all engrams are candidates for grouping.
 goal: >
   Form duplicate groups globally when there is no verified baseline.
-model: haiku
 variables: []
 output_format: Appended to system prompt
 used_by:

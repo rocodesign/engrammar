@@ -6,7 +6,6 @@ description: >
 goal: >
   Maximize recall of durable, actionable knowledge while filtering out
   task summaries, one-off details, benchmark results, and generic advice.
-model: haiku
 variables:
   - transcript
   - session_id

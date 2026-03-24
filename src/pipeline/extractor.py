@@ -683,19 +683,46 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
         print(f"  Skipped (agent/short session)")
         return {"extracted": 0, "merged": 0}
 
-    # Skip if already processed
+    # Skip if already fully processed (by batch extract or by per-turn extraction)
     processed_ids = get_processed_session_ids()
     if session_id in processed_ids:
-        print(f"Session {session_id[:12]} already processed.")
-        return {"extracted": 0, "merged": 0}
+        # Check if per-turn extraction left unprocessed content at the tail
+        turn_offset, file_size = _get_turn_coverage(session_id, transcript_path)
+        if turn_offset == 0 or turn_offset >= file_size * 0.9:
+            print(f"Session {session_id[:12]} already processed.")
+            return {"extracted": 0, "merged": 0}
+        # Per-turn extraction covered part of the session — extract remainder below
+        print(f"Session {session_id[:12]} partially covered by turn extraction "
+              f"({turn_offset}/{file_size} bytes), extracting remainder...")
 
-    transcript_text = _read_transcript_messages(transcript_path)
-    if not transcript_text or len(transcript_text) < 100:
-        print(f"  Skipped (too short)")
+    # Check turn coverage even for sessions not in processed_sessions
+    # (turn extraction may have run but not yet marked the session)
+    turn_offset, file_size = _get_turn_coverage(session_id, transcript_path)
+    if turn_offset > 0 and turn_offset >= file_size * 0.9:
+        print(f"Session {session_id[:12]} fully covered by turn extraction.")
         mark_sessions_processed([
             {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
         ])
         return {"extracted": 0, "merged": 0}
+
+    # Read only unprocessed content (from turn offset onward, or full transcript)
+    if turn_offset > 0:
+        remainder_text, _ = _read_transcript_from_offset(transcript_path, turn_offset)
+        if not remainder_text or len(remainder_text) < 100:
+            print(f"  Skipped (remainder too short)")
+            mark_sessions_processed([
+                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
+            ])
+            return {"extracted": 0, "merged": 0}
+        transcript_text = remainder_text
+    else:
+        transcript_text = _read_transcript_messages(transcript_path)
+        if not transcript_text or len(transcript_text) < 100:
+            print(f"  Skipped (too short)")
+            mark_sessions_processed([
+                {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
+            ])
+            return {"extracted": 0, "merged": 0}
 
     metadata = _read_transcript_metadata(transcript_path)
     env_tags = _detect_tags_for_cwd(metadata.get("cwd"))
@@ -772,13 +799,29 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         print("No transcript files found.")
         return {"processed": 0, "extracted": 0, "merged": 0, "skipped": 0}
 
-    # Filter out already-processed sessions
+    # Filter out already-processed sessions, but include partially-covered ones
     processed_ids = get_processed_session_ids()
     unprocessed = []
     for fpath in session_files:
         sid = os.path.basename(fpath).replace(".jsonl", "")
-        if sid not in processed_ids:
-            unprocessed.append((sid, fpath))
+        if sid in processed_ids:
+            # Check if per-turn extraction left a tail unprocessed
+            turn_offset, file_size = _get_turn_coverage(sid, fpath)
+            if turn_offset > 0 and turn_offset < file_size * 0.9:
+                unprocessed.append((sid, fpath, turn_offset))
+            # else: fully processed, skip
+        else:
+            # Not in processed_sessions — check if turn extraction ran at all
+            turn_offset, file_size = _get_turn_coverage(sid, fpath)
+            if turn_offset > 0 and turn_offset >= file_size * 0.9:
+                # Turn extraction covered it but didn't mark processed_sessions
+                # (e.g. session still in progress when daemon ran). Mark and skip.
+                if not dry_run:
+                    mark_sessions_processed([
+                        {"session_id": sid, "had_friction": 0, "engrams_extracted": 0}
+                    ])
+                continue
+            unprocessed.append((sid, fpath, turn_offset))
 
     if not unprocessed:
         print(f"All {len(session_files)} transcripts already processed.")
@@ -788,10 +831,22 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
 
     summary = {"processed": 0, "extracted": 0, "merged": 0, "skipped": 0}
 
-    for i, (session_id, fpath) in enumerate(unprocessed, 1):
-        print(f"[{i}/{len(unprocessed)}] {session_id[:12]}...")
+    for i, (session_id, fpath, turn_offset) in enumerate(unprocessed, 1):
+        if turn_offset > 0:
+            print(f"[{i}/{len(unprocessed)}] {session_id[:12]} (remainder from offset {turn_offset})...")
+        else:
+            print(f"[{i}/{len(unprocessed)}] {session_id[:12]}...")
 
-        chunks = _read_transcript_messages_chunked(fpath)
+        # Read only unprocessed portion of the transcript
+        if turn_offset > 0:
+            remainder_text, _ = _read_transcript_from_offset(fpath, turn_offset)
+            if not remainder_text or len(remainder_text) < 100:
+                chunks = []
+            else:
+                # Wrap remainder in a single-element list to match chunk interface
+                chunks = [remainder_text]
+        else:
+            chunks = _read_transcript_messages_chunked(fpath)
         if not chunks:
             print("  Skipped (too short)")
             summary["skipped"] += 1
@@ -1004,6 +1059,21 @@ def _read_transcript_context(jsonl_path, byte_offset, max_chars=2000):
     return result
 
 
+def _get_turn_coverage(session_id, transcript_path):
+    """Check how much of a transcript was already processed by per-turn extraction.
+
+    Returns:
+        tuple of (turn_offset, file_size) where turn_offset is how far
+        process_turn got (0 if never ran), and file_size is the transcript size.
+    """
+    turn_offset = _read_turn_offset(session_id)
+    try:
+        file_size = os.path.getsize(transcript_path)
+    except OSError:
+        file_size = 0
+    return turn_offset, file_size
+
+
 def cleanup_old_turn_offsets(max_age_hours=24):
     """Delete turn offset files older than max_age_hours."""
     offset_dir = os.path.join(
@@ -1086,6 +1156,10 @@ def extract_from_turn(session_id, transcript_path):
     if not extracted:
         print("  No engrams extracted from turn.")
         _write_turn_offset(session_id, new_offset)
+        # Still mark session so batch extraction sees turn coverage
+        mark_sessions_processed([
+            {"session_id": session_id, "had_friction": 0, "engrams_extracted": 0}
+        ])
         return {"extracted": 0, "merged": 0}
 
     added, merged = _process_extracted_engrams(extracted, session_id, env_tags, repo=metadata.get("repo"))
@@ -1098,6 +1172,16 @@ def extract_from_turn(session_id, transcript_path):
 
     # Save new offset
     _write_turn_offset(session_id, new_offset)
+
+    # Count total engrams extracted across all turns for this session
+    total_session_engrams = len(_get_session_engrams(session_id))
+
+    # Mark in processed_sessions so batch extraction knows we covered this session.
+    # We mark on every turn (upsert) so the engrams_extracted count stays current.
+    mark_sessions_processed([
+        {"session_id": session_id, "had_friction": 1 if total_session_engrams > 0 else 0,
+         "engrams_extracted": total_session_engrams}
+    ])
 
     print(f"  Turn done. Added: {added}, Merged: {merged}")
     return {"extracted": added, "merged": merged}

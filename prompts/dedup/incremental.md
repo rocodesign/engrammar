@@ -5,7 +5,6 @@ description: >
   against a stable verified pool.
 goal: >
   Decide each unverified engram: merge into verified or mark as unique.
-model: haiku
 variables: []
 output_format: Appended to system prompt
 used_by:

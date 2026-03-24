@@ -6,7 +6,6 @@ description: >
 goal: >
   Build richer signal for tag-based relevance filtering — distinguish
   between engrams that were applied, relevant but not applied, and irrelevant.
-model: sonnet
 variables:
   - repo
   - env_tags
