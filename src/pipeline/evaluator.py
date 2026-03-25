@@ -374,9 +374,12 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
     Returns:
         list of dicts with engram_id, tag_scores, and optional reason
     """
-    engrams_block = "\n".join(
-        f"- ID {l['id']}: {l['text']}" for l in shown_engrams
-    )
+    def _format_engram(e):
+        tags = e.get("tags", [])
+        tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
+        return f"- ID {e['id']}{tag_str}: {e['text']}"
+
+    engrams_block = "\n".join(_format_engram(l) for l in shown_engrams)
 
     prompt = _get_prompt("evaluation/tag_relevance.md").format(
         repo=repo or "unknown",
@@ -463,18 +466,25 @@ def run_evaluation_for_session(session_id, db_path=None):
         conn.close()
         return True  # Nothing to evaluate
 
-    # Load engram texts
+    # Load engram texts and content tags
     placeholders = ",".join("?" * len(shown_engram_ids))
     engrams = conn.execute(
         f"SELECT id, text FROM engrams WHERE id IN ({placeholders})",
         tuple(shown_engram_ids),
     ).fetchall()
-    conn.close()
 
     if not engrams:
+        conn.close()
         return True  # Engrams may have been deleted
 
-    shown_engrams = [{"id": r["id"], "text": r["text"]} for r in engrams]
+    from engrammar.core.db import get_content_tags_batch
+    content_tags_map = get_content_tags_batch(shown_engram_ids, db_path=db_path)
+    conn.close()
+
+    shown_engrams = [
+        {"id": r["id"], "text": r["text"], "tags": content_tags_map.get(r["id"], [])}
+        for r in engrams
+    ]
 
     # Find transcript — combine local windows (#016) with head+tail fallback.
     # Local windows provide precise context for matched engrams;
@@ -521,36 +531,27 @@ def run_evaluation_for_session(session_id, db_path=None):
         _mark_session_status(session_id, "failed", db_path)
         return False
 
-    # Accumulate scores with weighted tag attribution (#030)
+    # Accumulate tag relevance scores from Claude's per-tag verdicts (#030)
+    # Claude now sees actual content tags and scores them directly.
+    # Filter to only store scores for known tags (content tags on the engram
+    # or env tags like repo:*) to prevent phantom tag pollution.
     try:
         from engrammar.core.db import update_tag_relevance, get_content_tags
         for ev in evaluations:
             engram_id = ev.get("engram_id")
             tag_scores = ev.get("tag_scores", {})
             if engram_id and tag_scores:
-                # Score env-tag-keyed results (legacy repo signal, keep dampened)
-                update_tag_relevance(engram_id, tag_scores, weight=1.0, db_path=db_path)
-
-                # Content tag scoring with weighted attribution
                 content_tags = get_content_tags(engram_id, db_path=db_path)
-                if content_tags:
-                    avg_signal = sum(tag_scores.values()) / len(tag_scores) if tag_scores else 0
+                known_tags = set(content_tags)
 
-                    # Try weighted attribution via prompt tag similarity
-                    ctx = engram_context.get(str(engram_id), {})
-                    prompt_tags = ctx.get("prompt_tags") if ctx else None
+                # Split scores: env tags (repo:*, os:*) and content tags
+                valid_scores = {}
+                for tag, score in tag_scores.items():
+                    if ":" in tag or tag in known_tags:
+                        valid_scores[tag] = score
 
-                    if prompt_tags and avg_signal != 0:
-                        weighted_scores = _compute_weighted_attribution(
-                            content_tags, prompt_tags, avg_signal
-                        )
-                        if weighted_scores:
-                            update_tag_relevance(engram_id, weighted_scores, weight=1.0, db_path=db_path)
-                            continue
-
-                    # Fallback: uniform distribution (old behavior for pre-#030 audit records)
-                    content_scores = {ct: avg_signal for ct in content_tags}
-                    update_tag_relevance(engram_id, content_scores, weight=1.0, db_path=db_path)
+                if valid_scores:
+                    update_tag_relevance(engram_id, valid_scores, weight=1.0, db_path=db_path)
     except ImportError:
         pass
 

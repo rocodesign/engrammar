@@ -2,7 +2,23 @@
 
 - Priority: High
 - Complexity: C2
-- Status: Open
+- Status: Done (2026-03-26)
+
+## Update (2026-03-26): Completed
+
+All remaining gaps addressed:
+
+1. **Evaluator prompt now injects actual content tags** per engram (e.g. `[tags: jira, cli]`), so Claude scores real tags instead of inventing phantom names. Prompt explicitly says "Use ONLY the tags shown in brackets."
+
+2. **Phantom tag pollution fixed** — evaluator code now filters `tag_scores` to only store scores for tags that exist on the engram (`engram_tags`) or are env tags (`repo:*`, `os:*`). Previously, Claude's invented tag names created phantom entries in `engram_tag_relevance`.
+
+3. **Redundant weighted attribution removed** — with Claude scoring real tags directly, the separate `_compute_weighted_attribution` pass in the evaluator was redundant (it averaged Claude's per-tag scores then re-distributed them).
+
+4. **MCP feedback uses prompt_tags for weighted attribution** — when no explicit `tag_scores` provided, looks up `prompt_tags` from `session_shown_engrams` for the current session and uses `_compute_weighted_attribution` to weight which content tags receive the feedback signal. Falls back to uniform if no prompt context available.
+
+5. **Dedup-safety** — fixed in #031.
+
+DB audit at fix time: engram #1 had 2 real content tags but 15 phantom tags with accumulated eval scores.
 
 ## Update (2026-03-25): Partially implemented
 
@@ -11,12 +27,6 @@ Groundwork for this task is already in the codebase:
 - hooks record `prompt_tags` / `query_text` for shown engrams
 - Stop writes per-engram context into `session_audit.engram_context`
 - evaluator uses weighted content-tag attribution derived from prompt tags
-
-What is still missing from the original design:
-
-- search-time `tag_sims` are not stored per engram/tag in the audit record
-- attribution is recomputed later from embeddings rather than using the exact search-time match data
-- dedup-safety for this context still depends on `#031`
 
 ## Problem
 

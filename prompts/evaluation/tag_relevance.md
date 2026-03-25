@@ -57,7 +57,7 @@ Session info:
 - Repository: {repo}
 - Environment tags: {env_tags}
 
-Engrams shown (ID and text):
+Engrams shown (ID, content tags, and text):
 {engrams_block}
 
 Session transcript excerpt:
@@ -68,19 +68,21 @@ For each engram, output a JSON object with these fields IN THIS EXACT ORDER:
 2. "action": what does this engram advise? (5-10 words)
 3. "found": quote the EXACT transcript line where the advice was applied, or "NO" if not applied
 4. "relevance": "applied" | "relevant" | "neutral" | "negative"
-5. "tag_scores": dict of content tag → score. Score ONLY tags whose domain matches the engram's advice.
-   - For "applied": +0.5 to +1.0
-   - For "relevant": +0.1 to +0.3
+5. "tag_scores": dict of content tag → score. Use ONLY the tags shown in brackets after each engram ID.
+   Do NOT invent new tag names — only score the exact tags listed for that engram.
+   If an engram has no tags listed, use {{}}.
+   - For "applied": +0.5 to +1.0 on tags whose domain matches the advice
+   - For "relevant": +0.1 to +0.3 on matching tags
    - For "neutral": MUST be {{}}
-   - For "negative": -0.3 to -1.0
+   - For "negative": -0.3 to -1.0 on matching tags
 
 ALL FIVE FIELDS ARE REQUIRED for every engram.
 
 Output ONLY a valid JSON array. No markdown fences, no explanation.
 
 Example:
-[{{"engram_id": 42, "action": "run tsc --noEmit before committing", "found": "assistant: Running tsc --noEmit to check types", "relevance": "applied", "tag_scores": {{"typescript": 0.8}}}},
+[{{"engram_id": 42, "action": "run tsc --noEmit before committing", "found": "assistant: Running tsc --noEmit to check types", "relevance": "applied", "tag_scores": {{"typescript": 0.8, "ci": 0.3}}}},
  {{"engram_id": 99, "action": "export NPM_TOKEN before npm publish", "found": "NO", "relevance": "relevant", "tag_scores": {{"npm": 0.2}}}},
  {{"engram_id": 55, "action": "use Form.Input for BigInt IDs", "found": "NO", "relevance": "neutral", "tag_scores": {{}}}},
  {{"engram_id": 17, "action": "use Record<string, T> for index types", "found": "Error: this approach caused a type mismatch", "relevance": "negative", "tag_scores": {{"typescript": -0.5}}}},
- {{"engram_id": 33, "action": "run happo finalize after CI completes", "found": "NO", "relevance": "relevant", "tag_scores": {{"happo": 0.15, "ci": 0.1}}}}]
+ {{"engram_id": 33, "action": "run happo finalize after CI completes", "found": "NO", "relevance": "relevant", "tag_scores": {{"happo": 0.15}}}}]

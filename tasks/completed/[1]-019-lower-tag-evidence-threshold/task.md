@@ -2,7 +2,13 @@
 
 - Priority: High
 - Complexity: C1
-- Status: Open
+- Status: Closed (2026-03-26) — won't fix
+
+## Resolution
+
+Analysis showed the MIN_EVALS_FOR_FILTER=3 asymmetry is intentionally conservative and data-backed. ~50% of negatively-evaluated engrams recover with more evals — lowering the hard-filter threshold to 2 would prematurely suppress recoverable engrams. The asymmetry (boost trusts 1 eval because it's low-cost; filter demands 3 because removal is irreversible) is correct.
+
+The real problem was signal quality (phantom tags, uniform attribution), addressed in #030 and #031. With clean per-tag scoring, the existing thresholds work as designed.
 
 ## Problem
 

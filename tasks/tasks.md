@@ -31,10 +31,10 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [ ] **#018 Normalize and blend scoring with configurable weights** `C2`
   - `tasks/open/[1]-018-widen-tag-penalty/task.md`
-- [ ] **#019 Lower tag relevance evidence threshold** `C1`
-  - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
-- [ ] **#030 Weighted tag attribution for evaluation** `C2`
-  - `tasks/open/[1]-030-weighted-tag-attribution-evaluation/task.md`
+- [x] **#019 Lower tag relevance evidence threshold** `C1` `won't-fix: threshold is correct`
+  - `tasks/completed/[1]-019-lower-tag-evidence-threshold/task.md`
+- [x] **#030 Weighted tag attribution for evaluation** `C2`
+  - `tasks/completed/[1]-030-weighted-tag-attribution-evaluation/task.md`
 - [x] **#031 Preserve evaluation context through dedup merges** `C1`
   - `tasks/completed/[1]-031-preserve-evaluation-context-through-dedup/task.md`
 - [ ] **#032 Extraction quality pipeline — consolidation, generalization, clarity** `C3`
