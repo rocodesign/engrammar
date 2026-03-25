@@ -32,7 +32,7 @@ A secondary goal of every session is to improve the engram knowledge base. Surfa
 1. **Score relevance**: After using (or deciding not to use) a surfaced engram, call engrammar_feedback to record whether it helped. Positive feedback is just as valuable as negative — it teaches the system what to keep surfacing.
 2. **Improve wording**: If a surfaced engram is relevant but vague, incomplete, or poorly worded, call engrammar_update to sharpen it. You now have the context the original extraction lacked — use it. For example, an engram that says "use absolute imports" should become "use absolute imports from the package root, not relative imports — the bundler config doesn't resolve ../ paths".
 3. **Add missing prerequisites**: If an engram only applies in specific environments (certain repos, OS, MCP servers), call engrammar_feedback with add_prerequisites to narrow when it gets surfaced.
-4. **Deprecate when wrong**: If an engram is outdated or flat-out incorrect, call engrammar_deprecate rather than leaving stale knowledge in the system.
+4. **Deprecate when wrong**: If an engram is outdated, flat-out incorrect, or gives advice that would lead to errors, call engrammar_deprecate rather than leaving bad knowledge in the system. Don't just give negative feedback — remove it so it stops being surfaced entirely.
 
 Don't batch these up — act on each engram as you encounter it during your work.
 [/ENGRAMMAR_INSTRUCTIONS]

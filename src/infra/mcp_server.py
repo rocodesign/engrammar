@@ -249,37 +249,37 @@ def engrammar_feedback(
     conn.commit()
     conn.close()
 
-    # Update tag relevance scores
+    # Update tag relevance scores — distribute signal to tags via attribution
+    # The judgment (applicable or not) is separate from attribution (which tags).
+    # Use prompt_tags from session context to weight which content tags get signal.
+    from engrammar.core.db import get_content_tags
+    from engrammar.infra.hook_utils import read_session_id
+
+    eval_signal = 0.5 if applicable else -0.5
+
+    # If explicit tag_scores provided, filter to known tags and use directly
     if tag_scores:
-        # Explicit tag scores from the model — filter to known tags only
-        from engrammar.core.db import get_content_tags
         content_tags = get_content_tags(engram_id)
         known_tags = set(content_tags)
         valid_scores = {t: s for t, s in tag_scores.items() if ":" in t or t in known_tags}
         if valid_scores:
             update_tag_relevance(engram_id, valid_scores, weight=2.0)
-            response_parts.append(f"Updated tag relevance with explicit scores: {valid_scores}")
+            response_parts.append(f"Updated tag relevance: {valid_scores}")
         else:
-            response_parts.append(f"Warning: none of {list(tag_scores.keys())} match engram's tags {content_tags}")
+            response_parts.append(f"Warning: none of {list(tag_scores.keys())} match engram tags {content_tags}")
     else:
-        # Derive signal from content tags, weighted by prompt tag similarity
-        # when available from the current session's shown-engram context.
-        from engrammar.core.db import get_content_tags
-        from engrammar.infra.hook_utils import read_session_id
         content_tags = get_content_tags(engram_id)
         if content_tags:
-            eval_signal = 0.5 if applicable else -0.5
-
             # Try weighted attribution using prompt_tags from current session
-            session_id = read_session_id()
             weighted = None
+            session_id = read_session_id()
             if session_id:
                 try:
                     from engrammar.core.db import get_shown_engram_context
+                    from engrammar.pipeline.evaluator import _compute_weighted_attribution
                     shown_ctx = get_shown_engram_context(session_id)
                     for ctx_row in shown_ctx:
                         if ctx_row["engram_id"] == engram_id and ctx_row.get("prompt_tags"):
-                            from engrammar.pipeline.evaluator import _compute_weighted_attribution
                             weighted = _compute_weighted_attribution(
                                 content_tags, ctx_row["prompt_tags"], eval_signal
                             )
@@ -289,14 +289,14 @@ def engrammar_feedback(
 
             if weighted:
                 update_tag_relevance(engram_id, weighted, weight=2.0)
-                response_parts.append(f"Updated tag relevance with weighted attribution: {weighted}")
+                response_parts.append(f"Updated tag relevance (weighted): {weighted}")
             else:
-                # Fallback: uniform signal across all content tags
-                derived_scores = {tag: eval_signal for tag in content_tags}
-                update_tag_relevance(engram_id, derived_scores, weight=1.0)
-                response_parts.append(f"Updated tag relevance from content tags ({eval_signal:+.1f})")
+                # Fallback: uniform when no prompt context
+                uniform = {tag: eval_signal for tag in content_tags}
+                update_tag_relevance(engram_id, uniform, weight=1.0)
+                response_parts.append(f"Updated tag relevance (uniform {eval_signal:+.1f})")
         else:
-            response_parts.append("No content tags on engram — skipped tag relevance update")
+            response_parts.append("No content tags — skipped tag relevance update")
 
     # Add prerequisites if provided
     if add_prerequisites:

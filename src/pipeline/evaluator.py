@@ -375,9 +375,7 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
         list of dicts with engram_id, tag_scores, and optional reason
     """
     def _format_engram(e):
-        tags = e.get("tags", [])
-        tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
-        return f"- ID {e['id']}{tag_str}: {e['text']}"
+        return f"- ID {e['id']}: {e['text']}"
 
     engrams_block = "\n".join(_format_engram(l) for l in shown_engrams)
 
@@ -414,11 +412,12 @@ def _call_claude_for_evaluation(session_id, shown_engrams, env_tags, repo, trans
                 output = output.rsplit("\n", 1)[0]
 
         evaluations = json.loads(output)
-        # Enforce transcript evidence gate: zero out tag_scores when no quote found
+        # Enforce transcript evidence gate: cap score at +1 when no quote found
         for ev in evaluations:
             found = ev.get("found", "")
-            if not found or found.upper().strip() == "NO":
-                ev["tag_scores"] = {}
+            score = ev.get("score", 0)
+            if (not found or found.upper().strip() == "NO") and score > 1:
+                ev["score"] = 1
         return evaluations
     except subprocess.TimeoutExpired:
         print(f"Claude evaluation timed out for {session_id}", file=sys.stderr)
@@ -481,10 +480,15 @@ def run_evaluation_for_session(session_id, db_path=None):
     content_tags_map = get_content_tags_batch(shown_engram_ids, db_path=db_path)
     conn.close()
 
-    shown_engrams = [
-        {"id": r["id"], "text": r["text"], "tags": content_tags_map.get(r["id"], [])}
-        for r in engrams
-    ]
+    shown_engrams = []
+    for r in engrams:
+        entry = {"id": r["id"], "text": r["text"], "tags": content_tags_map.get(r["id"], [])}
+        # Add matched_tags from engram_context — the prompt tags that caused the match
+        ctx = engram_context.get(str(r["id"]), {})
+        prompt_tags = ctx.get("prompt_tags")  # [(tag, score), ...]
+        if prompt_tags:
+            entry["matched_tags"] = [t for t, _s in prompt_tags]
+        shown_engrams.append(entry)
 
     # Find transcript — combine local windows (#016) with head+tail fallback.
     # Local windows provide precise context for matched engrams;
@@ -531,27 +535,43 @@ def run_evaluation_for_session(session_id, db_path=None):
         _mark_session_status(session_id, "failed", db_path)
         return False
 
-    # Accumulate tag relevance scores from Claude's per-tag verdicts (#030)
-    # Claude now sees actual content tags and scores them directly.
-    # Filter to only store scores for known tags (content tags on the engram
-    # or env tags like repo:*) to prevent phantom tag pollution.
+    # Distribute evaluation scores to tags via attribution (#030)
+    # Claude returns a single score per engram (-3 to +3). We distribute
+    # that score to content tags weighted by prompt-tag similarity (which
+    # tags caused the match get more signal), and to env tags uniformly.
     try:
         from engrammar.core.db import update_tag_relevance, get_content_tags
         for ev in evaluations:
             engram_id = ev.get("engram_id")
-            tag_scores = ev.get("tag_scores", {})
-            if engram_id and tag_scores:
-                content_tags = get_content_tags(engram_id, db_path=db_path)
-                known_tags = set(content_tags)
+            score = ev.get("score", 0)
+            if not engram_id or score == 0:
+                continue
 
-                # Split scores: env tags (repo:*, os:*) and content tags
-                valid_scores = {}
-                for tag, score in tag_scores.items():
-                    if ":" in tag or tag in known_tags:
-                        valid_scores[tag] = score
+            # Normalize score to [-1, 1] range for tag relevance EMA
+            normalized = score / 3.0
 
-                if valid_scores:
-                    update_tag_relevance(engram_id, valid_scores, weight=1.0, db_path=db_path)
+            # 1. Env tag scoring: uniform signal on repo tag
+            if repo:
+                update_tag_relevance(engram_id, {f"repo:{repo}": normalized}, weight=1.0, db_path=db_path)
+
+            # 2. Content tag scoring: weighted by prompt-tag similarity
+            content_tags = get_content_tags(engram_id, db_path=db_path)
+            if not content_tags:
+                continue
+
+            ctx = engram_context.get(str(engram_id), {})
+            prompt_tags = ctx.get("prompt_tags") if ctx else None
+
+            if prompt_tags:
+                # Weighted attribution: matched tags get more signal
+                weighted = _compute_weighted_attribution(content_tags, prompt_tags, normalized)
+                if weighted:
+                    update_tag_relevance(engram_id, weighted, weight=1.0, db_path=db_path)
+                    continue
+
+            # Fallback: uniform distribution when no prompt context available
+            uniform = {tag: normalized for tag in content_tags}
+            update_tag_relevance(engram_id, uniform, weight=1.0, db_path=db_path)
     except ImportError:
         pass
 
