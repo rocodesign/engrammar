@@ -31,6 +31,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - [ ] **#018 Normalize and blend scoring with configurable weights** `C2`
   - `tasks/open/[1]-018-widen-tag-penalty/task.md`
+- [ ] **#043 Rebalance tag affinity and feedback scoring** `C2`
+  - `tasks/open/[1]-043-scoring-rebalance-tags-and-feedback/task.md`
 - [x] **#019 Lower tag relevance evidence threshold** `C1` `won't-fix: threshold is correct`
   - `tasks/completed/[1]-019-lower-tag-evidence-threshold/task.md`
 - [x] **#030 Weighted tag attribution for evaluation** `C2`
