@@ -2,7 +2,19 @@
 
 - Priority: High
 - Complexity: C1
-- Status: Open
+- Status: Done (2026-03-26)
+
+## Update (2026-03-26): Fixed
+
+Both merge bugs are now fixed in `merge_engram_group()`:
+
+1. **session_shown_engrams** — Changed from `INSERT OR IGNORE` (4 columns) to upsert with all 6 columns. Uses `COALESCE` on conflict to keep existing survivor context and backfill NULLs from the absorbed row.
+
+2. **session_audit.engram_context** — Merge now rewrites JSON keys from absorbed IDs to survivor ID, with field-level backfill (prompt_tags, query_text, hook_event).
+
+Tests added: `test_merge_preserves_shown_engram_prompt_context`, `test_merge_backfills_shown_context_without_overwriting`, `test_merge_rewrites_session_audit_engram_context`.
+
+Production DB audit at fix time: 6 orphaned engram_context keys across 3 sessions, 259 shown-engram rows pointing to deprecated engrams. Future merges will preserve context correctly.
 
 ## Update (2026-03-25): Partially implemented
 

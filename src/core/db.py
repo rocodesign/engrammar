@@ -1419,20 +1419,29 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
         conn.execute("DELETE FROM engram_tags WHERE engram_id = ?", (eid,))
 
     # 7. session_shown_engrams: rewrite absorbed IDs to survivor
+    # Use upsert to preserve prompt_tags/query_text — backfill from absorbed
+    # row only when the survivor row has NULLs for those columns.
     for eid in absorbed_ids:
         conn.execute(
-            """INSERT OR IGNORE INTO session_shown_engrams (session_id, engram_id, hook_event, shown_at)
-               SELECT session_id, ?, hook_event, shown_at
-               FROM session_shown_engrams WHERE engram_id = ?""",
+            """INSERT INTO session_shown_engrams
+                   (session_id, engram_id, hook_event, shown_at, prompt_tags, query_text)
+               SELECT session_id, ?, hook_event, shown_at, prompt_tags, query_text
+               FROM session_shown_engrams WHERE engram_id = ?
+               ON CONFLICT(session_id, engram_id) DO UPDATE SET
+                   prompt_tags = COALESCE(session_shown_engrams.prompt_tags, excluded.prompt_tags),
+                   query_text  = COALESCE(session_shown_engrams.query_text,  excluded.query_text)""",
             (survivor_id, eid),
         )
         conn.execute("DELETE FROM session_shown_engrams WHERE engram_id = ?", (eid,))
 
-    # 8. session_audit.shown_engram_ids: JSON rewrite
+    # 8. session_audit.shown_engram_ids + engram_context: JSON rewrite
     audit_rows = conn.execute(
-        "SELECT session_id, shown_engram_ids FROM session_audit"
+        "SELECT session_id, shown_engram_ids, engram_context FROM session_audit"
     ).fetchall()
     absorbed_set = set(absorbed_ids)
+    # Also build string-keyed set for engram_context lookups
+    absorbed_str_set = {str(eid) for eid in absorbed_ids}
+    survivor_str = str(survivor_id)
     for ar in audit_rows:
         try:
             ids_list = json.loads(ar["shown_engram_ids"])
@@ -1443,9 +1452,33 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
         new_ids = set()
         for eid in ids_list:
             new_ids.add(survivor_id if eid in absorbed_set else eid)
+
+        # Rewrite engram_context keys: absorbed ID → survivor ID
+        ctx_json = ar["engram_context"]
+        new_ctx_json = ctx_json
+        if ctx_json:
+            try:
+                ctx = json.loads(ctx_json)
+            except (json.JSONDecodeError, TypeError):
+                ctx = None
+            if ctx:
+                new_ctx = {}
+                for key, val in ctx.items():
+                    if key in absorbed_str_set:
+                        # Merge into survivor: keep existing survivor context,
+                        # backfill missing fields from absorbed entry
+                        existing = new_ctx.get(survivor_str, {})
+                        for field in ("prompt_tags", "query_text", "hook_event"):
+                            if not existing.get(field) and val.get(field):
+                                existing[field] = val[field]
+                        new_ctx[survivor_str] = existing
+                    else:
+                        new_ctx[key] = val
+                new_ctx_json = json.dumps(new_ctx)
+
         conn.execute(
-            "UPDATE session_audit SET shown_engram_ids = ? WHERE session_id = ?",
-            (json.dumps(sorted(new_ids)), ar["session_id"]),
+            "UPDATE session_audit SET shown_engram_ids = ?, engram_context = ? WHERE session_id = ?",
+            (json.dumps(sorted(new_ids)), new_ctx_json, ar["session_id"]),
         )
 
     # 9. hook_event_log.engram_ids: JSON rewrite

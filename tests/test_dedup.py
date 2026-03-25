@@ -423,6 +423,86 @@ class TestMerge:
         assert e1 in ids
         assert e2 not in ids
 
+    def test_merge_preserves_shown_engram_prompt_context(self, db_path):
+        """Merging a shown engram preserves prompt_tags and query_text."""
+        e1 = _add_engram(db_path, "Survivor")
+        e2 = _add_engram(db_path, "Absorbed")
+
+        record_shown_engram(
+            "sess-1", e2, "UserPromptSubmit", db_path=db_path,
+            prompt_tags=[("happo", 0.9)], query_text="happo snapshot test",
+        )
+
+        conn = get_connection(db_path)
+        merge_engram_group(e1, [e2], "Merged", "test-run", 0.9, "test", conn)
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT prompt_tags, query_text FROM session_shown_engrams WHERE session_id = 'sess-1' AND engram_id = ?",
+            (e1,),
+        ).fetchone()
+        conn.close()
+        assert row is not None, "Survivor row should exist after merge"
+        assert json.loads(row["prompt_tags"]) == [["happo", 0.9]]
+        assert row["query_text"] == "happo snapshot test"
+
+    def test_merge_backfills_shown_context_without_overwriting(self, db_path):
+        """When survivor already has context, absorbed context backfills NULLs only."""
+        e1 = _add_engram(db_path, "Survivor")
+        e2 = _add_engram(db_path, "Absorbed")
+
+        # Survivor has prompt_tags but no query_text
+        record_shown_engram(
+            "sess-1", e1, "SessionStart", db_path=db_path,
+            prompt_tags=[("react", 0.8)], query_text=None,
+        )
+        # Absorbed has both
+        record_shown_engram(
+            "sess-1", e2, "UserPromptSubmit", db_path=db_path,
+            prompt_tags=[("happo", 0.9)], query_text="happo test",
+        )
+
+        conn = get_connection(db_path)
+        merge_engram_group(e1, [e2], "Merged", "test-run", 0.9, "test", conn)
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT prompt_tags, query_text FROM session_shown_engrams WHERE session_id = 'sess-1' AND engram_id = ?",
+            (e1,),
+        ).fetchone()
+        conn.close()
+        # Survivor's prompt_tags kept, absorbed's query_text backfilled
+        assert json.loads(row["prompt_tags"]) == [["react", 0.8]]
+        assert row["query_text"] == "happo test"
+
+    def test_merge_rewrites_session_audit_engram_context(self, db_path):
+        """session_audit.engram_context keys are rewritten from absorbed to survivor."""
+        e1 = _add_engram(db_path, "Survivor")
+        e2 = _add_engram(db_path, "Absorbed")
+
+        engram_context = {
+            str(e1): {"prompt_tags": [["react", 0.8]], "query_text": "react hook", "hook_event": "SessionStart"},
+            str(e2): {"prompt_tags": [["happo", 0.9]], "query_text": "happo test", "hook_event": "UserPromptSubmit"},
+        }
+        write_session_audit("sess-1", [e1, e2], ["tag1"], "repo", engram_context=engram_context, db_path=db_path)
+
+        conn = get_connection(db_path)
+        merge_engram_group(e1, [e2], "Merged", "test-run", 0.9, "test", conn)
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT engram_context FROM session_audit WHERE session_id = 'sess-1'"
+        ).fetchone()
+        conn.close()
+        ctx = json.loads(row["engram_context"])
+        # Absorbed key should be gone, survivor should exist
+        assert str(e2) not in ctx
+        assert str(e1) in ctx
+        # Survivor already had prompt_tags, so those are kept; query_text backfilled from absorbed
+        survivor_ctx = ctx[str(e1)]
+        assert survivor_ctx["prompt_tags"] == [["react", 0.8]]
+        assert survivor_ctx["hook_event"] == "SessionStart"
+
     def test_merge_categories_union(self, db_path):
         """All categories from absorbed are added to survivor."""
         e1 = _add_engram(db_path, "Survivor", category="development/backend")

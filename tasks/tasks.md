@@ -35,8 +35,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[1]-019-lower-tag-evidence-threshold/task.md`
 - [ ] **#030 Weighted tag attribution for evaluation** `C2`
   - `tasks/open/[1]-030-weighted-tag-attribution-evaluation/task.md`
-- [ ] **#031 Preserve evaluation context through dedup merges** `C1`
-  - `tasks/open/[1]-031-preserve-evaluation-context-through-dedup/task.md`
+- [x] **#031 Preserve evaluation context through dedup merges** `C1`
+  - `tasks/completed/[1]-031-preserve-evaluation-context-through-dedup/task.md`
 - [ ] **#032 Extraction quality pipeline — consolidation, generalization, clarity** `C3`
   - `tasks/open/[1]-032-extraction-quality-pipeline/task.md`
 
