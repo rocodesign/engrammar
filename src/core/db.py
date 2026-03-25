@@ -206,6 +206,15 @@ def init_db(db_path=None):
     if ps_columns and "session_title" not in ps_columns:
         conn.execute("ALTER TABLE processed_sessions ADD COLUMN session_title TEXT DEFAULT NULL")
 
+    # Migration: add status bit flag column
+    # Bit flags: 0x1=curated, 0x2=rejected-by-curation (more flags can be added)
+    if "status" not in columns and "curation_status" not in columns:
+        conn.execute("ALTER TABLE engrams ADD COLUMN status INTEGER DEFAULT 0")
+    elif "curation_status" in columns and "status" not in columns:
+        conn.execute("ALTER TABLE engrams RENAME COLUMN curation_status TO status")
+    # Index must come after migration (EG#718)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_status ON engrams(deprecated, status, id)")
+
     conn.commit()
     conn.close()
 
@@ -464,11 +473,12 @@ def remove_engram_category(engram_id, category_path, db_path=None):
 
 
 def deprecate_engram(engram_id, db_path=None):
-    """Soft delete a engram."""
+    """Soft delete an engram. Sets both deprecated flag and status bit 0x2."""
     conn = get_connection(db_path)
     now = datetime.utcnow().isoformat()
     conn.execute(
-        "UPDATE engrams SET deprecated = 1, updated_at = ? WHERE id = ?",
+        "UPDATE engrams SET deprecated = 1, status = COALESCE(status, 0) | 2, "
+        "updated_at = ? WHERE id = ?",
         (now, engram_id),
     )
     conn.commit()
@@ -1463,7 +1473,8 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
 
     # 10. Deprecate absorbed engrams
     conn.execute(
-        f"""UPDATE engrams SET deprecated = 1, dedup_verified = 1, updated_at = ?
+        f"""UPDATE engrams SET deprecated = 1, status = COALESCE(status, 0) | 2,
+            dedup_verified = 1, updated_at = ?
             WHERE id IN ({absorbed_placeholders})""",
         [now] + list(absorbed_ids),
     )
@@ -1569,3 +1580,69 @@ def _merge_prerequisites(engrams):
             break
 
     return merged if merged else None
+
+
+# --- Status bit flags ---
+# engrams.status is a bit field. Rightmost bit = curated, next = rejected, etc.
+#   0x0 = pending (no flags set)
+#   0x1 = curated (kept by curator)
+#   0x2 = rejected by curator
+# Future flags can use 0x4, 0x8, etc.
+STATUS_PENDING = 0
+STATUS_CURATED = 0x1
+STATUS_REJECTED = 0x2
+
+
+def get_uncurated_engrams(limit=None, db_path=None):
+    """Get active engrams pending curation (status bit 0x1 not set)."""
+    conn = get_connection(db_path)
+    query = ("SELECT * FROM engrams WHERE deprecated = 0 "
+             "AND (status IS NULL OR status & 1 = 0) ORDER BY id")
+    if limit:
+        query += f" LIMIT {int(limit)}"
+    rows = conn.execute(query).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_uncurated_count(db_path=None):
+    """Get count of active engrams pending curation."""
+    conn = get_connection(db_path)
+    count = conn.execute(
+        "SELECT COUNT(*) FROM engrams WHERE deprecated = 0 "
+        "AND (status IS NULL OR status & 1 = 0)"
+    ).fetchone()[0]
+    conn.close()
+    return count
+
+
+def mark_curated(engram_ids, db_path=None):
+    """Mark engrams as curated (set bit 0x1)."""
+    if not engram_ids:
+        return
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    placeholders = ",".join("?" * len(engram_ids))
+    conn.execute(
+        f"UPDATE engrams SET status = COALESCE(status, 0) | {STATUS_CURATED}, updated_at = ? "
+        f"WHERE id IN ({placeholders})",
+        [now] + list(engram_ids),
+    )
+    conn.commit()
+    conn.close()
+
+
+def reject_by_curation(engram_ids, db_path=None):
+    """Mark engrams as rejected by curation (set bit 0x2, deprecate)."""
+    if not engram_ids:
+        return
+    conn = get_connection(db_path)
+    now = datetime.utcnow().isoformat()
+    placeholders = ",".join("?" * len(engram_ids))
+    conn.execute(
+        f"UPDATE engrams SET status = COALESCE(status, 0) | {STATUS_REJECTED}, deprecated = 1, "
+        f"updated_at = ? WHERE id IN ({placeholders})",
+        [now] + list(engram_ids),
+    )
+    conn.commit()
+    conn.close()

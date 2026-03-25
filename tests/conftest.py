@@ -33,6 +33,7 @@ import src.search.prompt_tags
 import src.pipeline.extractor
 import src.pipeline.evaluator
 import src.pipeline.dedup
+import src.pipeline.curator
 import src.infra.hook_utils
 import src.infra.client
 import src.infra.daemon
@@ -48,7 +49,7 @@ import src.infra.register_hooks
 for subpkg, modules in {
     "core": ["config", "db", "embeddings", "prompt_loader"],
     "search": ["engine", "environment", "tag_detectors", "tag_patterns", "prompt_tags"],
-    "pipeline": ["extractor", "evaluator", "dedup"],
+    "pipeline": ["extractor", "evaluator", "dedup", "curator"],
     "infra": ["hook_utils", "client", "daemon", "mcp_server", "register_hooks"],
 }.items():
     for mod in modules:

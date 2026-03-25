@@ -39,6 +39,7 @@ class EngrammarDaemon:
         self.running = True
         self.extract_proc = None
         self.evaluate_proc = None
+        self.curate_proc = None
         self._pending_turns = {}  # {session_id: transcript_path} — coalesced per session
 
     @staticmethod
@@ -94,6 +95,26 @@ class EngrammarDaemon:
             _log(f"Drained turn for {session_id[:12]} (remaining: {len(self._pending_turns)}, {result.get('status')})")
         except Exception as e:
             _log(f"Drain spawn failed for {session_id[:12]}: {e}")
+
+        # After extraction drains, check if curation is needed
+        self._maybe_curate()
+
+    def _maybe_curate(self):
+        """Spawn curation if uncurated count exceeds threshold and no curation running."""
+        if self._is_running(self.curate_proc):
+            return
+        # Don't curate while extraction is pending — extraction has priority
+        if self._pending_turns or self._is_running(self.extract_proc):
+            return
+
+        try:
+            from engrammar.pipeline.curator import should_curate
+            ready, count = should_curate()
+            if ready:
+                _log(f"Curation threshold reached ({count} uncurated), starting curation")
+                self._spawn_cli_job("curate", ["curate", "--force"])
+        except Exception as e:
+            _log(f"Curation check failed: {e}")
 
     def _warm_up(self):
         """Pre-load the embedding model so first search is fast."""
@@ -265,6 +286,7 @@ class EngrammarDaemon:
                 has_pending_work = (
                     self._pending_turns
                     or self._is_running(self.extract_proc)
+                    or self._is_running(self.curate_proc)
                 )
                 if not has_pending_work and time.time() - self.last_activity > IDLE_TIMEOUT:
                     _log("Idle timeout reached, shutting down.")

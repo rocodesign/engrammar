@@ -66,6 +66,11 @@ DEFAULT_CONFIG = {
         "extraction": "sonnet",
         "deduplication": "sonnet",
         "evaluation": "haiku",
+        "curation": "sonnet",
+    },
+    "curation": {
+        "threshold": 100,
+        "batch_size": 20,
     },
     "display": {
         "max_engrams_per_prompt": 3,

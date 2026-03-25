@@ -1278,6 +1278,44 @@ def cmd_backfill_tags(args):
         print(f"  Top tags: {', '.join(f'{t}({c})' for t, c in top)}")
 
 
+def cmd_curate(args):
+    """Run curation pipeline — quality review + dedup on uncurated engrams.
+
+    Options:
+        --limit N       Process at most N uncurated engrams
+        --dry-run       Show batches without calling LLM
+        --force         Run even if below threshold
+    """
+    from engrammar.core.db import init_db
+    init_db()
+
+    dry_run = "--dry-run" in args
+    force = "--force" in args
+    limit = None
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--limit" and i + 1 < len(args):
+            limit = int(args[i + 1])
+            i += 2
+        elif args[i] in ("--dry-run", "--force"):
+            i += 1
+        else:
+            i += 1
+
+    from engrammar.pipeline.curator import should_curate, run_curation
+
+    ready, count = should_curate()
+    if not ready and not force:
+        print(f"Only {count} uncurated engrams (below threshold). Use --force to run anyway.")
+        return
+
+    summary = run_curation(limit=limit, dry_run=dry_run)
+    if not dry_run:
+        print(f"\nSummary: {summary['kept']} kept, {summary['rejected']} rejected, "
+              f"{summary['merged']} merged")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Engrammar — Semantic knowledge system for Claude Code\n")
@@ -1340,6 +1378,7 @@ def main():
         "register": cmd_register,
         "dedup": cmd_dedup,
         "backfill-tags": cmd_backfill_tags,
+        "curate": cmd_curate,
     }
 
     if command in commands:
