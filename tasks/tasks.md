@@ -50,7 +50,7 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-010-tag-generalization/task.md`
 - [ ] **#012 Stage auto-extracted engrams before injection** `C3`
   - `tasks/open/[2]-012-stage-auto-extracted-engrams/task.md`
-- [ ] **#015 Daemon priority queue with background dedup** `C2` `blocked-by: #003`
+- [ ] **#015 Daemon priority queue with background dedup** `C2`
   - `tasks/open/[2]-015-daemon-priority-queue/task.md`
 - [ ] **#016 Adaptive transcript context for evaluation** `C2`
   - `tasks/open/[2]-016-adaptive-evaluation-transcript-context/task.md`
@@ -120,6 +120,7 @@ This file is the index. Detailed task writeups live under `tasks/`.
 
 - `tasks/ideas/session-end-reflection.md`
 - `tasks/ideas/metaclaw-inspired-adaptation-loop.md` — Explore a retrieval-first adaptation loop: failure-driven engram rewrites, idle-time learning jobs, and benchmark-gated evolution inspired by MetaClaw `→ promoted: #039 (evolution), idle scheduling added to #015`
+- `tasks/ideas/precompute-tag-embeddings.md` — Cache tag embeddings used during scoring `→ promoted: #008`
 - `tasks/ideas/similarity-floor-threshold.md` — Add minimum vector/BM25 score floors before RRF to prevent noise injection for vague queries `→ partially implemented via min_vector_sim, see #017`
 - `tasks/ideas/rrf-tuning-and-alternatives.md` — Explore score-aware fusion or weighted combination instead of rank-only RRF `→ autoresearch testing plan added`
 - `tasks/ideas/tool-use-previous-turn-retrieval.md` — Give extraction LLM an on-demand tool to retrieve the previous turn for detecting inflection points

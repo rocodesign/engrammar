@@ -29,6 +29,10 @@ fi
 echo "=== Running Engrammar Tests ==="
 echo
 
+# Validate tracker consistency before running tests
+"$PYTHON" "$SOURCE_DIR/scripts/validate_tracker.py"
+echo
+
 # Run tests with pytest
 "$PYTEST" "$SOURCE_DIR/tests/" "$@"
 

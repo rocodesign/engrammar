@@ -37,3 +37,11 @@ Don't let ideas stay only in conversation — if it's worth discussing, it's wor
 3. Update the corresponding index file (`ISSUES.md` or `tasks.md`).
 4. When starting work on a task/issue, note it in the file.
 5. When done, move issues to `issues/resolved/` and move tasks to `tasks/completed/`, then check off/update status in the index.
+
+### Status conventions
+
+- Keep partially implemented work in `open/`.
+- For partially implemented tasks, keep `Status: Open` and add a dated section like `## Update (YYYY-MM-DD): Partially implemented`.
+- In that update section, state briefly what has landed and what is still missing.
+- When a task or issue is fully done, move it to `completed/` or `resolved/` and update the status header to match.
+- If you touch tracker files, run `python3 scripts/validate_tracker.py` before finishing.
