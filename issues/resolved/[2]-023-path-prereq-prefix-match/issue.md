@@ -2,7 +2,7 @@
 
 - Severity: High
 - Complexity: C1 (Low complexity, low-hanging)
-- Status: Open
+- Status: Resolved
 
 ## Problem
 Path checks use string prefix matching (`cwd.startswith(path)`).

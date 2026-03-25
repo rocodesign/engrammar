@@ -3,7 +3,7 @@
 - Priority: Medium
 - Complexity: C3
 - Absorbs: #004 (LLM-assisted engram merge)
-- Status: Open
+- Status: Completed
 
 ## Problem
 

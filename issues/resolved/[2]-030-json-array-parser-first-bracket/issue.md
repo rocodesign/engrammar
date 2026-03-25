@@ -2,7 +2,7 @@
 
 - Severity: High
 - Complexity: C1 (Low complexity, low-hanging)
-- Status: Open
+- Status: Resolved
 
 ## Problem
 `_parse_json_array()` returns the first bracketed JSON array it can decode, even when it is not the engram payload (for example `[1]` from prefix text like `Note [1] ...`).

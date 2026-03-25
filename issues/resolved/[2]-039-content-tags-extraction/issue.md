@@ -2,6 +2,7 @@
 
 **Severity:** High
 **Complexity:** C3
+**Status:** Resolved
 
 ## Problem
 

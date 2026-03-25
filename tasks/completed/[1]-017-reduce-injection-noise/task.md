@@ -2,7 +2,7 @@
 
 - Priority: High
 - Complexity: C1
-- Status: Open
+- Status: Completed
 
 ## Problem
 

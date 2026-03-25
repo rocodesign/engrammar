@@ -4,6 +4,20 @@
 - Complexity: C2
 - Status: Open
 
+## Update (2026-03-25): Partially implemented
+
+Groundwork for this task is already in the codebase:
+
+- hooks record `prompt_tags` / `query_text` for shown engrams
+- Stop writes per-engram context into `session_audit.engram_context`
+- evaluator uses weighted content-tag attribution derived from prompt tags
+
+What is still missing from the original design:
+
+- search-time `tag_sims` are not stored per engram/tag in the audit record
+- attribution is recomputed later from embeddings rather than using the exact search-time match data
+- dedup-safety for this context still depends on `#031`
+
 ## Problem
 
 The evaluator was built before content tags existed. When it judges an engram as "useful" or "not useful", the verdict is distributed equally across all content tags via a blunt average:

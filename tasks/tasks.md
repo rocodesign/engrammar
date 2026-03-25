@@ -37,6 +37,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[1]-030-weighted-tag-attribution-evaluation/task.md`
 - [ ] **#031 Preserve evaluation context through dedup merges** `C1`
   - `tasks/open/[1]-031-preserve-evaluation-context-through-dedup/task.md`
+- [ ] **#032 Extraction quality pipeline — consolidation, generalization, clarity** `C3`
+  - `tasks/open/[1]-032-extraction-quality-pipeline/task.md`
 
 ### Medium
 
@@ -65,8 +67,6 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-027-dedup-precision-recall-benchmark/task.md`
 - [ ] **#028 Semantic cluster deduplication** `C3`
   - `tasks/open/[2]-028-semantic-cluster-dedup/task.md`
-- [ ] **#029 Extraction quality benchmark** `C2`
-  - `tasks/open/[2]-029-extraction-quality-benchmark/task.md`
 - [ ] **#039 Failure-driven engram evolution** `C3` `depends-on: #012, #031`
   - `tasks/open/[2]-039-failure-driven-engram-evolution/task.md`
 - [ ] **#040 Engram versioning for evaluation integrity** `C2`
@@ -108,6 +108,8 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[2]-003-lesson-dedup-too-weak/task.md`
 - [x] **#023 Sync shipped config defaults and document config options** `C1`
   - `tasks/completed/[2]-023-config-defaults-and-docs/task.md`
+- [x] **#029 Extraction quality benchmark** `C2` `superseded by: #032`
+  - `tasks/completed/[2]-029-extraction-quality-benchmark/task.md`
 
 ### Low
 

@@ -2,8 +2,8 @@
 
 - Priority: High
 - Complexity: C1 (low-hanging)
-- Related issue: `issues/open/[2]-031-self-extraction-fake-session-ids/issue.md`
-- Status: Done
+- Related issue: `issues/resolved/001-004-tag-relevance-redesign/issue.md` (#1)
+- Status: Completed
 
 ## Problem
 

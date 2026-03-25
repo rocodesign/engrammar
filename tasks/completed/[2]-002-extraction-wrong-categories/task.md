@@ -2,8 +2,8 @@
 
 - Priority: Medium
 - Complexity: C1 (low-hanging)
-- Related issue: `issues/open/[3]-030-wrong-categories-from-extraction/issue.md`
-- Status: Open
+- Related issue: `issues/resolved/001-004-tag-relevance-redesign/issue.md` (#2)
+- Status: Completed
 
 ## Problem
 

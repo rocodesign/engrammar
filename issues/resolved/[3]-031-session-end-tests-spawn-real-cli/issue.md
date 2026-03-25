@@ -2,7 +2,7 @@
 
 - Severity: Medium
 - Complexity: C1 (Low complexity, low-hanging)
-- Status: Open
+- Status: Resolved
 
 ## Problem
 `hooks/on_session_end.py` now starts `engrammar-cli evaluate --session ...` via `subprocess.Popen`, but hook tests do not mock that subprocess call.

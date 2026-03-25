@@ -2,7 +2,7 @@
 
 - Severity: High
 - Complexity: C1 (Low complexity, low-hanging)
-- Status: Open
+- Status: Resolved
 
 ## Problem
 

@@ -29,26 +29,18 @@ This file is the index. Detailed issue writeups live under `issues/`.
 
 - [ ] **#19 Errors remain fail-open and mostly silent to users** `[C2]`
   - `issues/open/[2]-019-errors-silent-fail-open/issue.md`
-- [ ] **#23 Path prerequisite matching false-matches on prefixes** `[C1] low-hanging`
-  - `issues/open/[2]-023-path-prereq-prefix-match/issue.md`
 - [ ] **#26 Pin/unpin evidence can be overcounted when many tags are scored at once** `[C3]`
   - `issues/open/[2]-026-pin-evidence-overcount/issue.md`
 - [ ] **#28 Pending evaluation processing has no claim/lock step** `[C3]`
   - `issues/open/[2]-028-evaluator-no-claim-lock/issue.md`
 - [ ] **#29 Shown-lesson backfill uses present-day lesson set** `[C2]`
   - `issues/open/[2]-029-backfill-shown-lessons-temporal-leakage/issue.md`
-- [ ] **#30 JSON array parser can return wrong array shape** `[C1] low-hanging`
-  - `issues/open/[2]-030-json-array-parser-first-bracket/issue.md`
 - [ ] **#33 Inject engrams when the agent plans or executes multi-step work** `[C1] low-hanging`
   - `issues/open/[2]-033-engram-injection-during-plan-steps/issue.md`
 - [ ] **#34 Procedural skill engrams — structured workflows, not just facts** `[C3]`
   - `issues/open/[2]-034-procedural-skill-engrams/issue.md`
-- [x] **#35 Nudge the agent to provide feedback and update engrams more often** `[C1] low-hanging`
-  - `issues/resolved/[2]-035-nudge-agent-feedback-updates/issue.md`
 - [ ] **#37 Progressive disclosure — summarize long engrams, expand on demand** `[C3]`
   - `issues/open/[2]-037-progressive-disclosure-summaries/issue.md`
-- [ ] **#39 Extract content-specific tags during extraction, merge/prune during dedup** `[C2]`
-  - `issues/open/[2]-039-content-tags-extraction/issue.md`
 
 ### Medium
 
@@ -92,7 +84,17 @@ This file is the index. Detailed issue writeups live under `issues/`.
 - [x] **#18 `register_hooks.py` dead code (outdated claim)**
 - [x] **#20 `test_tag_stats.py` corrupted**
 - [x] **#21 Backfill used current environment for historical sessions**
+- [x] **#23 Path prerequisite matching false-matches on prefixes**
+  - `issues/resolved/[2]-023-path-prereq-prefix-match/issue.md`
 - [x] **#24 Session identity global/local UUID mapping issue**
 - [x] **#25 Evaluator transcript lookup weakly coupled to session IDs**
-- [x] **#31 Session-end tests can spawn real CLI jobs** (resolved by Stop hook architecture — delegates to daemon, tests mock client)
-- [x] **#32 Evaluator transcript truncation can exceed max_chars** (fixed: subtract ellipsis length from half-window calculation)
+- [x] **#30 JSON array parser can return wrong array shape**
+  - `issues/resolved/[2]-030-json-array-parser-first-bracket/issue.md`
+- [x] **#31 Session-end tests can spawn real CLI jobs**
+  - `issues/resolved/[3]-031-session-end-tests-spawn-real-cli/issue.md`
+- [x] **#32 Evaluator transcript truncation can exceed max_chars**
+  - `issues/resolved/[2]-032-evaluator-transcript-truncation-overflow/issue.md`
+- [x] **#35 Nudge the agent to provide feedback and update engrams more often**
+  - `issues/resolved/[2]-035-nudge-agent-feedback-updates/issue.md`
+- [x] **#39 Drop environment tags as stored signal, introduce content tags, fix extraction**
+  - `issues/resolved/[2]-039-content-tags-extraction/issue.md`

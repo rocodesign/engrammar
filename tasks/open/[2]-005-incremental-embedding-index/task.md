@@ -2,7 +2,7 @@
 
 - Priority: Medium
 - Complexity: C2
-- Related issue: `issues/open/[3]-033-incremental-embedding-index-update/issue.md`
+- Related issue: `issues/open/[3]-012-full-index-rebuild-on-add/issue.md`
 - Status: Open
 
 ## Problem

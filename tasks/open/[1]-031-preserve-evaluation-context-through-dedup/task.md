@@ -4,6 +4,21 @@
 - Complexity: C1
 - Status: Open
 
+## Update (2026-03-25): Partially implemented
+
+The new evaluation context this task is trying to protect now exists:
+
+- `session_shown_engrams.prompt_tags`
+- `session_shown_engrams.query_text`
+- `session_audit.engram_context`
+
+The remaining bug is in the dedup merge path itself:
+
+- merge still rewrites `session_shown_engrams` using the old column set
+- merge rewrites `session_audit.shown_engram_ids` but not `session_audit.engram_context`
+
+So the prerequisite work landed, but the actual preservation fix is still open.
+
 ## Problem
 
 The recent evaluation improvements store prompt-derived context on shown engrams:

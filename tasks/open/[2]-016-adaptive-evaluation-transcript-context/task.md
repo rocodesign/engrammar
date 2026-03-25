@@ -4,6 +4,20 @@
 - Complexity: C2
 - Status: Open
 
+## Update (2026-03-25): Partially implemented
+
+Part of this task has already landed:
+
+- evaluator now prepends local transcript windows around shown-engram trigger turns
+- it still keeps head+tail transcript fallback when local extraction is unavailable
+
+What is still open from this task:
+
+- no explicit size-based policy (`full` / `windowed` / `head_tail_fallback`)
+- no structured observability for which strategy was used
+- no dedicated per-engram utility signal yet
+- no threshold/config tuning pass captured in the task
+
 ## Problem
 
 Evaluation quality is limited by transcript truncation:
@@ -90,4 +104,3 @@ This is a prerequisite for #030 (weighted tag attribution) to work well — shar
 
 - `src/evaluator.py` — transcript selection/windowing policy, logging
 - `tests/test_evaluator.py` (or new tests) — transcript context selection behavior
-

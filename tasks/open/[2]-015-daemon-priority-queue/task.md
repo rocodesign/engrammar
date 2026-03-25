@@ -2,7 +2,6 @@
 
 - Priority: Medium
 - Complexity: C2
-- Blocked by: #003 (LLM-assisted dedup logic)
 - Status: Open
 
 ## Problem
