@@ -4,7 +4,7 @@ import pytest
 import tempfile
 import os
 from src.core.db import init_db, add_engram
-from src.search.engine import search, _reciprocal_rank_fusion
+from src.search.engine import search, _get_rrf_normalization_anchors, _reciprocal_rank_fusion
 
 
 def test_rrf_fusion():
@@ -59,6 +59,30 @@ def test_rrf_returns_all_top_k_results():
             for r in results:
                 assert "score" in r
                 assert r["score"] > 0
+
+
+def test_rrf_normalization_anchors_are_corpus_scaled_and_tunable():
+    """RRF anchors should scale with corpus size and allow relative tuning."""
+    rrf_k, rrf_floor, rrf_ceiling = _get_rrf_normalization_anchors(
+        50,
+        {"rrf_floor_mult": 0.9, "rrf_ceiling_mult": 1.1},
+    )
+
+    assert rrf_k == 10
+    assert rrf_floor == pytest.approx((1.0 / 20.0) * 0.9)
+    assert rrf_ceiling == pytest.approx((2.0 / 11.0) * 1.1)
+
+
+def test_rrf_normalization_anchors_fall_back_on_invalid_tuning():
+    """Invalid tuning should not invert the normalized RRF range."""
+    rrf_k, rrf_floor, rrf_ceiling = _get_rrf_normalization_anchors(
+        50,
+        {"rrf_floor_mult": 10.0, "rrf_ceiling_mult": 0.1},
+    )
+
+    assert rrf_k == 10
+    assert rrf_floor == pytest.approx(1.0 / 20.0)
+    assert rrf_ceiling == pytest.approx(2.0 / 11.0)
 
 
 def test_search_respects_top_k():

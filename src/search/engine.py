@@ -37,6 +37,23 @@ def _reciprocal_rank_fusion(ranked_lists, k=60):
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
+def _get_rrf_normalization_anchors(corpus_size, scoring_config):
+    """Return corpus-scaled RRF normalization anchors with optional tuning."""
+    rrf_k = max(1, corpus_size // 5)
+    base_rrf_ceiling = 2.0 / (rrf_k + 1)
+    base_rrf_floor = 1.0 / (rrf_k + 10)
+
+    rrf_floor = base_rrf_floor * scoring_config.get("rrf_floor_mult", 1.0)
+    rrf_ceiling = base_rrf_ceiling * scoring_config.get("rrf_ceiling_mult", 1.0)
+
+    # Invalid tuning should not invert normalization. Fall back to the
+    # corpus-derived defaults so search keeps a stable score range.
+    if rrf_ceiling <= rrf_floor:
+        return rrf_k, base_rrf_floor, base_rrf_ceiling
+
+    return rrf_k, rrf_floor, rrf_ceiling
+
+
 def search(
     query,
     category_filter=None,
@@ -145,16 +162,14 @@ def search(
     # Scale k with engram count so rank position carries real weight.
     # k=60 (the default from web search) compresses 50 engrams into a
     # ~15% spread; k=N/5 gives ~2x spread between rank 0 and rank 9.
-    rrf_k = max(1, len(engrams) // 5)
+    scoring_config = config.get("scoring", {})
+    rrf_k, rrf_floor, rrf_ceiling = _get_rrf_normalization_anchors(len(engrams), scoring_config)
     fused = _reciprocal_rank_fusion([vector_results, bm25_ranked], k=rrf_k)
 
     # 3.1. Normalize RRF scores to 0-1 using k-derived anchors
     # Anchors are derived from k so normalized scores stay stable regardless
     # of corpus size. ceiling = theoretical max (rank 0 in both lists),
     # floor = marginal hit (rank ~10 in one list only).
-    scoring_config = config.get("scoring", {})
-    rrf_ceiling = 2.0 / (rrf_k + 1)
-    rrf_floor = 1.0 / (rrf_k + 10)
     rrf_range = rrf_ceiling - rrf_floor
     if rrf_range > 0:
         fused = [(lid, (score - rrf_floor) / rrf_range) for lid, score in fused]

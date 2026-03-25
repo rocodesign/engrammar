@@ -55,8 +55,11 @@ def test_repo_config_matches_default_config():
 
 
 def test_merge_config_does_not_mutate_source_defaults():
-    defaults = deepcopy(config.DEFAULT_CONFIG)
-    merged = config._merge_config(defaults, {"query_enrichment": {"pre_tool": {"inject_narration": True}}})
+    before_defaults = deepcopy(config.DEFAULT_CONFIG)
+    merged = config._merge_config(
+        deepcopy(config.DEFAULT_CONFIG),
+        {"query_enrichment": {"pre_tool": {"inject_narration": True}}},
+    )
 
     assert merged["query_enrichment"]["pre_tool"]["inject_narration"] is True
-    assert config.DEFAULT_CONFIG["query_enrichment"]["pre_tool"]["inject_narration"] is False
+    assert config.DEFAULT_CONFIG == before_defaults
