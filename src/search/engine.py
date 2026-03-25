@@ -235,41 +235,24 @@ def search(
             adjusted.append((lid, score))
         fused = adjusted
 
-    # 3.5. Tag relevance filter + boost (keyed by engram's content tags)
-    from engrammar.core.db import get_tag_relevance_with_evidence, get_content_tags_batch
-    MIN_EVALS_FOR_FILTER = 3        # minimum evidence before filtering
-    NEGATIVE_SCORE_THRESHOLD = -0.1  # filter out if avg below this with enough evidence
-    RELEVANCE_WEIGHT = scoring_config.get("weight_feedback", 0.20)
-
-    # Batch-load content tags for all candidates
-    candidate_ids = [lid for lid, _ in fused]
-    content_tags_map = get_content_tags_batch(candidate_ids, db_path=db_path) if candidate_ids else {}
-
-    filtered_fused = []
-    for lid, score in fused:
-        engram_content_tags = content_tags_map.get(lid, [])
-        if engram_content_tags:
-            avg_score, total_evals = get_tag_relevance_with_evidence(lid, engram_content_tags, db_path=db_path)
-            # Filter: strong negative signal with enough evidence
-            if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
-                continue
-            # Boost: apply tag relevance as score adjustment
-            feedback_delta = (avg_score / 3.0) * RELEVANCE_WEIGHT
-            score += feedback_delta
-            if diag is not None and lid in diag:
-                diag[lid]["feedback_delta"] = round(feedback_delta, 4)
-        filtered_fused.append((lid, score))
-
-    fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
-
-    # 3.6. Content tag affinity (per-tag matching with thresholded scoring)
+    # 3.5. Content tag affinity + per-engram tag similarities
+    # Detect prompt tags, compute per-engram-tag cosine similarities,
+    # and apply tag affinity score bonus. The per-tag sims are also used
+    # by the feedback prior (3.6) to weight which tags' relevance scores matter.
     w_content = scoring_config.get("weight_content_tag", 0.10)
     tag_sim_floor = scoring_config.get("tag_sim_floor", 0.45)
     tag_sim_ceiling = scoring_config.get("tag_sim_ceiling", 0.75)
     tag_mismatch_penalty = scoring_config.get("tag_mismatch_penalty", -0.05)
     tag_mismatch_threshold = scoring_config.get("tag_mismatch_threshold", 0.20)
     prompt_tags = []
-    if w_content > 0 and query:
+    # Per-engram dict of {content_tag: best_sim} — used by feedback prior
+    engram_tag_sims = {}  # lid -> {tag: sim, ...}
+
+    from engrammar.core.db import get_tag_relevance_with_evidence, get_content_tags_batch
+    candidate_ids = [lid for lid, _ in fused]
+    content_tags_map = get_content_tags_batch(candidate_ids, db_path=db_path) if candidate_ids else {}
+
+    if query:
         try:
             from engrammar.search.prompt_tags import detect_prompt_tags
             from engrammar.core.embeddings import embed_text as _embed_text
@@ -279,8 +262,8 @@ def search(
             prompt_tag_threshold = scoring_config.get("prompt_tag_threshold", 0.45)
             prompt_tags = detect_prompt_tags(query, top_k=prompt_tag_top_k, threshold=prompt_tag_threshold)
 
-            if prompt_tags:
-                # Pre-embed each prompt tag individually
+            if prompt_tags and w_content > 0:
+                # Pre-embed prompt tags
                 prompt_tag_embs = []
                 for tag, _score in prompt_tags:
                     emb = _embed_text(tag)
@@ -297,21 +280,25 @@ def search(
                     emb = _embed_text(t)
                     engram_tag_emb_cache[t] = emb / (np.linalg.norm(emb) + 1e-10)
 
-                # Per-engram: best prompt-tag to engram-tag match
+                # Per-engram: compute per-tag similarities and best-sim affinity bonus
                 content_scored = []
                 for lid, score in fused:
                     engram_tags = content_tags_map.get(lid, [])
                     if engram_tags and prompt_tag_embs:
-                        # Find best similarity across all prompt-tag × engram-tag pairs
+                        # Compute per-content-tag best similarity against prompt tags
+                        tag_sims = {}
                         best_sim = -1.0
-                        for pt_emb in prompt_tag_embs:
-                            for et in engram_tags:
-                                et_emb = engram_tag_emb_cache[et]
-                                sim = float(np.dot(pt_emb, et_emb))
-                                if sim > best_sim:
-                                    best_sim = sim
+                        for et in engram_tags:
+                            et_emb = engram_tag_emb_cache.get(et)
+                            if et_emb is None:
+                                continue
+                            et_best = max(float(np.dot(pt_emb, et_emb)) for pt_emb in prompt_tag_embs)
+                            tag_sims[et] = et_best
+                            if et_best > best_sim:
+                                best_sim = et_best
+                        engram_tag_sims[lid] = tag_sims
 
-                        # Thresholded ramp: zero below floor, linear to ceiling, capped at 1.0
+                        # Thresholded ramp for affinity bonus (uses best_sim across all tags)
                         tag_range = tag_sim_ceiling - tag_sim_floor
                         if best_sim < tag_sim_floor:
                             tag_bonus = 0.0
@@ -333,12 +320,44 @@ def search(
                             if diag is not None and lid in diag:
                                 diag[lid]["tag_affinity"] = round(diag[lid].get("tag_affinity", 0) + tag_mismatch_penalty, 4)
                     elif prompt_tags and not engram_tags:
-                        # Engram has no content tags but query has topic signal — mild penalty
                         score += tag_mismatch_penalty * 0.5
                     content_scored.append((lid, score))
                 fused = sorted(content_scored, key=lambda x: x[1], reverse=True)
         except Exception:
             pass
+
+    # 3.6. Tag relevance filter + boost (uses per-tag sims from 3.5)
+    # When prompt tags are available, look up feedback scores for only the
+    # content tags that matched the query (sim >= floor). This prevents
+    # dilution from unrelated tags on the same engram.
+    MIN_EVALS_FOR_FILTER = 3
+    NEGATIVE_SCORE_THRESHOLD = -0.1
+    RELEVANCE_WEIGHT = scoring_config.get("weight_feedback", 0.20)
+
+    filtered_fused = []
+    for lid, score in fused:
+        engram_content_tags = content_tags_map.get(lid, [])
+        if engram_content_tags:
+            # Use only matched tags for feedback lookup when available
+            tag_sims = engram_tag_sims.get(lid, {})
+            if tag_sims:
+                matched_tags = [t for t, sim in tag_sims.items() if sim >= tag_sim_floor]
+                feedback_tags = matched_tags if matched_tags else engram_content_tags
+            else:
+                feedback_tags = engram_content_tags
+
+            avg_score, total_evals = get_tag_relevance_with_evidence(lid, feedback_tags, db_path=db_path)
+            # Filter: strong negative signal with enough evidence
+            if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
+                continue
+            # Boost: apply tag relevance as score adjustment
+            feedback_delta = (avg_score / 3.0) * RELEVANCE_WEIGHT
+            score += feedback_delta
+            if diag is not None and lid in diag:
+                diag[lid]["feedback_delta"] = round(feedback_delta, 4)
+        filtered_fused.append((lid, score))
+
+    fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:
