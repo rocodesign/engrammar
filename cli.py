@@ -499,7 +499,13 @@ def cmd_update(args):
         else:
             i += 1
 
-    from engrammar.core.db import get_connection, get_all_active_engrams, remove_engram_category, add_engram_category
+    from engrammar.core.db import (
+        _parse_category,
+        add_engram_category,
+        get_all_active_engrams,
+        get_connection,
+        remove_engram_category,
+    )
     from engrammar.core.embeddings import build_index, build_tag_index
 
     conn = get_connection()
@@ -524,9 +530,16 @@ def cmd_update(args):
         if old_category:
             remove_engram_category(engram_id, old_category)
         add_engram_category(engram_id, category)
+        level1, level2, level3 = _parse_category(category)
 
         updates.append("category = ?")
         params.append(category)
+        updates.append("level1 = ?")
+        params.append(level1)
+        updates.append("level2 = ?")
+        params.append(level2)
+        updates.append("level3 = ?")
+        params.append(level3)
 
     if prereqs is not None:
         prereqs_json = json.dumps(prereqs) if isinstance(prereqs, dict) else prereqs

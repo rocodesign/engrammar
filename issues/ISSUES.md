@@ -54,8 +54,6 @@ This file is the index. Detailed issue writeups live under `issues/`.
   - `issues/open/[3]-013-backfill-repo-detection-layout-dependent/issue.md`
 - [ ] **#15 Connection management in `update_match_stats` is fragile** `[C2]`
   - `issues/open/[3]-015-update-match-stats-connection-fragility/issue.md`
-- [ ] **#22 CLI `update --category` doesn't sync `level1/level2/level3`** `[C1] low-hanging`
-  - `issues/open/[3]-022-cli-update-category-level-drift/issue.md`
 - [ ] **#27 Tag relevance boost averages only known-tag rows** `[C1] low-hanging`
   - `issues/open/[3]-027-tag-relevance-average-sparse/issue.md`
 - [ ] **#36 Validate engram text on add/update for injection and exfiltration** `[C2]`
@@ -84,6 +82,8 @@ This file is the index. Detailed issue writeups live under `issues/`.
 - [x] **#18 `register_hooks.py` dead code (outdated claim)**
 - [x] **#20 `test_tag_stats.py` corrupted**
 - [x] **#21 Backfill used current environment for historical sessions**
+- [x] **#22 CLI `update --category` doesn't sync `level1/level2/level3`**
+  - `issues/resolved/[3]-022-cli-update-category-level-drift/issue.md`
 - [x] **#23 Path prerequisite matching false-matches on prefixes**
   - `issues/resolved/[2]-023-path-prereq-prefix-match/issue.md`
 - [x] **#24 Session identity global/local UUID mapping issue**

@@ -88,6 +88,31 @@ def test_cmd_update_text(test_db, capsys):
     assert engrams[0]["text"] == "new text"
 
 
+def test_cmd_update_category_syncs_levels(test_db, capsys):
+    engram_id = add_engram(text="old text", category="general", db_path=test_db)
+
+    cmd_update([str(engram_id), "--category", "development/frontend/forms"])
+    captured = capsys.readouterr()
+    assert f"Updated engram {engram_id}" in captured.out
+
+    conn = get_connection(test_db)
+    row = conn.execute(
+        "SELECT category, level1, level2, level3 FROM engrams WHERE id = ?",
+        (engram_id,),
+    ).fetchone()
+    cats = conn.execute(
+        "SELECT category_path FROM engram_categories WHERE engram_id = ? ORDER BY category_path",
+        (engram_id,),
+    ).fetchall()
+    conn.close()
+
+    assert row["category"] == "development/frontend/forms"
+    assert row["level1"] == "development"
+    assert row["level2"] == "frontend"
+    assert row["level3"] == "forms"
+    assert [r["category_path"] for r in cats] == ["development/frontend/forms"]
+
+
 def test_cmd_update_nonexistent(test_db, capsys):
     cmd_update(["999", "--text", "nope"])
     captured = capsys.readouterr()
