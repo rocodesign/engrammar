@@ -210,11 +210,12 @@ class PrecomputedData:
             q_emb = embed_text(qtext)
             q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-10)
 
-            # Run base search (with tag affinity weight=0 to get base scores)
+            # Run base search (disable tag affinity AND feedback to get naked base scores)
             import engrammar.core.config as cfg_mod
             cfg_mod._config_cache = None
             config = cfg_mod.load_config()
             config["scoring"]["weight_content_tag"] = 0.0  # disable tag affinity
+            config["scoring"]["weight_feedback"] = 0.0     # disable feedback (swept separately)
             hits, meta = search(qtext, return_diagnostics=True, cwd=cwd, top_k=10)
 
             base_results = []
@@ -251,6 +252,19 @@ class PrecomputedData:
                 "best_vector_sim": best_vector_sim,
                 "score_gap": score_gap,
             })
+
+        # Pre-load per-engram tag relevance data for feedback sweep
+        from engrammar.core.db import get_tag_relevance_with_evidence
+        self.feedback_cache = {}  # (engram_id, tuple(tags)) -> (avg_score, total_evals)
+        all_candidate_ids = set()
+        for qd_item in self.query_data:
+            for br in qd_item["base_results"]:
+                all_candidate_ids.add(br["id"])
+        for eid in all_candidate_ids:
+            etags = self.content_tags_map.get(eid, [])
+            if etags:
+                avg_score, total_evals = get_tag_relevance_with_evidence(eid, etags)
+                self.feedback_cache[eid] = (avg_score, total_evals)
 
         elapsed = time.time() - t0
         print(f"Pre-computation done: {len(queries)} queries, {len(all_tags)} unique tags, "
@@ -302,26 +316,27 @@ class PrecomputedData:
     def compute_tag_affinity(self, prompt_tag_indices, engram_tag_indices,
                              tag_sim_floor, tag_sim_ceiling,
                              tag_mismatch_threshold, tag_mismatch_penalty, w_content):
-        """Fast tag affinity using pre-computed embeddings."""
+        """Fast tag affinity using pre-computed embeddings with squared curve."""
         if not prompt_tag_indices or not engram_tag_indices:
             if prompt_tag_indices and not engram_tag_indices:
                 return tag_mismatch_penalty * 0.5
             return 0.0
 
-        # Compute best similarity across all prompt-tag × engram-tag pairs
+        # Compute similarity matrix: each engram tag's best sim against prompt tags
         pt_embs = self.tag_embeddings[prompt_tag_indices]  # (n_pt, dim)
         et_embs = self.tag_embeddings[engram_tag_indices]  # (n_et, dim)
         sim_matrix = pt_embs @ et_embs.T  # (n_pt, n_et)
-        best_sim = float(sim_matrix.max())
 
-        # Thresholded ramp
-        tag_range = tag_sim_ceiling - tag_sim_floor
-        if best_sim < tag_sim_floor:
-            tag_bonus = 0.0
-        elif tag_range > 0 and best_sim < tag_sim_ceiling:
-            tag_bonus = (best_sim - tag_sim_floor) / tag_range
-        else:
-            tag_bonus = 1.0
+        # Per engram-tag: best similarity across all prompt tags
+        per_tag_best = sim_matrix.max(axis=0)  # (n_et,)
+        best_sim = float(per_tag_best.max())
+
+        # Squared curve per tag, normalized by tag count
+        floor_denom = 1.0 - tag_sim_floor
+        if floor_denom <= 0:
+            floor_denom = 1.0
+        norms = np.clip((per_tag_best - tag_sim_floor) / floor_denom, 0.0, None)
+        tag_bonus = float((norms ** 2).sum())
 
         delta = w_content * tag_bonus
 
@@ -333,7 +348,7 @@ class PrecomputedData:
 
 
 def run_sweep_fast(precomputed, ground_truth, param_grid):
-    """Fast sweep: only recompute tag affinity + abstention per config."""
+    """Fast sweep: recompute tag affinity + feedback + abstention per config."""
     gt_by_idx = {g["idx"]: g for g in ground_truth}
     keys = list(param_grid.keys())
     values = list(param_grid.values())
@@ -355,6 +370,9 @@ def run_sweep_fast(precomputed, ground_truth, param_grid):
         tag_mismatch_threshold = 0.20
         prompt_tag_threshold = params.get("prompt_tag_threshold", 0.60)
         prompt_tag_top_k = params.get("prompt_tag_top_k", 3)
+
+        # Feedback params
+        w_feedback = params.get("weight_feedback", 0.0)
 
         # Abstention params
         min_vector_sim = params.get("min_vector_sim", 0.0)
@@ -394,7 +412,7 @@ def run_sweep_fast(precomputed, ground_truth, param_grid):
             prompt_tags = pt_result[0] if pt_result else []
             prompt_tag_indices = pt_result[1] if pt_result else []
 
-            # Rescore each result
+            # Rescore each result: tag affinity + feedback
             scored = []
             for br in qd["base_results"]:
                 score = br["base_score"]
@@ -405,6 +423,12 @@ def run_sweep_fast(precomputed, ground_truth, param_grid):
                         tag_mismatch_threshold, tag_mismatch_penalty, w_content
                     )
                     score += delta
+                # Feedback prior (no /3.0 — raw avg_score * weight)
+                if w_feedback > 0:
+                    fb = precomputed.feedback_cache.get(br["id"])
+                    if fb:
+                        avg_score, total_evals = fb
+                        score += avg_score * w_feedback
                 scored.append({
                     "id": br["id"],
                     "score": round(score, 4),
@@ -804,15 +828,17 @@ def cmd_sweep():
     precomputed = PrecomputedData(queries, ground_truth=gt)
 
     param_grid = {
-        # Tag affinity (best from previous sweep, narrow range)
-        "weight_content_tag": [0.15, 0.20, 0.25],
-        "tag_sim_floor": [0.50, 0.55, 0.60],
-        "tag_sim_ceiling": [0.80, 0.85],
+        # Tag affinity — squared curve (floor matters, ceiling unused)
+        "weight_content_tag": [0.15, 0.20, 0.25, 0.30],
+        "tag_sim_floor": [0.45, 0.50, 0.55, 0.60],
+        "tag_sim_ceiling": [0.85],  # unused by squared curve, kept for compat
         "prompt_tag_threshold": [0.55, 0.60],
-        # Abstention features (new — main focus of this sweep)
-        "min_vector_sim": [0.0, 0.55, 0.60, 0.65, 0.70],
+        # Feedback — /3.0 removed, so weight_feedback needs re-tuning
+        "weight_feedback": [0.03, 0.05, 0.07, 0.10, 0.15],
+        # Abstention
+        "min_vector_sim": [0.0, 0.55, 0.65],
         "min_top1_score": [0.0, 0.30, 0.40],
-        "min_score_margin": [0.0, 0.05, 0.10],
+        "min_score_margin": [0.0],
     }
 
     t0 = time.time()

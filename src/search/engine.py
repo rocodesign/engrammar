@@ -280,7 +280,11 @@ def search(
                     emb = _embed_text(t)
                     engram_tag_emb_cache[t] = emb / (np.linalg.norm(emb) + 1e-10)
 
-                # Per-engram: compute per-tag similarities and best-sim affinity bonus
+                # Per-engram: compute per-tag similarities and squared-curve affinity bonus
+                # Instead of using only best_sim, we sum the squared normalized
+                # similarity across ALL engram tags and divide by tag count.
+                # This rewards engrams with multiple matching tags while the
+                # squared curve suppresses noise (sim ~0.6 → ~10% credit).
                 content_scored = []
                 for lid, score in fused:
                     engram_tags = content_tags_map.get(lid, [])
@@ -288,6 +292,7 @@ def search(
                         # Compute per-content-tag best similarity against prompt tags
                         tag_sims = {}
                         best_sim = -1.0
+                        tag_bonus_sum = 0.0
                         for et in engram_tags:
                             et_emb = engram_tag_emb_cache.get(et)
                             if et_emb is None:
@@ -296,17 +301,13 @@ def search(
                             tag_sims[et] = et_best
                             if et_best > best_sim:
                                 best_sim = et_best
+                            # Squared curve per tag
+                            norm = max(0.0, (et_best - tag_sim_floor) / (1.0 - tag_sim_floor)) if et_best > tag_sim_floor else 0.0
+                            tag_bonus_sum += norm ** 2
                         engram_tag_sims[lid] = tag_sims
 
-                        # Thresholded ramp for affinity bonus (uses best_sim across all tags)
-                        tag_range = tag_sim_ceiling - tag_sim_floor
-                        if best_sim < tag_sim_floor:
-                            tag_bonus = 0.0
-                        elif tag_range > 0 and best_sim < tag_sim_ceiling:
-                            tag_bonus = (best_sim - tag_sim_floor) / tag_range
-                        else:
-                            tag_bonus = 1.0
-
+                        # Raw sum — more matching tags = higher bonus
+                        tag_bonus = tag_bonus_sum
                         score += w_content * tag_bonus
 
                         if diag is not None and lid in diag:
@@ -351,7 +352,7 @@ def search(
             if total_evals >= MIN_EVALS_FOR_FILTER and avg_score < NEGATIVE_SCORE_THRESHOLD:
                 continue
             # Boost: apply tag relevance as score adjustment
-            feedback_delta = (avg_score / 3.0) * RELEVANCE_WEIGHT
+            feedback_delta = avg_score * RELEVANCE_WEIGHT
             score += feedback_delta
             if diag is not None and lid in diag:
                 diag[lid]["feedback_delta"] = round(feedback_delta, 4)
