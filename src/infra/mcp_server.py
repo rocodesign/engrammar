@@ -161,6 +161,13 @@ def engrammar_add(
         from engrammar.core.db import add_content_tags
         add_content_tags(engram_id, tags, source="manual")
 
+    # Apply env tag relevance scores from the current session
+    if source_sessions:
+        from engrammar.core.db import get_env_tags_for_sessions, update_tag_relevance
+        env_tags = get_env_tags_for_sessions(source_sessions)
+        if env_tags:
+            update_tag_relevance(engram_id, {tag: 0.5 for tag in env_tags}, weight=1.0)
+
     # Rebuild index
     engrams = get_all_active_engrams()
     build_index(engrams)
