@@ -54,8 +54,9 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[2]-012-stage-auto-extracted-engrams/task.md`
 - [ ] **#015 Daemon priority queue with background dedup** `C2`
   - `tasks/open/[2]-015-daemon-priority-queue/task.md`
-- [ ] **#016 Adaptive transcript context for evaluation** `C2`
+- [ ] **#016 Adaptive transcript context for evaluation** `C2` `in-progress: autoresearch pipeline`
   - `tasks/open/[2]-016-adaptive-evaluation-transcript-context/task.md`
+  - Evaluation autoresearch pipeline: `benchmark/eval_attribution_comparison.py`, `benchmark/eval_sweep_config.yaml`
 - [ ] **#022 Add session observational memory layer** `C3`
   - `tasks/open/[2]-022-session-observational-memory/task.md`
 

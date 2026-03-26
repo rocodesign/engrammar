@@ -1,0 +1,70 @@
+# Evaluation attribution optimization sweep
+# Tests different tag similarity floor thresholds and weighting curves
+# for the weighted sigmoid attribution in evaluator.py
+
+sweep:
+  name: "eval_attribution_optimization"
+  description: "Optimize tag similarity attribution curve for evaluation scoring"
+  metric: "tag_relevance_precision"  # Precision of per-tag feedback signals
+  direction: "maximize"
+
+variables:
+  attribution_floor:
+    description: "Min tag similarity to receive any evaluation signal"
+    type: float
+    values: [0.10, 0.15, 0.20, 0.25, 0.30]
+    default: 0.20
+
+  attribution_ceiling:
+    description: "Tag similarity above which weight plateaus at 1.0"
+    type: float
+    values: [0.60, 0.70, 0.80, 0.90]
+    default: 0.80
+
+  weighting_curve:
+    description: "Attribution weight curve type"
+    type: str
+    values: ["linear", "quadratic", "cubic"]
+    default: "quadratic"
+
+  feedback_dampening:
+    description: "Reduce feedback_delta amplitude for low-eval rows"
+    type: float
+    values: [0.2, 0.3, 0.4, 0.5]
+    default: 0.2
+    note: "Existing: RELEVANCE_WEIGHT = 0.20, feedback_delta = (avg_score / 3.0) * 0.20"
+
+  filter_threshold:
+    description: "MIN_EVALS_FOR_FILTER - only filter engrams with this many evals"
+    type: int
+    values: [1, 2, 3, 4]
+    default: 3
+    note: "Controls hard gate. 1 is aggressive, 3 is conservative (current)"
+
+# Measurement plan
+evaluation:
+  ground_truth: "benchmark/eval_ground_truth.json"  # 50 hand-labeled eval decisions
+  baseline:
+    attribution: "old_simple_avg"
+    filter_threshold: 3
+  metrics:
+    - name: "tag_relevance_precision"
+      description: "% of per-tag evals that match expected signal direction"
+      formula: "correct_signal_direction / total_tagged_evals"
+    - name: "signal_concentration"
+      description: "% of signal that lands on matched tags vs unmatched"
+      formula: "signal_on_matched_tags / total_signal"
+    - name: "recovery_rate"
+      description: "% of negatively-evaluated engrams that eventually recover"
+      note: "Only for filter_threshold sweep"
+
+# Autoresearch integration
+autoresearch:
+  pipeline: "benchmark/run_eval_sweep.py"
+  input:
+    session_audit_table: "session_audit"
+    ground_truth_file: "benchmark/eval_ground_truth.json"
+  output:
+    results_dir: "benchmark/results/"
+    naming: "eval_sweep_{timestamp}_{metric_value}.json"
+  parallel_jobs: 4
