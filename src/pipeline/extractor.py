@@ -302,12 +302,52 @@ def _detect_tags_for_cwd(cwd):
         os.chdir(original_cwd)
 
 
+def _read_skill_summaries(home):
+    """Read skill names and descriptions from ~/.claude/skills/*/skill.md.
+
+    Returns a compact summary string listing available skills so the LLM
+    knows not to re-extract knowledge already encoded in them.
+    """
+    skills_dir = os.path.join(home, ".claude", "skills")
+    if not os.path.isdir(skills_dir):
+        return ""
+
+    summaries = []
+    for skill_name in sorted(os.listdir(skills_dir)):
+        skill_file = os.path.join(skills_dir, skill_name, "skill.md")
+        if not os.path.isfile(skill_file):
+            continue
+        try:
+            with open(skill_file, "r") as f:
+                raw = f.read(500)
+            # Extract description from frontmatter if present
+            description = ""
+            if raw.startswith("---"):
+                end = raw.find("---", 3)
+                if end != -1:
+                    for line in raw[3:end].splitlines():
+                        if line.startswith("description:"):
+                            description = line[len("description:"):].strip()
+                            break
+            if description:
+                summaries.append(f"  - {skill_name}: {description}")
+            else:
+                summaries.append(f"  - {skill_name}")
+        except Exception:
+            pass
+
+    if not summaries:
+        return ""
+    return "--- Skills (user) ---\n" + "\n".join(summaries)
+
+
 def _read_existing_instructions(cwd):
     """Read instruction files from project and user-level directories.
 
     Reads CLAUDE.md and AGENTS.md from:
     1. The project directory (cwd)
     2. User-level locations (~/.claude/CLAUDE.md, ~/.shared-cli-agents/AGENTS.md)
+    Also reads skill summaries from ~/.claude/skills/.
 
     Returns:
         str with combined instruction content, or empty string if none found.
@@ -338,6 +378,11 @@ def _read_existing_instructions(cwd):
                         parts.append(f"--- {filename} (project) ---\n{content.strip()}")
                 except Exception:
                     pass
+
+    # Skill summaries — so LLM skips knowledge already encoded in skills
+    skill_summaries = _read_skill_summaries(home)
+    if skill_summaries:
+        parts.append(skill_summaries)
 
     return "\n\n".join(parts)
 
