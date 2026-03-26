@@ -68,7 +68,13 @@ Bad engrams (task summaries, generic, one-off, over-specific, benchmark results)
 - "RELEVANCE_WEIGHT=0.005 in search.py line 68 is too small" (over-specific — tied to exact file/line/value)
 - "The blend scoring formula uses w_semantic * rrf_norm + w_tag * tag_norm with weights 0.60/0.40" (architecture description, not a reusable rule)
 - "Haiku with v2_relevance scored 37% yield with 8/9 correct verdicts" (benchmark result — not actionable guidance)
-{existing_instructions}{existing_tags_hint}
+
+## Deduplication
+
+The project has these instructions already documented — DO NOT extract engrams that restate or duplicate this information:
+{existing_instructions}
+{existing_tags_hint}
+
 Environment tags detected for this session: {env_tags}
 
 Session transcript:

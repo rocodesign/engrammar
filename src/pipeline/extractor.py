@@ -288,7 +288,14 @@ def _detect_tags_for_cwd(cwd):
     try:
         os.chdir(cwd)
         from engrammar.search.tag_detectors import detect_tags
-        return detect_tags()
+        tags = detect_tags()
+
+        # Add repo name as a tag for per-repo scoring
+        repo = _detect_repo_from_cwd(cwd)
+        if repo:
+            tags.append(f"repo:{repo}")
+
+        return tags
     except Exception:
         return []
     finally:
