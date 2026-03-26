@@ -1,0 +1,534 @@
+{
+  "timestamp": "2026-03-26T19:19:21.860216",
+  "top_10_tags_by_signal": [
+    {
+      "tag": "repo:engrammar",
+      "total_signal": 82.458,
+      "avg_score": 0.166,
+      "pos_evals": 2046,
+      "neg_evals": 338,
+      "pos_rows": 273,
+      "neg_rows": 73
+    },
+    {
+      "tag": "python",
+      "total_signal": 70.059,
+      "avg_score": 0.186,
+      "pos_evals": 1426,
+      "neg_evals": 128,
+      "pos_rows": 225,
+      "neg_rows": 47
+    },
+    {
+      "tag": "github",
+      "total_signal": 47.216,
+      "avg_score": 0.118,
+      "pos_evals": 1042,
+      "neg_evals": 100,
+      "pos_rows": 202,
+      "neg_rows": 57
+    },
+    {
+      "tag": "testing",
+      "total_signal": 40.975,
+      "avg_score": 0.136,
+      "pos_evals": 818,
+      "neg_evals": 92,
+      "pos_rows": 184,
+      "neg_rows": 29
+    },
+    {
+      "tag": "repo:staff-portal",
+      "total_signal": 38.457,
+      "avg_score": 0.175,
+      "pos_evals": 680,
+      "neg_evals": 66,
+      "pos_rows": 142,
+      "neg_rows": 26
+    },
+    {
+      "tag": "frontend",
+      "total_signal": 38.39,
+      "avg_score": 0.137,
+      "pos_evals": 916,
+      "neg_evals": 53,
+      "pos_rows": 171,
+      "neg_rows": 26
+    },
+    {
+      "tag": "repo:davinci",
+      "total_signal": 38.151,
+      "avg_score": 0.086,
+      "pos_evals": 1219,
+      "neg_evals": 441,
+      "pos_rows": 99,
+      "neg_rows": 61
+    },
+    {
+      "tag": "monorepo",
+      "total_signal": 32.807,
+      "avg_score": 0.127,
+      "pos_evals": 754,
+      "neg_evals": 103,
+      "pos_rows": 165,
+      "neg_rows": 23
+    },
+    {
+      "tag": "engrammar",
+      "total_signal": 32.807,
+      "avg_score": 0.154,
+      "pos_evals": 1976,
+      "neg_evals": 169,
+      "pos_rows": 164,
+      "neg_rows": 21
+    },
+    {
+      "tag": "typescript",
+      "total_signal": 31.227,
+      "avg_score": 0.128,
+      "pos_evals": 798,
+      "neg_evals": 59,
+      "pos_rows": 143,
+      "neg_rows": 24
+    }
+  ],
+  "eval_distribution": [
+    {
+      "eval_count": 1,
+      "tags_with_count": 1680,
+      "total_positive": 1455,
+      "total_negative": 225
+    },
+    {
+      "eval_count": 2,
+      "tags_with_count": 619,
+      "total_positive": 998,
+      "total_negative": 240
+    },
+    {
+      "eval_count": 3,
+      "tags_with_count": 369,
+      "total_positive": 921,
+      "total_negative": 186
+    },
+    {
+      "eval_count": 4,
+      "tags_with_count": 214,
+      "total_positive": 716,
+      "total_negative": 140
+    },
+    {
+      "eval_count": 5,
+      "tags_with_count": 183,
+      "total_positive": 718,
+      "total_negative": 197
+    },
+    {
+      "eval_count": 6,
+      "tags_with_count": 142,
+      "total_positive": 728,
+      "total_negative": 124
+    },
+    {
+      "eval_count": 7,
+      "tags_with_count": 113,
+      "total_positive": 645,
+      "total_negative": 146
+    },
+    {
+      "eval_count": 8,
+      "tags_with_count": 94,
+      "total_positive": 640,
+      "total_negative": 112
+    },
+    {
+      "eval_count": 9,
+      "tags_with_count": 85,
+      "total_positive": 609,
+      "total_negative": 156
+    },
+    {
+      "eval_count": 10,
+      "tags_with_count": 97,
+      "total_positive": 834,
+      "total_negative": 136
+    },
+    {
+      "eval_count": 11,
+      "tags_with_count": 64,
+      "total_positive": 622,
+      "total_negative": 82
+    },
+    {
+      "eval_count": 12,
+      "tags_with_count": 62,
+      "total_positive": 653,
+      "total_negative": 91
+    },
+    {
+      "eval_count": 13,
+      "tags_with_count": 54,
+      "total_positive": 550,
+      "total_negative": 152
+    },
+    {
+      "eval_count": 14,
+      "tags_with_count": 49,
+      "total_positive": 497,
+      "total_negative": 189
+    },
+    {
+      "eval_count": 15,
+      "tags_with_count": 39,
+      "total_positive": 424,
+      "total_negative": 161
+    },
+    {
+      "eval_count": 16,
+      "tags_with_count": 46,
+      "total_positive": 629,
+      "total_negative": 107
+    },
+    {
+      "eval_count": 17,
+      "tags_with_count": 38,
+      "total_positive": 604,
+      "total_negative": 42
+    },
+    {
+      "eval_count": 18,
+      "tags_with_count": 32,
+      "total_positive": 460,
+      "total_negative": 116
+    },
+    {
+      "eval_count": 19,
+      "tags_with_count": 30,
+      "total_positive": 470,
+      "total_negative": 100
+    },
+    {
+      "eval_count": 20,
+      "tags_with_count": 23,
+      "total_positive": 437,
+      "total_negative": 23
+    },
+    {
+      "eval_count": 21,
+      "tags_with_count": 17,
+      "total_positive": 305,
+      "total_negative": 52
+    },
+    {
+      "eval_count": 22,
+      "tags_with_count": 9,
+      "total_positive": 177,
+      "total_negative": 21
+    },
+    {
+      "eval_count": 23,
+      "tags_with_count": 6,
+      "total_positive": 123,
+      "total_negative": 15
+    },
+    {
+      "eval_count": 24,
+      "tags_with_count": 17,
+      "total_positive": 375,
+      "total_negative": 33
+    },
+    {
+      "eval_count": 25,
+      "tags_with_count": 25,
+      "total_positive": 574,
+      "total_negative": 51
+    },
+    {
+      "eval_count": 26,
+      "tags_with_count": 20,
+      "total_positive": 499,
+      "total_negative": 21
+    },
+    {
+      "eval_count": 27,
+      "tags_with_count": 7,
+      "total_positive": 184,
+      "total_negative": 5
+    },
+    {
+      "eval_count": 28,
+      "tags_with_count": 10,
+      "total_positive": 255,
+      "total_negative": 25
+    },
+    {
+      "eval_count": 29,
+      "tags_with_count": 10,
+      "total_positive": 248,
+      "total_negative": 42
+    },
+    {
+      "eval_count": 30,
+      "tags_with_count": 6,
+      "total_positive": 173,
+      "total_negative": 7
+    },
+    {
+      "eval_count": 31,
+      "tags_with_count": 5,
+      "total_positive": 123,
+      "total_negative": 32
+    },
+    {
+      "eval_count": 32,
+      "tags_with_count": 7,
+      "total_positive": 187,
+      "total_negative": 37
+    },
+    {
+      "eval_count": 33,
+      "tags_with_count": 7,
+      "total_positive": 227,
+      "total_negative": 4
+    },
+    {
+      "eval_count": 34,
+      "tags_with_count": 6,
+      "total_positive": 182,
+      "total_negative": 22
+    },
+    {
+      "eval_count": 35,
+      "tags_with_count": 6,
+      "total_positive": 202,
+      "total_negative": 8
+    },
+    {
+      "eval_count": 36,
+      "tags_with_count": 7,
+      "total_positive": 243,
+      "total_negative": 9
+    },
+    {
+      "eval_count": 37,
+      "tags_with_count": 3,
+      "total_positive": 109,
+      "total_negative": 2
+    },
+    {
+      "eval_count": 38,
+      "tags_with_count": 4,
+      "total_positive": 151,
+      "total_negative": 1
+    },
+    {
+      "eval_count": 39,
+      "tags_with_count": 1,
+      "total_positive": 37,
+      "total_negative": 2
+    },
+    {
+      "eval_count": 40,
+      "tags_with_count": 3,
+      "total_positive": 114,
+      "total_negative": 6
+    },
+    {
+      "eval_count": 41,
+      "tags_with_count": 5,
+      "total_positive": 194,
+      "total_negative": 11
+    },
+    {
+      "eval_count": 42,
+      "tags_with_count": 8,
+      "total_positive": 325,
+      "total_negative": 11
+    },
+    {
+      "eval_count": 43,
+      "tags_with_count": 4,
+      "total_positive": 171,
+      "total_negative": 1
+    },
+    {
+      "eval_count": 44,
+      "tags_with_count": 2,
+      "total_positive": 80,
+      "total_negative": 8
+    },
+    {
+      "eval_count": 45,
+      "tags_with_count": 6,
+      "total_positive": 253,
+      "total_negative": 17
+    },
+    {
+      "eval_count": 46,
+      "tags_with_count": 3,
+      "total_positive": 138,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 47,
+      "tags_with_count": 2,
+      "total_positive": 86,
+      "total_negative": 8
+    },
+    {
+      "eval_count": 48,
+      "tags_with_count": 4,
+      "total_positive": 182,
+      "total_negative": 10
+    },
+    {
+      "eval_count": 49,
+      "tags_with_count": 4,
+      "total_positive": 176,
+      "total_negative": 20
+    },
+    {
+      "eval_count": 50,
+      "tags_with_count": 3,
+      "total_positive": 150,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 51,
+      "tags_with_count": 1,
+      "total_positive": 51,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 52,
+      "tags_with_count": 3,
+      "total_positive": 154,
+      "total_negative": 2
+    },
+    {
+      "eval_count": 53,
+      "tags_with_count": 6,
+      "total_positive": 296,
+      "total_negative": 22
+    },
+    {
+      "eval_count": 54,
+      "tags_with_count": 4,
+      "total_positive": 213,
+      "total_negative": 3
+    },
+    {
+      "eval_count": 55,
+      "tags_with_count": 2,
+      "total_positive": 103,
+      "total_negative": 7
+    },
+    {
+      "eval_count": 56,
+      "tags_with_count": 2,
+      "total_positive": 111,
+      "total_negative": 1
+    },
+    {
+      "eval_count": 57,
+      "tags_with_count": 2,
+      "total_positive": 113,
+      "total_negative": 1
+    },
+    {
+      "eval_count": 59,
+      "tags_with_count": 1,
+      "total_positive": 59,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 60,
+      "tags_with_count": 1,
+      "total_positive": 51,
+      "total_negative": 9
+    },
+    {
+      "eval_count": 61,
+      "tags_with_count": 2,
+      "total_positive": 94,
+      "total_negative": 28
+    },
+    {
+      "eval_count": 63,
+      "tags_with_count": 1,
+      "total_positive": 63,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 64,
+      "tags_with_count": 1,
+      "total_positive": 64,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 66,
+      "tags_with_count": 1,
+      "total_positive": 62,
+      "total_negative": 4
+    },
+    {
+      "eval_count": 67,
+      "tags_with_count": 1,
+      "total_positive": 67,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 70,
+      "tags_with_count": 1,
+      "total_positive": 70,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 73,
+      "tags_with_count": 1,
+      "total_positive": 73,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 74,
+      "tags_with_count": 1,
+      "total_positive": 73,
+      "total_negative": 1
+    },
+    {
+      "eval_count": 86,
+      "tags_with_count": 1,
+      "total_positive": 80,
+      "total_negative": 6
+    },
+    {
+      "eval_count": 87,
+      "tags_with_count": 1,
+      "total_positive": 87,
+      "total_negative": 0
+    },
+    {
+      "eval_count": 117,
+      "tags_with_count": 1,
+      "total_positive": 110,
+      "total_negative": 7
+    },
+    {
+      "eval_count": 135,
+      "tags_with_count": 1,
+      "total_positive": 128,
+      "total_negative": 7
+    }
+  ],
+  "recovery_analysis": {
+    "total_negatively_scored_tags": 401,
+    "had_any_positive_eval": 140,
+    "had_2_positive_evals": 68,
+    "likely_recoverable": 224
+  },
+  "filter_threshold_impact": {
+    "threshold_3": "current \u2014 only filter after 3 evals",
+    "threshold_2": "would filter 42 additional tags earlier",
+    "threshold_1": "would filter 140 tags on first negative eval \u2014 risky"
+  }
+}
