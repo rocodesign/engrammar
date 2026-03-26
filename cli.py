@@ -942,6 +942,23 @@ def cmd_detect_tags(args):
     print(f"Repository: {env.get('repo', 'unknown')}")
 
 
+def cmd_backfill_repo_tags(args):
+    """Backfill missing repo:X tags from source session env_tags.
+
+    Extracted lessons don't have repo tags if they were extracted before the repo tag
+    feature was added to the extraction pipeline. This command fills in missing repo tags
+    from the source session's environment tags recorded in session_audit.
+
+    Returns:
+        Number of engrams updated and total tags added.
+    """
+    from engrammar.core.db import backfill_repo_tags
+
+    print("Backfilling missing repo tags from source sessions...")
+    updated, added = backfill_repo_tags()
+    print(f"Updated {updated} engrams with {added} repo tags")
+
+
 def cmd_restore_db(args):
     """List DB backups and restore a selected one."""
     import glob
@@ -1386,6 +1403,7 @@ def main():
         "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
         "backfill-prereqs": cmd_backfill_prereqs,
+        "backfill-repo-tags": cmd_backfill_repo_tags,
         "restore": cmd_restore_db,
         "reextract": cmd_reextract,
         "register": cmd_register,

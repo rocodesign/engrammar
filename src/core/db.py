@@ -1679,3 +1679,68 @@ def reject_by_curation(engram_ids, db_path=None):
     )
     conn.commit()
     conn.close()
+
+
+def backfill_repo_tags(db_path=None):
+    """Backfill missing repo:X tags for lessons from their source session env_tags.
+
+    For each engram with source_sessions, extract repo: tags from session_audit's env_tags
+    and add them as content_tags with source="backfill".
+
+    Returns:
+        tuple of (engrams_updated, tags_added)
+    """
+    conn = get_connection(db_path)
+    engrams_updated = 0
+    tags_added = 0
+
+    # Get all engrams with source_sessions
+    rows = conn.execute(
+        "SELECT id, source_sessions FROM engrams WHERE source_sessions IS NOT NULL AND source_sessions != '[]'"
+    ).fetchall()
+
+    for row in rows:
+        engram_id = row["id"]
+        source_sessions = json.loads(row["source_sessions"])
+
+        if not source_sessions:
+            continue
+
+        # Get env_tags from session_audit for these sessions
+        placeholders = ",".join("?" * len(source_sessions))
+        audit_rows = conn.execute(
+            f"SELECT DISTINCT env_tags FROM session_audit WHERE session_id IN ({placeholders})",
+            source_sessions
+        ).fetchall()
+
+        repo_tags = set()
+        for audit_row in audit_rows:
+            env_tags = json.loads(audit_row["env_tags"]) if audit_row["env_tags"] else []
+            for tag in env_tags:
+                if tag.startswith("repo:"):
+                    repo_tags.add(tag)
+
+        if repo_tags:
+            # Check which repo tags are already in engram_tags
+            existing_tags = conn.execute(
+                "SELECT tag FROM engram_tags WHERE engram_id = ? AND tag LIKE 'repo:%'",
+                (engram_id,)
+            ).fetchall()
+            existing = {t["tag"] for t in existing_tags}
+
+            # Add missing repo tags
+            tags_to_add = repo_tags - existing
+            if tags_to_add:
+                now = datetime.utcnow().isoformat()
+                for tag in tags_to_add:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO engram_tags (engram_id, tag, source, created_at) "
+                        "VALUES (?, ?, 'backfill', ?)",
+                        (engram_id, tag, now)
+                    )
+                tags_added += len(tags_to_add)
+                engrams_updated += 1
+
+    conn.commit()
+    conn.close()
+    return engrams_updated, tags_added
