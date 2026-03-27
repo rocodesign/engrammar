@@ -68,9 +68,25 @@ def engrammar_search(query: str, category: str | None = None, tags: list[str] | 
         tags: Optional list of required tags (engrams must have ALL specified tags)
         top_k: Number of results to return (default 5)
     """
-    from engrammar.search.engine import search
+    from engrammar.infra.client import send_request
 
-    results = search(query, category_filter=category, tag_filter=tags, top_k=top_k)
+    request = {"type": "search", "query": query, "top_k": top_k}
+    if category:
+        request["category_filter"] = category
+    resp = send_request(request)
+
+    if resp is None:
+        return "Error: could not connect to engrammar daemon."
+    if "error" in resp:
+        return f"Error: {resp['error']}"
+
+    results = resp.get("results", [])
+
+    # Post-filter by tags if requested (daemon doesn't support tag_filter yet)
+    if tags and results:
+        from engrammar.core.db import get_content_tags
+        tag_set = set(tags)
+        results = [r for r in results if tag_set.issubset(set(get_content_tags(r["id"])))]
 
     if not results:
         return "No matching engrams found."
@@ -124,8 +140,8 @@ def engrammar_add(
     if not category:
         return "Error: category must contain at least one segment."
 
-    from engrammar.core.db import add_engram, get_all_active_engrams
-    from engrammar.core.embeddings import build_index
+    from engrammar.core.db import add_engram
+    from engrammar.infra.client import send_request as _send_daemon
 
     # Auto-capture session_id from file written by SessionStart hook
     from engrammar.infra.hook_utils import read_session_id
@@ -168,11 +184,11 @@ def engrammar_add(
         if env_tags:
             update_tag_relevance(engram_id, {tag: 0.5 for tag in env_tags}, weight=1.0)
 
-    # Rebuild index
-    engrams = get_all_active_engrams()
-    build_index(engrams)
+    # Rebuild index via daemon (avoids loading embedding model in MCP process)
+    resp = _send_daemon({"type": "rebuild_index"})
+    count = resp.get("count", "?") if resp else "?"
 
-    return f"Added engram #{engram_id} in category '{category}'. Index rebuilt with {len(engrams)} engrams."
+    return f"Added engram #{engram_id} in category '{category}'. Index rebuilt with {count} engrams."
 
 
 @mcp.tool()
@@ -185,8 +201,8 @@ def engrammar_deprecate(engram_id: int, reason: str = "") -> str:
         engram_id: The engram ID to deprecate
         reason: Why this engram is being deprecated
     """
-    from engrammar.core.db import deprecate_engram, get_connection, get_all_active_engrams
-    from engrammar.core.embeddings import build_index
+    from engrammar.core.db import deprecate_engram, get_connection
+    from engrammar.infra.client import send_request as _send_daemon
 
     # Verify engram exists
     conn = get_connection()
@@ -198,11 +214,11 @@ def engrammar_deprecate(engram_id: int, reason: str = "") -> str:
 
     deprecate_engram(engram_id)
 
-    # Rebuild index without deprecated engram
-    engrams = get_all_active_engrams()
-    build_index(engrams)
+    # Rebuild index via daemon
+    resp = _send_daemon({"type": "rebuild_index"})
+    count = resp.get("count", "?") if resp else "?"
 
-    return f"Deprecated engram #{engram_id} [{row['category']}]: \"{row['text'][:80]}...\"\nReason: {reason}\nIndex rebuilt with {len(engrams)} active engrams."
+    return f"Deprecated engram #{engram_id} [{row['category']}]: \"{row['text'][:80]}...\"\nReason: {reason}\nIndex rebuilt with {count} active engrams."
 
 
 @mcp.tool()
@@ -387,8 +403,8 @@ def engrammar_update(
         if not category:
             return "Error: category must contain at least one segment."
 
-    from engrammar.core.db import get_connection, get_all_active_engrams
-    from engrammar.core.embeddings import build_index
+    from engrammar.core.db import get_connection
+    from engrammar.infra.client import send_request as _send_daemon
     from datetime import datetime
 
     conn = get_connection()
@@ -456,10 +472,9 @@ def engrammar_update(
     conn.commit()
     conn.close()
 
-    # Rebuild index if text changed
+    # Rebuild index if text changed (via daemon to avoid loading model)
     if text is not None:
-        engrams = get_all_active_engrams()
-        build_index(engrams)
+        _send_daemon({"type": "rebuild_index"})
 
     return f"Updated engram #{engram_id}."
 

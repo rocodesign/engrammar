@@ -126,18 +126,20 @@ def test_add_invalid_prereqs(test_db):
 
 
 def test_search_results(test_db):
-    with patch("src.search.engine.search") as mock_search:
-        mock_search.return_value = [
-            {"id": 1, "text": "use hooks", "category": "dev", "score": 0.9}
-        ]
+    with patch("src.infra.client.send_request") as mock_send:
+        mock_send.return_value = {
+            "results": [
+                {"id": 1, "text": "use hooks", "category": "dev", "score": 0.9}
+            ]
+        }
         result = engrammar_search(query="hooks")
     assert "Found 1 engrams" in result
     assert "use hooks" in result
 
 
 def test_search_no_results(test_db):
-    with patch("src.search.engine.search") as mock_search:
-        mock_search.return_value = []
+    with patch("src.infra.client.send_request") as mock_send:
+        mock_send.return_value = {"results": []}
         result = engrammar_search(query="nonexistent")
     assert "No matching engrams found." in result
 

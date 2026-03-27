@@ -211,6 +211,14 @@ class EngrammarDaemon:
             ])
             return {"status": "ok", "extract": extract, "evaluate": evaluate}
 
+        elif req_type == "rebuild_index":
+            from engrammar.core.db import get_all_active_engrams
+            from engrammar.core.embeddings import build_index
+
+            engrams = get_all_active_engrams()
+            count = build_index(engrams)
+            return {"status": "ok", "count": count}
+
         elif req_type == "run_maintenance":
             extract = self._spawn_cli_job("extract", ["extract"])
             evaluate_args = ["evaluate"]

@@ -76,3 +76,8 @@ def test_db(monkeypatch, tmp_path):
 def mock_build_index(monkeypatch):
     """Prevent embedding model load — opt in via pytestmark usefixtures."""
     monkeypatch.setattr("src.core.embeddings.build_index", lambda *a, **kw: 0)
+    # MCP server delegates to daemon via send_request — mock it to avoid socket calls
+    monkeypatch.setattr(
+        "src.infra.client.send_request",
+        lambda req, **kw: {"status": "ok", "count": 0, "results": []},
+    )
