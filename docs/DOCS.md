@@ -1,5 +1,7 @@
 # Engrammar Documentation
 
+Documentation lives in this directory and is also published to the [GitHub Wiki](https://github.com/rocodesign/engrammar/wiki).
+
 ## Index
 
 | Document | Description |
@@ -25,3 +27,5 @@
 | Understand tag relevance scoring | [evaluation.md](evaluation.md) |
 | Debug why a engram isn't showing | [evaluation.md](evaluation.md#debugging) |
 | See database schema | [ARCHITECTURE.md](ARCHITECTURE.md#database-schema) |
+| Understand the full pipeline | [STATUS.md](STATUS.md#the-pipeline) |
+| Run benchmarks | [benchmark/README.md](../benchmark/README.md) |

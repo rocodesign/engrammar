@@ -928,7 +928,7 @@ engrammar search "query" --tags specific
 
 - [README.md](../README.md) - Overview and features
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Technical deep dive
-- [GitHub Issues](https://github.com/anthropics/engrammar/issues) - Report bugs
+- [GitHub Issues](https://github.com/rocodesign/engrammar/issues) - Report bugs
 
 ---
 

@@ -15,3 +15,4 @@ build/
 eval_results*.json
 benchmark/results/
 benchmark/transcripts/
+pyrightconfig.json
