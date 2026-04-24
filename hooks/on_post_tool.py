@@ -158,6 +158,11 @@ def main():
             return
 
         data = json.loads(raw)
+        hook_cwd = data.get("cwd")
+
+        from engrammar.search.environment import is_engrammar_active
+        if not is_engrammar_active(cwd=hook_cwd):
+            return
 
         # Check if PostToolUse is enabled in config
         from engrammar.core.config import load_config
@@ -199,7 +204,6 @@ def main():
         max_results = config["display"].get("max_engrams_per_tool", 2)
         show_categories = config["display"]["show_categories"]
 
-        hook_cwd = data.get("cwd")
         results = _search_via_daemon(query, max_results, cwd=hook_cwd)
         if not results:
             # Update state even on no results to avoid re-searching same narration

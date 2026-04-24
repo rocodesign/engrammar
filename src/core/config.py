@@ -22,6 +22,11 @@ DEFAULT_CONFIG = {
     "search": {
         "top_k": 3,
     },
+    "controls": {
+        "global_disabled": False,
+        "disabled_repos": [],
+        "isolated_repos": [],
+    },
     "hooks": {
         "prompt_enabled": True,
         "tool_use_enabled": True,
@@ -109,3 +114,68 @@ def load_config():
 
     _config_cache = config
     return config
+
+
+def load_user_config():
+    """Load the raw user config file without applying defaults."""
+    if not os.path.exists(CONFIG_PATH):
+        return {}
+
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        user_config = json.load(f)
+
+    if isinstance(user_config, dict):
+        return user_config
+    return {}
+
+
+def save_user_config(config):
+    """Persist the raw user config file and invalidate the merged cache."""
+    global _config_cache
+
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+
+    _config_cache = None
+
+
+def set_global_disabled(disabled):
+    """Persist the global Engrammar disabled state."""
+    user_config = load_user_config()
+    controls = user_config.setdefault("controls", {})
+    controls["global_disabled"] = bool(disabled)
+    save_user_config(user_config)
+
+
+def set_repo_disabled(repo, disabled):
+    """Persist the repo-specific disabled state."""
+    if not repo:
+        raise ValueError("repo is required")
+
+    user_config = load_user_config()
+    controls = user_config.setdefault("controls", {})
+    repos = set(controls.get("disabled_repos", []))
+    if disabled:
+        repos.add(repo)
+    else:
+        repos.discard(repo)
+    controls["disabled_repos"] = sorted(repos)
+    save_user_config(user_config)
+
+
+def set_repo_isolated(repo, isolated):
+    """Persist the repo-specific isolation state."""
+    if not repo:
+        raise ValueError("repo is required")
+
+    user_config = load_user_config()
+    controls = user_config.setdefault("controls", {})
+    repos = set(controls.get("isolated_repos", []))
+    if isolated:
+        repos.add(repo)
+    else:
+        repos.discard(repo)
+    controls["isolated_repos"] = sorted(repos)
+    save_user_config(user_config)

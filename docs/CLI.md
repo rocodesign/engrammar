@@ -36,7 +36,7 @@ engrammar setup
 
 #### `status`
 
-Show database stats, index health, tag index status, and hook configuration.
+Show database stats, index health, tag index status, hook configuration, and current global/repo control state.
 
 ```bash
 engrammar status
@@ -49,6 +49,45 @@ engrammar status
 - Embedding index status (vector count and dimensions)
 - Tag index status (cached tag embeddings)
 - Hook configuration (enabled/disabled, skip tools)
+- Global disabled state
+- Current repo plus repo-disabled and repo-isolated state when a git repo is detected
+
+#### `isolate`
+
+Show or toggle isolation for the current git repo.
+
+```bash
+engrammar isolate
+engrammar isolate on
+engrammar isolate off
+```
+
+**Behavior:**
+
+- Bare `engrammar isolate` prints whether the current repo is isolated and suggests the toggle command.
+- `engrammar isolate on` makes the current repo a self-contained namespace.
+- `engrammar isolate off` removes that namespace boundary.
+- Isolation affects retrieval in both directions: the repo only sees its own engrams, and other repos do not see its engrams.
+
+#### `disable`
+
+Show or toggle Engrammar disable state globally or for the current git repo.
+
+```bash
+engrammar disable
+engrammar disable global on
+engrammar disable global off
+engrammar disable repo on
+engrammar disable repo off
+```
+
+**Behavior:**
+
+- Bare `engrammar disable` prints global state, current-repo state, and the next toggle commands.
+- `disable global on` turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together.
+- `disable global off` re-enables the global system.
+- `disable repo on` stops ingestion and injection for the current repo only.
+- `disable repo off` re-enables Engrammar for the current repo.
 
 #### `detect-tags`
 

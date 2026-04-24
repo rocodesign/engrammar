@@ -56,6 +56,24 @@ mcp = FastMCP(
 )
 
 
+def _get_current_env():
+    from engrammar.search.environment import detect_environment
+
+    return detect_environment()
+
+
+def _require_active_scope():
+    from engrammar.search.environment import is_engrammar_active
+
+    env = _get_current_env()
+    if not is_engrammar_active(cwd=env.get("cwd")):
+        repo = env.get("repo")
+        if repo:
+            return None, f"Engrammar is disabled for repo '{repo}'."
+        return None, "Engrammar is currently disabled."
+    return env, None
+
+
 @mcp.tool()
 def engrammar_search(query: str, category: str | None = None, tags: list[str] | None = None, top_k: int = 5) -> str:
     """Search engrams by semantic similarity + keyword matching.
@@ -68,9 +86,13 @@ def engrammar_search(query: str, category: str | None = None, tags: list[str] | 
         tags: Optional list of required tags (engrams must have ALL specified tags)
         top_k: Number of results to return (default 5)
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.infra.client import send_request
 
-    request = {"type": "search", "query": query, "top_k": top_k}
+    request = {"type": "search", "query": query, "top_k": top_k, "cwd": env.get("cwd")}
     if category:
         request["category_filter"] = category
     resp = send_request(request)
@@ -128,6 +150,10 @@ def engrammar_add(
             proactively identify during a session. Other values: "manual" (user explicitly
             asked to save), "auto-extracted" (from transcript extraction), "feedback" (from feedback loop).
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     # Validate inputs
     if not text or not text.strip():
         return "Error: text cannot be empty."
@@ -170,6 +196,7 @@ def engrammar_add(
         source=source,
         source_sessions=source_sessions,
         prerequisites=prereqs_dict if prereqs_dict else None,
+        origin_repo=env.get("repo"),
     )
 
     # Write tags to engram_tags table (content tags, not prerequisites)
@@ -185,7 +212,7 @@ def engrammar_add(
             update_tag_relevance(engram_id, {tag: 0.5 for tag in env_tags}, weight=1.0)
 
     # Rebuild index via daemon (avoids loading embedding model in MCP process)
-    resp = _send_daemon({"type": "rebuild_index"})
+    resp = _send_daemon({"type": "rebuild_index", "cwd": env.get("cwd")})
     count = resp.get("count", "?") if resp else "?"
 
     return f"Added engram #{engram_id} in category '{category}'. Index rebuilt with {count} engrams."
@@ -669,7 +696,7 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
 def engrammar_status() -> str:
     """Show Engrammar system status — engram count, categories, index health."""
     from engrammar.core.db import get_engram_count, get_category_stats
-    from engrammar.core.config import DB_PATH, INDEX_PATH
+    from engrammar.core.config import DB_PATH, INDEX_PATH, load_config
 
     lines = ["=== Engrammar Status ===\n"]
 
@@ -692,11 +719,17 @@ def engrammar_status() -> str:
         lines.append("\nIndex: NOT BUILT")
 
     # Show environment
-    from engrammar.search.environment import detect_environment
-    env = detect_environment()
+    env = _get_current_env()
+    config = load_config()
     lines.append(f"\nEnvironment:")
     lines.append(f"  OS: {env['os']}")
     lines.append(f"  Repo: {env.get('repo', 'unknown')}")
+    lines.append(f"  Global disabled: {'yes' if config.get('controls', {}).get('global_disabled') else 'no'}")
+    if env.get('repo'):
+        disabled_repos = config.get('controls', {}).get('disabled_repos', [])
+        isolated_repos = config.get('controls', {}).get('isolated_repos', [])
+        lines.append(f"  Repo disabled: {'yes' if env['repo'] in disabled_repos else 'no'}")
+        lines.append(f"  Repo isolated: {'yes' if env['repo'] in isolated_repos else 'no'}")
     lines.append(f"  MCP servers: {', '.join(env.get('mcp_servers', [])) or 'none detected'}")
     tags = env.get('tags', [])
     if tags:

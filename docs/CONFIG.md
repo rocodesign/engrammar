@@ -14,6 +14,11 @@ Engrammar loads configuration from `~/.engrammar/config.json`.
   "search": {
     "top_k": 3
   },
+  "controls": {
+    "global_disabled": false,
+    "disabled_repos": [],
+    "isolated_repos": []
+  },
   "hooks": {
     "prompt_enabled": true,
     "tool_use_enabled": true,
@@ -83,6 +88,12 @@ Engrammar loads configuration from `~/.engrammar/config.json`.
 - `min_score_prompt`: Minimum score a prompt-search result must have before it is injected into the prompt hook output.
 - `min_score_tool`: Minimum score a tool-context result must have before it is injected into the tool hook output.
 - `prerequisites_min_score`: Minimum score enforced when hook-triggered searches run with structural prerequisites enabled.
+
+### `controls`
+
+- `global_disabled`: Master kill switch for Engrammar. When true, hook injection, extraction, daemon-backed retrieval, and MCP-backed operations all fail closed.
+- `disabled_repos`: List of repo names where Engrammar is disabled. These repos do not ingest new engrams and do not receive injected engrams.
+- `isolated_repos`: List of repo names that are isolated. Isolated repos only see engrams stamped with their own repo name, and those engrams are hidden from all other repos.
 
 ### `query_enrichment.prompt`
 

@@ -33,12 +33,6 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/open/[1]-018-widen-tag-penalty/task.md`
 - [ ] **#043 Rebalance tag affinity and feedback scoring** `C2`
   - `tasks/open/[1]-043-scoring-rebalance-tags-and-feedback/task.md`
-- [x] **#019 Lower tag relevance evidence threshold** `C1` `won't-fix: threshold is correct`
-  - `tasks/completed/[1]-019-lower-tag-evidence-threshold/task.md`
-- [x] **#030 Weighted tag attribution for evaluation** `C2`
-  - `tasks/completed/[1]-030-weighted-tag-attribution-evaluation/task.md`
-- [x] **#031 Preserve evaluation context through dedup merges** `C1`
-  - `tasks/completed/[1]-031-preserve-evaluation-context-through-dedup/task.md`
 - [ ] **#032 Extraction quality pipeline — consolidation, generalization, clarity** `C3`
   - `tasks/open/[1]-032-extraction-quality-pipeline/task.md`
 
@@ -98,10 +92,16 @@ This file is the index. Detailed task writeups live under `tasks/`.
   - `tasks/completed/[1]-011-coalesced-turn-extraction-queue/task.md`
 - [x] **#017 Add minimum score threshold for prompt search** `C1`
   - `tasks/completed/[1]-017-reduce-injection-noise/task.md`
+- [x] **#019 Lower tag relevance evidence threshold** `C1` `won't-fix: threshold is correct`
+  - `tasks/completed/[1]-019-lower-tag-evidence-threshold/task.md`
 - [x] **#020 Prompt-derived content tag affinity** `C2`
   - `tasks/completed/[1]-020-prompt-derived-tags/task.md`
 - [x] **#021 LLM-selected relevant tags during extraction** `C2`
   - `tasks/completed/[1]-021-extraction-relevant-tags/task.md`
+- [x] **#030 Weighted tag attribution for evaluation** `C2`
+  - `tasks/completed/[1]-030-weighted-tag-attribution-evaluation/task.md`
+- [x] **#031 Preserve evaluation context through dedup merges** `C1`
+  - `tasks/completed/[1]-031-preserve-evaluation-context-through-dedup/task.md`
 
 ### Medium
 

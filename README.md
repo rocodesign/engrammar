@@ -16,6 +16,10 @@ Unlike CLAUDE.md files which require manual curation, Engrammar extracts learnin
 
 ## Features
 
+### Repo Controls
+
+Engrammar can now be disabled globally, disabled per repo, or isolated per repo. Global disable turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together. Repo disable stops ingestion and injection for just the current repo. Isolation makes a repo self-contained: it still sees and records its own engrams, but its engrams do not leak into other repos and outside engrams do not surface inside it.
+
 ### Smart Context Detection
 
 Engrams automatically adapt to your environment. Tags are detected from paths, git remotes, file markers (tsconfig.json, package.json, Gemfile), dependencies, and directory structure. Cross-project learning means an engram proven useful in `['acme', 'frontend']` can auto-pin to all `['frontend']` projects.
@@ -62,12 +66,14 @@ Four hooks automatically surface engrams at the right moment:
 
 ## CLI Commands
 
-All 21 commands:
+Key commands include:
 
 | Command | Description |
 |---------|-------------|
 | `setup` | Initialize database and build embedding index |
 | `status` | Show DB stats, index health, environment, hook config |
+| `isolate` | Show current repo isolation state or toggle it: `isolate [on\|off]` |
+| `disable` | Show global/current-repo disable state or toggle it: `disable [global\|repo] [on\|off]` |
 | `detect-tags` | Show detected environment tags for current directory |
 | `search` | Search engrams: `search "query" [--category CAT] [--tags t1,t2]` |
 | `list` | List engrams: `list [--category CAT] [--limit N] [--verbose] [--sort id\|score\|matched]` |
@@ -89,6 +95,8 @@ All 21 commands:
 | `restore` | List DB backups and restore: `restore [--list] [N]` |
 
 See [docs/CLI.md](docs/CLI.md) for full usage details.
+
+Bare `engrammar isolate` and `engrammar disable` are read-only status commands. They print the current state and suggest the exact toggle command to run next.
 
 ## Getting Started
 

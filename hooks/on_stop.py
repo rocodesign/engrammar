@@ -28,6 +28,12 @@ def main():
 
         # Read session_id and transcript_path from Claude's hook payload
         data = parse_hook_input()
+        hook_cwd = data.get("cwd")
+
+        from engrammar.search.environment import is_engrammar_active
+        if not is_engrammar_active(cwd=hook_cwd):
+            return
+
         session_id = data.get("session_id")
         transcript_path = data.get("transcript_path")
 
@@ -79,6 +85,7 @@ def main():
                     "type": "process_turn",
                     "session_id": session_id,
                     "transcript_path": transcript_path,
+                    "cwd": hook_cwd,
                 }, timeout=2.0)
             except Exception:
                 # Fallback: spawn CLI directly if daemon unavailable

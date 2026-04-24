@@ -17,9 +17,17 @@ import os
 
 import pytest
 
+from src.core import config
 from src.core.db import init_db, get_connection, add_engram
 from src.search.engine import search
 from src.search.environment import detect_environment
+
+
+@pytest.fixture(autouse=True)
+def repo_config_defaults(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(config, "CONFIG_PATH", str(repo_root / "config.json"))
+    monkeypatch.setattr(config, "_config_cache", None)
 
 
 @pytest.fixture

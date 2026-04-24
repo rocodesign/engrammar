@@ -64,7 +64,14 @@ def send_request(request, timeout=5.0):
     Returns None immediately if the engrammar MCP is disabled.
     """
     from engrammar.infra.hook_utils import is_mcp_enabled
+    from engrammar.search.environment import is_engrammar_active, is_global_disabled
+
     if not is_mcp_enabled():
+        return None
+    effective_cwd = request.get("cwd") or os.getcwd()
+    if is_global_disabled():
+        return None
+    if not is_engrammar_active(cwd=effective_cwd):
         return None
 
     sock = None

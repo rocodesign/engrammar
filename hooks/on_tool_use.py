@@ -97,6 +97,12 @@ def main():
             return
 
         data = json.loads(raw)
+        hook_cwd = data.get("cwd")
+
+        from engrammar.search.environment import is_engrammar_active
+        if not is_engrammar_active(cwd=hook_cwd):
+            return
+
         tool_name = data.get("tool_name", "")
         tool_input = data.get("tool_input", {})
 
@@ -192,7 +198,6 @@ def main():
                 pass
 
         # Try daemon, fall back to direct
-        hook_cwd = data.get("cwd")
         results = _search_via_daemon(tool_name, tool_input, cwd=hook_cwd)
         if results is None:
             results = _search_direct(tool_name, tool_input, cwd=hook_cwd)

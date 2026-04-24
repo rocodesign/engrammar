@@ -32,6 +32,30 @@ def is_mcp_enabled():
         return False
 
 
+def set_mcp_disabled(disabled):
+    """Update the engrammar MCP server disabled flag in Claude config."""
+    claude_config_path = os.path.expanduser("~/.claude.json")
+    claude_config = {}
+
+    if os.path.exists(claude_config_path):
+        with open(claude_config_path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            claude_config = loaded
+
+    mcp_servers = claude_config.setdefault("mcpServers", {})
+    engrammar = mcp_servers.setdefault("engrammar", {})
+    if disabled:
+        engrammar["disabled"] = True
+    else:
+        engrammar.pop("disabled", None)
+
+    os.makedirs(os.path.dirname(claude_config_path), exist_ok=True)
+    with open(claude_config_path, "w", encoding="utf-8") as f:
+        json.dump(claude_config, f, indent=2)
+        f.write("\n")
+
+
 def log_error(hook_name, context, error):
     """Write error to .hook-errors.log."""
     try:

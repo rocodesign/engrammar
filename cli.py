@@ -47,8 +47,11 @@ def cmd_status(args):
     """Show database stats, index health, hook config."""
     from engrammar.core.config import DB_PATH, INDEX_PATH, IDS_PATH, TAG_INDEX_PATH, CONFIG_PATH, load_config
     from engrammar.core.db import get_engram_count, get_category_stats
+    from engrammar.search.environment import _detect_repo
 
     config = load_config()
+    controls = config.get("controls", {})
+    repo = _detect_repo()
 
     print("=== Engrammar Status ===\n")
 
@@ -104,6 +107,94 @@ def cmd_status(args):
     print(f"Prompt hook:  {'enabled' if config['hooks']['prompt_enabled'] else 'disabled'}")
     print(f"Tool hook:    {'enabled' if config['hooks']['tool_use_enabled'] else 'disabled'}")
     print(f"Skip tools:   {', '.join(config['hooks']['skip_tools'])}")
+    print()
+    print(f"Global disabled: {'yes' if controls.get('global_disabled') else 'no'}")
+    print(f"Current repo:    {repo or 'not detected'}")
+    if repo:
+        print(f"Repo disabled:   {'yes' if repo in controls.get('disabled_repos', []) else 'no'}")
+        print(f"Repo isolated:   {'yes' if repo in controls.get('isolated_repos', []) else 'no'}")
+
+
+def _format_toggle(state):
+    return "on" if state else "off"
+
+
+def _require_current_repo():
+    from engrammar.search.environment import _detect_repo
+
+    repo = _detect_repo()
+    if not repo:
+        print("No git repository detected for the current directory.")
+        return None
+    return repo
+
+
+def cmd_isolate(args):
+    """Show or toggle isolation for the current repo."""
+    from engrammar.core.config import load_config, set_repo_isolated
+
+    repo = _require_current_repo()
+    if not repo:
+        return
+
+    config = load_config()
+    isolated = repo in config.get("controls", {}).get("isolated_repos", [])
+
+    if not args:
+        next_state = "off" if isolated else "on"
+        print(f"Repo '{repo}' isolation is {_format_toggle(isolated)}.")
+        print(f"Toggle with: engrammar isolate {next_state}")
+        return
+
+    if len(args) != 1 or args[0] not in ("on", "off"):
+        print("Usage: engrammar isolate [on|off]")
+        return
+
+    should_isolate = args[0] == "on"
+    set_repo_isolated(repo, should_isolate)
+    print(f"Repo '{repo}' isolation set to {args[0]}.")
+
+
+def cmd_disable(args):
+    """Show or toggle global/current-repo disabled state."""
+    from engrammar.core.config import load_config, set_global_disabled, set_repo_disabled
+    from engrammar.infra.hook_utils import set_mcp_disabled
+
+    config = load_config()
+    controls = config.get("controls", {})
+    repo = _require_current_repo() if args[:1] == ["repo"] or not args else None
+    global_disabled = bool(controls.get("global_disabled"))
+    repo_disabled = bool(repo and repo in controls.get("disabled_repos", []))
+
+    if not args:
+        repo = _require_current_repo()
+        repo_disabled = bool(repo and repo in controls.get("disabled_repos", []))
+        print(f"Global disable is {_format_toggle(global_disabled)}.")
+        print(f"Toggle with: engrammar disable global {'off' if global_disabled else 'on'}")
+        if repo:
+            print(f"Repo '{repo}' disable is {_format_toggle(repo_disabled)}.")
+            print(f"Toggle with: engrammar disable repo {'off' if repo_disabled else 'on'}")
+        else:
+            print("Repo disable is unavailable outside a git repository.")
+        return
+
+    if len(args) != 2 or args[0] not in ("global", "repo") or args[1] not in ("on", "off"):
+        print("Usage: engrammar disable [global|repo] [on|off]")
+        return
+
+    should_disable = args[1] == "on"
+    if args[0] == "global":
+        set_global_disabled(should_disable)
+        set_mcp_disabled(should_disable)
+        print(f"Global disable set to {args[1]}.")
+        return
+
+    repo = _require_current_repo()
+    if not repo:
+        return
+
+    set_repo_disabled(repo, should_disable)
+    print(f"Repo '{repo}' disable set to {args[1]}.")
 
 
 def cmd_search(args):
@@ -160,8 +251,14 @@ def cmd_add(args):
 
     from engrammar.core.db import add_engram, get_all_active_engrams, add_content_tags
     from engrammar.core.embeddings import build_index, build_tag_index
+    from engrammar.search.environment import _detect_repo
 
-    engram_id = add_engram(text=text, category=category, source="manual")
+    engram_id = add_engram(
+        text=text,
+        category=category,
+        source="manual",
+        origin_repo=_detect_repo(),
+    )
 
     # Write tags to engram_tags table (content tags, not prerequisites)
     if tags:
@@ -1370,6 +1467,8 @@ def main():
         print("  rebuild      Rebuild embedding index")
         print("  evaluate     Run pending relevance evaluations: evaluate [--limit N]")
         print("  detect-tags  Show detected environment tags for current directory")
+        print("  isolate      Show or toggle current repo isolation: isolate [on|off]")
+        print("  disable      Show or toggle disable state: disable [global|repo] [on|off]")
         print("  backfill-prereqs  Retroactively set prerequisites on existing engrams [--dry-run]")
         print("  restore      List DB backups and restore a selected one: restore [--list] [N]")
         print("  reextract    Re-check engrams against current prompt: reextract [--category CAT] [--limit N] [--prune] [--dry-run]")
@@ -1402,6 +1501,8 @@ def main():
         "rebuild": cmd_rebuild,
         "evaluate": cmd_evaluate,
         "detect-tags": cmd_detect_tags,
+        "isolate": cmd_isolate,
+        "disable": cmd_disable,
         "backfill-prereqs": cmd_backfill_prereqs,
         "backfill-repo-tags": cmd_backfill_repo_tags,
         "restore": cmd_restore_db,

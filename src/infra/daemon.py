@@ -131,6 +131,14 @@ class EngrammarDaemon:
         self.last_activity = time.time()
         req_type = data.get("type", "")
 
+        if req_type in {"search", "tool_context", "pinned", "process_turn", "run_maintenance"}:
+            from engrammar.search.environment import is_engrammar_active
+
+            if not is_engrammar_active(cwd=data.get("cwd")):
+                if req_type in {"search", "tool_context", "pinned"}:
+                    return {"results": []}
+                return {"status": "disabled"}
+
         if req_type == "search":
             from engrammar.search.engine import search
 
@@ -159,11 +167,15 @@ class EngrammarDaemon:
             from engrammar.search.environment import (
                 check_structural_prerequisites,
                 detect_environment,
+                filter_engrams_for_repo_scope,
             )
 
-            env = detect_environment()
+            env = detect_environment(cwd=data.get("cwd"))
             env_tags = env.get("tags", [])
-            pinned = get_pinned_engrams()
+            pinned = filter_engrams_for_repo_scope(
+                get_pinned_engrams(),
+                repo=env.get("repo"),
+            )
             matching = []
             for p in pinned:
                 if not check_structural_prerequisites(p.get("prerequisites"), env):

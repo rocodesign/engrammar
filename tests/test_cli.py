@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from cli import (
     cmd_add,
+    cmd_disable,
+    cmd_isolate,
     cmd_search,
     cmd_update,
     cmd_deprecate,
@@ -175,3 +177,92 @@ def test_cmd_detect_tags(test_db, capsys):
     captured = capsys.readouterr()
     assert "python" in captured.out
     assert "cli" in captured.out
+
+
+def test_cmd_isolate_shows_state(test_db, capsys):
+    with patch("src.search.environment._detect_repo", return_value="engrammar"), \
+         patch("src.core.config.load_config", return_value={
+             "controls": {"isolated_repos": ["engrammar"]},
+         }):
+        cmd_isolate([])
+
+    captured = capsys.readouterr()
+    assert "Repo 'engrammar' isolation is on." in captured.out
+    assert "engrammar isolate off" in captured.out
+
+
+def test_cmd_disable_shows_state(test_db, capsys):
+    with patch("src.search.environment._detect_repo", return_value="engrammar"), \
+         patch("src.core.config.load_config", return_value={
+             "controls": {
+                 "global_disabled": True,
+                 "disabled_repos": ["engrammar"],
+             },
+         }):
+        cmd_disable([])
+
+    captured = capsys.readouterr()
+    assert "Global disable is on." in captured.out
+    assert "engrammar disable global off" in captured.out
+    assert "Repo 'engrammar' disable is on." in captured.out
+    assert "engrammar disable repo off" in captured.out
+
+
+def test_cmd_isolate_toggles_repo_state(test_db, monkeypatch, tmp_path, capsys):
+    from src.core import config as config_module
+
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_module, "_config_cache", None)
+
+    with patch("src.search.environment._detect_repo", return_value="engrammar"):
+        cmd_isolate(["on"])
+
+    captured = capsys.readouterr()
+    assert "Repo 'engrammar' isolation set to on." in captured.out
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    assert saved["controls"]["isolated_repos"] == ["engrammar"]
+
+
+def test_cmd_disable_global_toggles_config_and_mcp(test_db, monkeypatch, tmp_path, capsys):
+    from src.core import config as config_module
+
+    config_path = tmp_path / "config.json"
+    claude_home = tmp_path / "home"
+    claude_home.mkdir()
+    monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_module, "_config_cache", None)
+    monkeypatch.setenv("HOME", str(claude_home))
+
+    cmd_disable(["global", "on"])
+
+    captured = capsys.readouterr()
+    assert "Global disable set to on." in captured.out
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    assert saved["controls"]["global_disabled"] is True
+
+    with open(claude_home / ".claude.json", "r", encoding="utf-8") as f:
+        claude = json.load(f)
+    assert claude["mcpServers"]["engrammar"]["disabled"] is True
+
+
+def test_cmd_disable_repo_toggles_current_repo(test_db, monkeypatch, tmp_path, capsys):
+    from src.core import config as config_module
+
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_module, "_config_cache", None)
+
+    with patch("src.search.environment._detect_repo", return_value="engrammar"):
+        cmd_disable(["repo", "on"])
+
+    captured = capsys.readouterr()
+    assert "Repo 'engrammar' disable set to on." in captured.out
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    assert saved["controls"]["disabled_repos"] == ["engrammar"]

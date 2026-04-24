@@ -28,6 +28,7 @@ def init_db(db_path=None):
             level1 TEXT,
             level2 TEXT,
             level3 TEXT,
+            origin_repo TEXT DEFAULT NULL,
             source TEXT DEFAULT 'manual',
             source_sessions TEXT DEFAULT '[]',
             occurrence_count INTEGER DEFAULT 1,
@@ -170,6 +171,8 @@ def init_db(db_path=None):
         conn.execute("ALTER TABLE engrams ADD COLUMN prerequisites TEXT DEFAULT NULL")
     if "pinned" not in columns:
         conn.execute("ALTER TABLE engrams ADD COLUMN pinned INTEGER DEFAULT 0")
+    if "origin_repo" not in columns:
+        conn.execute("ALTER TABLE engrams ADD COLUMN origin_repo TEXT DEFAULT NULL")
 
     # Migration: add transcript_path to session_audit
     audit_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_audit)").fetchall()]
@@ -229,7 +232,7 @@ def _parse_category(category):
     )
 
 
-def add_engram(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, prerequisites=None, db_path=None):
+def add_engram(text, category="general", categories=None, source="manual", source_sessions=None, occurrence_count=1, prerequisites=None, origin_repo=None, db_path=None):
     """Insert a new engram.
 
     Args:
@@ -257,10 +260,10 @@ def add_engram(text, category="general", categories=None, source="manual", sourc
 
     cursor = conn.execute(
         """INSERT INTO engrams (text, category, level1, level2, level3, source,
-           source_sessions, occurrence_count, prerequisites, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+              source_sessions, occurrence_count, prerequisites, origin_repo, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (text, category, level1, level2, level3, source, sessions_json,
-         occurrence_count, prereqs_json, now, now),
+            occurrence_count, prereqs_json, origin_repo, now, now),
     )
     engram_id = cursor.lastrowid
 
@@ -550,7 +553,7 @@ def mark_sessions_processed(sessions, db_path=None):
     conn.close()
 
 
-def find_similar_engram(text, db_path=None):
+def find_similar_engram(text, origin_repo=None, db_path=None):
     """Find an existing active engram with similar text.
 
     Uses embedding cosine similarity (threshold 0.85) when index is available,
@@ -559,6 +562,9 @@ def find_similar_engram(text, db_path=None):
     Returns the engram dict if found, None otherwise.
     """
     engrams = get_all_active_engrams(db_path=db_path)
+    if origin_repo is not None:
+        from engrammar.search.environment import filter_engrams_for_repo_scope
+        engrams = filter_engrams_for_repo_scope(engrams, repo=origin_repo)
     if not engrams:
         return None
 

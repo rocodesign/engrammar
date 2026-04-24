@@ -9,6 +9,7 @@ Think of it as an automatic, searchable CLAUDE.md that learns which tips apply w
 ## What Works Well
 
 - **Context awareness** — it detects your environment (git remote, file markers, dependencies, paths) and only shows engrams relevant to what you're working on. An engram about React patterns won't show up in a Ruby project.
+- **Repo control boundaries** — you can disable Engrammar globally, disable it per repo, or isolate a repo into its own engram namespace without changing the rest of the system.
 - **Fully local search** — embeddings run locally via fastembed, no API keys needed for the core search. It combines vector similarity with keyword matching so it handles both semantic and exact queries.
 - **Hooks integration** — it fires on session start, prompt submit, and before tool use, so relevant knowledge shows up at the right moment without you asking for it.
 - **Per-turn learning** — after each assistant response, the Stop hook triggers incremental extraction using byte offsets. This is more reliable than end-of-session hooks (which don't fire on terminal close) and catches friction signals as they happen, not just at the end.

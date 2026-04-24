@@ -34,6 +34,7 @@ def test_run_maintenance_single_flight(monkeypatch, tmp_path):
 
     monkeypatch.setattr("src.infra.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
     monkeypatch.setattr("src.infra.daemon.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("src.search.environment.is_engrammar_active", lambda cwd=None, config=None: True)
 
     daemon = EngrammarDaemon()
 
@@ -61,6 +62,7 @@ def _make_daemon(monkeypatch, tmp_path, spawned):
 
     monkeypatch.setattr("src.infra.daemon.LOG_PATH", str(tmp_path / "daemon.log"))
     monkeypatch.setattr("src.infra.daemon.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("src.search.environment.is_engrammar_active", lambda cwd=None, config=None: True)
     return EngrammarDaemon()
 
 

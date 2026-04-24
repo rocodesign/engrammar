@@ -117,6 +117,12 @@ def main():
             return
 
         data = json.loads(raw)
+        hook_cwd = data.get("cwd")
+
+        from engrammar.search.environment import is_engrammar_active
+        if not is_engrammar_active(cwd=hook_cwd):
+            return
+
         prompt = data.get("prompt", "")
         if not prompt or len(prompt) < 5:
             return
@@ -135,7 +141,6 @@ def main():
         show_categories = config["display"]["show_categories"]
 
         # Try daemon, fall back to direct
-        hook_cwd = data.get("cwd")
         results = _search_via_daemon(search_query, max_results, cwd=hook_cwd)
         if results is None:
             results = _search_direct(search_query, max_results, cwd=hook_cwd)

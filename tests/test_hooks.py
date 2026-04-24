@@ -168,6 +168,15 @@ class TestSessionStart:
         # Engram now passes through — tags are soft signals, not hard gates
         assert "python-only pinned note" in ctx
 
+    def test_repo_disabled_noops(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {"session_id": "sess-1", "cwd": "/tmp/repo"})
+        with patch("src.search.environment.is_engrammar_active", return_value=False):
+            from hooks.on_session_start import main
+            main()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
 
 # ---------- Prompt Hook ----------
 
@@ -224,6 +233,15 @@ class TestPrompt:
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_repo_disabled_noops(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {"prompt": "test query", "session_id": "sess-1", "cwd": "/tmp/repo"})
+        with patch("src.search.environment.is_engrammar_active", return_value=False):
+            from hooks.on_prompt import main
+            main()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
 
 # ---------- Tool Use Hook ----------
 
@@ -253,6 +271,20 @@ class TestToolUse:
             "session_id": "sess-1",
         })
         with patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
+            from hooks.on_tool_use import main
+            main()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_repo_disabled_noops(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {
+            "tool_name": "Bash",
+            "tool_input": {"command": "npm test"},
+            "session_id": "sess-1",
+            "cwd": "/tmp/repo",
+        })
+        with patch("src.search.environment.is_engrammar_active", return_value=False):
             from hooks.on_tool_use import main
             main()
 

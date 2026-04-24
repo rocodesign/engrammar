@@ -5,6 +5,8 @@ import os
 import platform
 import subprocess
 
+from engrammar.core.config import load_config
+
 from .tag_detectors import detect_tags
 
 
@@ -67,6 +69,57 @@ def _detect_mcp_servers():
         except Exception:
             pass
     return list(servers)
+
+
+def is_global_disabled(config=None):
+    """Return whether Engrammar is globally disabled."""
+    current_config = config or load_config()
+    return bool(current_config.get("controls", {}).get("global_disabled", False))
+
+
+def is_repo_disabled(repo=None, cwd=None, config=None):
+    """Return whether the repo is disabled for Engrammar."""
+    current_config = config or load_config()
+    current_repo = repo if repo is not None else _detect_repo(cwd=cwd)
+    if not current_repo:
+        return False
+    disabled_repos = current_config.get("controls", {}).get("disabled_repos", [])
+    return current_repo in disabled_repos
+
+
+def is_repo_isolated(repo=None, cwd=None, config=None):
+    """Return whether the repo is isolated for Engrammar."""
+    current_config = config or load_config()
+    current_repo = repo if repo is not None else _detect_repo(cwd=cwd)
+    if not current_repo:
+        return False
+    isolated_repos = current_config.get("controls", {}).get("isolated_repos", [])
+    return current_repo in isolated_repos
+
+
+def is_engrammar_active(cwd=None, config=None):
+    """Return whether Engrammar should run in the current scope."""
+    current_config = config or load_config()
+    if is_global_disabled(current_config):
+        return False
+    return not is_repo_disabled(cwd=cwd, config=current_config)
+
+
+def filter_engrams_for_repo_scope(engrams, repo=None, cwd=None, config=None):
+    """Filter engrams by current repo isolation boundaries."""
+    current_config = config or load_config()
+    isolated_repos = set(current_config.get("controls", {}).get("isolated_repos", []))
+    if not isolated_repos:
+        return list(engrams)
+
+    current_repo = repo if repo is not None else _detect_repo(cwd=cwd)
+    if not current_repo:
+        return list(engrams)
+
+    if current_repo and current_repo in isolated_repos:
+        return [engram for engram in engrams if engram.get("origin_repo") == current_repo]
+
+    return [engram for engram in engrams if engram.get("origin_repo") not in isolated_repos]
 
 
 def check_structural_prerequisites(prerequisites, env=None):

@@ -9,7 +9,7 @@ from rank_bm25 import BM25Okapi
 from engrammar.core.config import LAST_SEARCH_PATH, load_config
 from engrammar.core.db import get_all_active_engrams
 from engrammar.core.embeddings import embed_text, load_index, load_tag_index, vector_search
-from .environment import detect_environment
+from .environment import detect_environment, filter_engrams_for_repo_scope
 
 
 def _tokenize(text):
@@ -106,7 +106,12 @@ def search(
     else:
         env = detect_environment(cwd=cwd)
 
-    engrams = all_engrams
+    engrams = filter_engrams_for_repo_scope(
+        all_engrams,
+        repo=env.get("repo") if env else None,
+        cwd=env.get("cwd") if env else cwd,
+        config=config,
+    )
 
     if not engrams:
         _save_last_search(query, [])

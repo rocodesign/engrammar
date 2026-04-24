@@ -671,7 +671,7 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
             if repo_tag not in content_tags:
                 content_tags.append(repo_tag)
 
-        existing = find_similar_engram(text)
+        existing = find_similar_engram(text, origin_repo=repo)
         if existing:
             increment_engram_occurrence(existing["id"], source_sessions)
             _maybe_backfill_prerequisites(existing["id"], prerequisites)
@@ -693,6 +693,7 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
                 source_sessions=source_sessions,
                 occurrence_count=1,
                 prerequisites=prerequisites,
+                origin_repo=repo,
             )
             # Store content tags in engram_tags table
             if content_tags:

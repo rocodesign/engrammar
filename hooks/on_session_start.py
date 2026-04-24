@@ -23,6 +23,12 @@ def main():
 
         # Read session_id from Claude's hook payload
         data = parse_hook_input()
+        hook_cwd = data.get("cwd")
+
+        from engrammar.search.environment import is_engrammar_active
+        if not is_engrammar_active(cwd=hook_cwd):
+            return
+
         session_id = data.get("session_id")
 
         # Persist session_id so MCP server can auto-capture it for self-extracted engrams
@@ -50,11 +56,16 @@ def main():
         from engrammar.search.environment import (
             check_structural_prerequisites,
             detect_environment,
+            filter_engrams_for_repo_scope,
         )
 
         config = load_config()
         env = detect_environment()
-        pinned = get_pinned_engrams()
+        pinned = filter_engrams_for_repo_scope(
+            get_pinned_engrams(),
+            repo=env.get("repo"),
+            config=config,
+        )
         env_tags = env.get("tags", [])
 
         show_categories = config["display"]["show_categories"]
