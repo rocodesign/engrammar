@@ -18,7 +18,7 @@ Unlike CLAUDE.md files which require manual curation, Engrammar extracts learnin
 
 ### Repo Controls
 
-Engrammar can now be disabled globally, disabled per repo, or isolated per repo. Global disable turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together. Repo disable stops ingestion and injection for just the current repo. Isolation makes a repo self-contained: it still sees and records its own engrams, but its engrams do not leak into other repos and outside engrams do not surface inside it.
+Engrammar can now be disabled globally, disabled per repo, or isolated per repo. Global disable turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together. Repo disable stops ingestion, injection, transcript extraction, and evaluation work for just the current repo. Isolation makes a repo self-contained: it still sees and records its own engrams, but its engrams do not leak into other repos and outside engrams do not surface inside it.
 
 ### Smart Context Detection
 
@@ -40,59 +40,59 @@ After each session, an evaluator judges whether shown engrams were relevant, upd
 
 All 10 tools are available directly from Claude Code sessions:
 
-| Tool | Description |
-|------|-------------|
-| `engrammar_search` | Semantic + keyword search with category and tag filters |
-| `engrammar_add` | Add new engram with category, tags, and prerequisites |
-| `engrammar_update` | Update engram text, category, or prerequisites |
-| `engrammar_deprecate` | Soft-delete an outdated engram |
-| `engrammar_feedback` | Record relevance feedback with optional per-tag scores |
-| `engrammar_categorize` | Add/remove categories for multi-category engrams |
-| `engrammar_pin` | Pin engram to always show at session start |
-| `engrammar_unpin` | Unpin engram |
-| `engrammar_list` | List engrams with category filter and pagination |
-| `engrammar_status` | System health: engram count, categories, index, environment |
+| Tool                   | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `engrammar_search`     | Semantic + keyword search with category and tag filters     |
+| `engrammar_add`        | Add new engram with category, tags, and prerequisites       |
+| `engrammar_update`     | Update engram text, category, or prerequisites              |
+| `engrammar_deprecate`  | Soft-delete an outdated engram                              |
+| `engrammar_feedback`   | Record relevance feedback with optional per-tag scores      |
+| `engrammar_categorize` | Add/remove categories for multi-category engrams            |
+| `engrammar_pin`        | Pin engram to always show at session start                  |
+| `engrammar_unpin`      | Unpin engram                                                |
+| `engrammar_list`       | List engrams with category filter and pagination            |
+| `engrammar_status`     | System health: engram count, categories, index, environment |
 
 ## Session Hooks
 
 Four hooks automatically surface engrams at the right moment:
 
-| Hook | Trigger | Purpose |
-|------|---------|---------|
-| **SessionStart** | Session begins | Inject pinned engrams, start daemon, run maintenance |
-| **UserPromptSubmit** | User sends a prompt | Search engrams relevant to the prompt |
-| **PreToolUse** | Before tool execution | Search engrams relevant to the tool being used |
-| **Stop** | After each assistant response | Per-turn extraction + evaluation via daemon |
+| Hook                 | Trigger                       | Purpose                                              |
+| -------------------- | ----------------------------- | ---------------------------------------------------- |
+| **SessionStart**     | Session begins                | Inject pinned engrams, start daemon, run maintenance |
+| **UserPromptSubmit** | User sends a prompt           | Search engrams relevant to the prompt                |
+| **PreToolUse**       | Before tool execution         | Search engrams relevant to the tool being used       |
+| **Stop**             | After each assistant response | Per-turn extraction + evaluation via daemon          |
 
 ## CLI Commands
 
 Key commands include:
 
-| Command | Description |
-|---------|-------------|
-| `setup` | Initialize database and build embedding index |
-| `status` | Show DB stats, index health, environment, hook config |
-| `isolate` | Show current repo isolation state or toggle it: `isolate [on\|off]` |
-| `disable` | Show global/current-repo disable state or toggle it: `disable [global\|repo] [on\|off]` |
-| `detect-tags` | Show detected environment tags for current directory |
-| `search` | Search engrams: `search "query" [--category CAT] [--tags t1,t2]` |
-| `list` | List engrams: `list [--category CAT] [--limit N] [--verbose] [--sort id\|score\|matched]` |
-| `log` | Show hook event log: `log [--tail N] [--session ID] [--hook HOOK]` |
-| `add` | Add engram: `add "text" --category CAT [--tags t1,t2]` |
-| `update` | Update engram: `update ID [--text "..."] [--category CAT] [--prereqs JSON]` |
-| `deprecate` | Soft-delete engram: `deprecate ID` |
-| `pin` | Pin engram for session start: `pin ID` |
-| `unpin` | Unpin engram: `unpin ID` |
-| `categorize` | Manage categories: `categorize ID add\|remove CATEGORY` |
-| `import` | Import from file: `import FILE` |
-| `export` | Export all engrams to markdown |
-| `extract` | Extract engrams from transcripts: `extract [--limit N] [--session UUID] [--facets] [--dry-run]` |
-| `rebuild` | Rebuild embedding index (content + tag embeddings) |
-| `evaluate` | Run pending relevance evaluations: `evaluate [--limit N] [--session UUID]` |
-| `backfill` | Create audit records from past sessions |
-| `backfill-prereqs` | Retroactively set prerequisites on existing engrams |
-| `reset-stats` | Reset all match counts and pins: `reset-stats --confirm` |
-| `restore` | List DB backups and restore: `restore [--list] [N]` |
+| Command            | Description                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `setup`            | Initialize database and build embedding index                                                   |
+| `status`           | Show DB stats, index health, environment, hook config                                           |
+| `isolate`          | Show current repo isolation state or toggle it: `isolate [on\|off]`                             |
+| `disable`          | Show global/current-repo disable state or toggle it: `disable [global\|repo] [on\|off]`         |
+| `detect-tags`      | Show detected environment tags for current directory                                            |
+| `search`           | Search engrams: `search "query" [--category CAT] [--tags t1,t2]`                                |
+| `list`             | List engrams: `list [--category CAT] [--limit N] [--verbose] [--sort id\|score\|matched]`       |
+| `log`              | Show hook event log: `log [--tail N] [--session ID] [--hook HOOK]`                              |
+| `add`              | Add engram: `add "text" --category CAT [--tags t1,t2]`                                          |
+| `update`           | Update engram: `update ID [--text "..."] [--category CAT] [--prereqs JSON]`                     |
+| `deprecate`        | Soft-delete engram: `deprecate ID`                                                              |
+| `pin`              | Pin engram for session start: `pin ID`                                                          |
+| `unpin`            | Unpin engram: `unpin ID`                                                                        |
+| `categorize`       | Manage categories: `categorize ID add\|remove CATEGORY`                                         |
+| `import`           | Import from file: `import FILE`                                                                 |
+| `export`           | Export all engrams to markdown                                                                  |
+| `extract`          | Extract engrams from transcripts: `extract [--limit N] [--session UUID] [--facets] [--dry-run]` |
+| `rebuild`          | Rebuild embedding index (content + tag embeddings)                                              |
+| `evaluate`         | Run pending relevance evaluations: `evaluate [--limit N] [--session UUID]`                      |
+| `backfill`         | Create audit records from past sessions                                                         |
+| `backfill-prereqs` | Retroactively set prerequisites on existing engrams                                             |
+| `reset-stats`      | Reset all match counts and pins: `reset-stats --confirm`                                        |
+| `restore`          | List DB backups and restore: `restore [--list] [N]`                                             |
 
 See [docs/CLI.md](docs/CLI.md) for full usage details.
 

@@ -15,6 +15,7 @@ from datetime import datetime
 from engrammar.core.config import load_config
 from engrammar.core.db import get_connection, get_unprocessed_audit_sessions
 from engrammar.core.prompt_loader import load_prompt
+from engrammar.search.environment import is_repo_disabled
 
 _prompt_cache = {}
 
@@ -452,6 +453,11 @@ def run_evaluation_for_session(session_id, db_path=None):
     repo = row["repo"]
     transcript_path = row["transcript_path"] if "transcript_path" in row.keys() else None
 
+    current_config = load_config()
+    if is_repo_disabled(repo=repo, config=current_config):
+        conn.close()
+        return True
+
     # Load per-engram prompt context for weighted attribution (#030)
     engram_context = {}
     try:
@@ -614,7 +620,12 @@ def run_pending_evaluations(limit=5, db_path=None):
     Returns:
         dict with completed, failed, skipped counts
     """
-    sessions = get_unprocessed_audit_sessions(limit=limit, db_path=db_path)
+    current_config = load_config()
+    sessions = [
+        session
+        for session in get_unprocessed_audit_sessions(limit=limit, db_path=db_path)
+        if not is_repo_disabled(repo=session.get("repo"), config=current_config)
+    ]
 
     results = {"completed": 0, "failed": 0, "skipped": 0, "total": len(sessions)}
 

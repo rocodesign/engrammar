@@ -141,6 +141,51 @@ def test_read_transcript_metadata_extracts_title():
         os.unlink(path)
 
 
+def test_extract_from_single_session_skips_disabled_repo(tmp_path, test_db, monkeypatch):
+    """Single-session extraction should no-op for disabled repos."""
+    from src.pipeline.extractor import extract_from_single_session
+
+    transcript_file = tmp_path / "disabled-session.jsonl"
+    with transcript_file.open("w") as f:
+        f.write(json.dumps({"cwd": "/tmp/disabled-repo"}) + "\n")
+        for i in range(50):
+            entry = {
+                "type": "user" if i % 2 == 0 else "assistant",
+                "message": {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"Message number {i} with enough filler to exceed the short-session threshold. " * 10,
+                },
+            }
+            f.write(json.dumps(entry) + "\n")
+
+    monkeypatch.setattr(
+        "src.pipeline.extractor.is_repo_disabled",
+        lambda repo=None, cwd=None, config=None: True,
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        called = {"extract": False}
+
+        def fail_if_called(*args, **kwargs):
+            called["extract"] = True
+            raise AssertionError("extraction should not run for disabled repos")
+
+        mp.setattr("src.pipeline.extractor._call_claude_for_transcript_extraction", fail_if_called)
+        result = extract_from_single_session("sess-disabled", transcript_path=str(transcript_file))
+
+    assert result == {"extracted": 0, "merged": 0}
+    assert called["extract"] is False
+
+    conn = get_connection(test_db)
+    row = conn.execute(
+        "SELECT COUNT(*) AS count FROM processed_sessions WHERE session_id = ?",
+        ("sess-disabled",),
+    ).fetchone()
+    conn.close()
+
+    assert row["count"] == 0
+
+
 # --- _get_turn_coverage ---
 
 

@@ -35,6 +35,7 @@ from engrammar.core.db import (
 from engrammar.core.config import load_config
 from engrammar.core.embeddings import build_index, build_tag_index, embed_batch
 from engrammar.core.prompt_loader import load_prompt
+from engrammar.search.environment import is_repo_disabled
 
 
 # Keyword → structural prerequisites mapping for auto-inference
@@ -734,6 +735,11 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
             return {"extracted": 0, "merged": 0}
         transcript_path = matches[0]
 
+    metadata = _read_transcript_metadata(transcript_path)
+    if is_repo_disabled(repo=metadata.get("repo"), cwd=metadata.get("cwd")):
+        print(f"Session {session_id[:12]} skipped (repo disabled).")
+        return {"extracted": 0, "merged": 0}
+
     # Skip agent sessions (small transcripts < 10KB)
     if os.path.getsize(transcript_path) < 10_000:
         print(f"  Skipped (agent/short session)")
@@ -751,8 +757,6 @@ def extract_from_single_session(session_id, transcript_path=None, projects_dir=N
         print(f"Session {session_id[:12]} partially covered by turn extraction "
               f"({turn_offset}/{file_size} bytes), extracting remainder...")
 
-    # Read metadata early so session_title is available for all mark calls
-    metadata = _read_transcript_metadata(transcript_path)
     title = metadata.get("title")
 
     def _mark(had_friction=0, engrams_extracted=0):
@@ -890,6 +894,12 @@ def extract_from_transcripts(limit=None, dry_run=False, projects_dir=None):
         # Read metadata early so title is available for all mark calls
         metadata = _read_transcript_metadata(fpath)
         title = metadata.get("title")
+
+        if is_repo_disabled(repo=metadata.get("repo"), cwd=metadata.get("cwd")):
+            print(f"[{i}/{len(unprocessed)}] {session_id[:12]}...")
+            print("  Skipped (repo disabled)")
+            summary["skipped"] += 1
+            continue
 
         def _mark(had_friction=0, engrams_extracted=0, _sid=session_id, _title=title):
             mark_sessions_processed([{

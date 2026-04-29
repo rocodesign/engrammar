@@ -192,3 +192,34 @@ class TestPendingEvaluations:
 
         assert results["total"] == 3
         assert results["completed"] == 3
+
+    def test_batch_skips_disabled_repos(self, test_db):
+        """Should leave disabled repos out of the pending evaluation batch."""
+        enabled_id = add_engram(text="Enabled engram", category="test", db_path=test_db)
+        disabled_id = add_engram(text="Disabled engram", category="test", db_path=test_db)
+
+        write_session_audit("sess-enabled", [enabled_id], ["test"], "enabled-repo", db_path=test_db)
+        write_session_audit("sess-disabled", [disabled_id], ["test"], "disabled-repo", db_path=test_db)
+
+        mock_result = [{"engram_id": enabled_id, "score": 3}]
+        with patch(
+            "src.pipeline.evaluator.is_repo_disabled",
+            side_effect=lambda repo=None, cwd=None, config=None: repo == "disabled-repo",
+        ):
+            with patch("src.pipeline.evaluator._call_claude_for_evaluation", return_value=mock_result) as mock_call:
+                results = run_pending_evaluations(limit=5, db_path=test_db)
+
+        assert results["total"] == 1
+        assert results["completed"] == 1
+        assert results["failed"] == 0
+        mock_call.assert_called_once()
+
+        conn = get_connection(test_db)
+        processed = conn.execute(
+            "SELECT session_id, status FROM processed_relevance_sessions ORDER BY session_id"
+        ).fetchall()
+        conn.close()
+
+        assert [(row["session_id"], row["status"]) for row in processed] == [
+            ("sess-enabled", "completed")
+        ]
