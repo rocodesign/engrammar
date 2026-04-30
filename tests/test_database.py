@@ -31,6 +31,56 @@ def test_add_engram():
         assert engrams[0]["category"] == "development/frontend"
 
 
+def test_add_engram_migrates_legacy_schema_without_origin_repo():
+    """Should lazily migrate older engrams tables before insert."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "legacy.db")
+        conn = get_connection(db_path)
+        conn.execute("DROP TABLE IF EXISTS engrams")
+        conn.execute(
+            """CREATE TABLE engrams (
+                id INTEGER PRIMARY KEY,
+                text TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'general',
+                level1 TEXT,
+                level2 TEXT,
+                level3 TEXT,
+                source TEXT DEFAULT 'manual',
+                source_sessions TEXT DEFAULT '[]',
+                occurrence_count INTEGER DEFAULT 1,
+                times_matched INTEGER DEFAULT 0,
+                last_matched TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                deprecated INTEGER DEFAULT 0,
+                prerequisites TEXT DEFAULT NULL,
+                pinned INTEGER DEFAULT 0
+            )"""
+        )
+        conn.commit()
+        conn.close()
+
+        engram_id = add_engram(
+            text="Legacy-compatible engram",
+            category="general",
+            origin_repo="legacy-repo",
+            db_path=db_path,
+        )
+
+        assert engram_id > 0
+
+        conn = get_connection(db_path)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(engrams)").fetchall()]
+        row = conn.execute(
+            "SELECT origin_repo FROM engrams WHERE id = ?",
+            (engram_id,),
+        ).fetchone()
+        conn.close()
+
+        assert "origin_repo" in columns
+        assert row["origin_repo"] == "legacy-repo"
+
+
 def test_add_engram_with_multiple_categories():
     """Should add engram to junction table with all categories."""
     with tempfile.TemporaryDirectory() as tmpdir:

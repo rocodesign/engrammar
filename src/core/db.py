@@ -8,18 +8,49 @@ from datetime import datetime
 from .config import DB_PATH
 
 
-def get_connection(db_path=None):
-    """Get a SQLite connection."""
-    path = db_path or DB_PATH
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+_SCHEMA_READY_PATHS = set()
 
 
-def init_db(db_path=None):
-    """Create tables if they don't exist."""
-    conn = get_connection(db_path)
+def _get_table_columns(conn, table_name):
+    return [r[1] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+
+
+def _schema_is_current(conn):
+    engram_columns = _get_table_columns(conn, "engrams")
+    if not engram_columns:
+        return False
+    required_engram_columns = {
+        "prerequisites",
+        "pinned",
+        "origin_repo",
+        "dedup_verified",
+        "dedup_attempts",
+        "dedup_last_error",
+        "status",
+    }
+    if not required_engram_columns.issubset(set(engram_columns)):
+        return False
+
+    session_audit_columns = _get_table_columns(conn, "session_audit")
+    if session_audit_columns and not {"transcript_path", "engram_context"}.issubset(set(session_audit_columns)):
+        return False
+
+    shown_columns = _get_table_columns(conn, "session_shown_engrams")
+    if shown_columns and not {"prompt_tags", "query_text"}.issubset(set(shown_columns)):
+        return False
+
+    hook_log_columns = _get_table_columns(conn, "hook_event_log")
+    if hook_log_columns and "scores" not in hook_log_columns:
+        return False
+
+    processed_columns = _get_table_columns(conn, "processed_sessions")
+    if processed_columns and "session_title" not in processed_columns:
+        return False
+
+    return True
+
+
+def _apply_base_schema(conn):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS engrams (
             id INTEGER PRIMARY KEY,
@@ -86,7 +117,6 @@ def init_db(db_path=None):
             session_title TEXT
         );
 
-        -- Replaces .session-shown.json (fixes race condition)
         CREATE TABLE IF NOT EXISTS session_shown_engrams (
             id INTEGER PRIMARY KEY,
             session_id TEXT NOT NULL,
@@ -98,7 +128,6 @@ def init_db(db_path=None):
             UNIQUE(session_id, engram_id)
         );
 
-        -- Per-tag relevance scoring
         CREATE TABLE IF NOT EXISTS engram_tag_relevance (
             engram_id INTEGER NOT NULL,
             tag TEXT NOT NULL,
@@ -109,7 +138,6 @@ def init_db(db_path=None):
             PRIMARY KEY (engram_id, tag)
         );
 
-        -- Ground truth for what was shown per session
         CREATE TABLE IF NOT EXISTS session_audit (
             session_id TEXT PRIMARY KEY,
             shown_engram_ids TEXT NOT NULL,
@@ -120,7 +148,6 @@ def init_db(db_path=None):
             engram_context TEXT DEFAULT NULL
         );
 
-        -- Evaluation tracking, separate from extraction pipeline
         CREATE TABLE IF NOT EXISTS processed_relevance_sessions (
             session_id TEXT PRIMARY KEY,
             processed_at TEXT,
@@ -128,7 +155,6 @@ def init_db(db_path=None):
             status TEXT DEFAULT 'pending'
         );
 
-        -- Persistent event log for hook activity
         CREATE TABLE IF NOT EXISTS hook_event_log (
             id INTEGER PRIMARY KEY,
             timestamp TEXT NOT NULL,
@@ -151,7 +177,6 @@ def init_db(db_path=None):
             created_at TEXT NOT NULL
         );
 
-        -- Content tags: what the engram is about (topic labels)
         CREATE TABLE IF NOT EXISTS engram_tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             engram_id INTEGER NOT NULL REFERENCES engrams(id),
@@ -165,8 +190,9 @@ def init_db(db_path=None):
         CREATE INDEX IF NOT EXISTS idx_engram_tags_tag ON engram_tags(tag);
     """)
 
-    # Migrations for existing DBs
-    columns = [r[1] for r in conn.execute("PRAGMA table_info(engrams)").fetchall()]
+
+def _apply_migrations(conn):
+    columns = _get_table_columns(conn, "engrams")
     if "prerequisites" not in columns:
         conn.execute("ALTER TABLE engrams ADD COLUMN prerequisites TEXT DEFAULT NULL")
     if "pinned" not in columns:
@@ -174,51 +200,65 @@ def init_db(db_path=None):
     if "origin_repo" not in columns:
         conn.execute("ALTER TABLE engrams ADD COLUMN origin_repo TEXT DEFAULT NULL")
 
-    # Migration: add transcript_path to session_audit
-    audit_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_audit)").fetchall()]
+    audit_columns = _get_table_columns(conn, "session_audit")
     if audit_columns and "transcript_path" not in audit_columns:
         conn.execute("ALTER TABLE session_audit ADD COLUMN transcript_path TEXT DEFAULT NULL")
 
-    # Migration: dedup columns
     if "dedup_verified" not in columns:
         conn.execute("ALTER TABLE engrams ADD COLUMN dedup_verified INTEGER DEFAULT 0")
         conn.execute("ALTER TABLE engrams ADD COLUMN dedup_attempts INTEGER DEFAULT 0")
         conn.execute("ALTER TABLE engrams ADD COLUMN dedup_last_error TEXT DEFAULT NULL")
 
-    # Index requires dedup_verified column — must be after migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_dedup_queue ON engrams(deprecated, dedup_verified, id)")
 
-    # Migration: add prompt_tags and query_text to session_shown_engrams
-    sse_columns = [r[1] for r in conn.execute("PRAGMA table_info(session_shown_engrams)").fetchall()]
+    sse_columns = _get_table_columns(conn, "session_shown_engrams")
     if sse_columns and "prompt_tags" not in sse_columns:
         conn.execute("ALTER TABLE session_shown_engrams ADD COLUMN prompt_tags TEXT DEFAULT NULL")
     if sse_columns and "query_text" not in sse_columns:
         conn.execute("ALTER TABLE session_shown_engrams ADD COLUMN query_text TEXT DEFAULT NULL")
 
-    # Migration: add engram_context to session_audit
     if audit_columns and "engram_context" not in audit_columns:
         conn.execute("ALTER TABLE session_audit ADD COLUMN engram_context TEXT DEFAULT NULL")
 
-    # Migration: add scores column to hook_event_log
-    hel_columns = [r[1] for r in conn.execute("PRAGMA table_info(hook_event_log)").fetchall()]
+    hel_columns = _get_table_columns(conn, "hook_event_log")
     if hel_columns and "scores" not in hel_columns:
         conn.execute("ALTER TABLE hook_event_log ADD COLUMN scores TEXT DEFAULT NULL")
 
-    # Migration: add session_title to processed_sessions
-    ps_columns = [r[1] for r in conn.execute("PRAGMA table_info(processed_sessions)").fetchall()]
+    ps_columns = _get_table_columns(conn, "processed_sessions")
     if ps_columns and "session_title" not in ps_columns:
         conn.execute("ALTER TABLE processed_sessions ADD COLUMN session_title TEXT DEFAULT NULL")
 
-    # Migration: add status bit flag column
-    # Bit flags: 0x1=curated, 0x2=rejected-by-curation (more flags can be added)
     if "status" not in columns and "curation_status" not in columns:
         conn.execute("ALTER TABLE engrams ADD COLUMN status INTEGER DEFAULT 0")
     elif "curation_status" in columns and "status" not in columns:
         conn.execute("ALTER TABLE engrams RENAME COLUMN curation_status TO status")
-    # Index must come after migration (EG#718)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_status ON engrams(deprecated, status, id)")
 
+
+def _ensure_schema(conn, path):
+    if path in _SCHEMA_READY_PATHS and _schema_is_current(conn):
+        return
+
+    _apply_base_schema(conn)
+    _apply_migrations(conn)
     conn.commit()
+    _SCHEMA_READY_PATHS.add(path)
+
+
+def get_connection(db_path=None):
+    """Get a SQLite connection."""
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    _ensure_schema(conn, path)
+    return conn
+
+
+def init_db(db_path=None):
+    """Create tables if they don't exist."""
+    conn = get_connection(db_path)
+    _ensure_schema(conn, db_path or DB_PATH)
     conn.close()
 
 
