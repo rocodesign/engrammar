@@ -254,10 +254,13 @@ def test_cmd_disable_repo_toggles_current_repo(test_db, monkeypatch, tmp_path, c
     from src.core import config as config_module
 
     config_path = tmp_path / "config.json"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
     monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(config_module, "_config_cache", None)
 
-    with patch("src.search.environment._detect_repo", return_value="engrammar"):
+    with patch("src.search.environment._detect_repo", return_value="engrammar"), \
+         patch("src.search.environment._detect_repo_root", return_value=str(repo_root)):
         cmd_disable(["repo", "on"])
 
     captured = capsys.readouterr()
@@ -266,3 +269,33 @@ def test_cmd_disable_repo_toggles_current_repo(test_db, monkeypatch, tmp_path, c
     with open(config_path, "r", encoding="utf-8") as f:
         saved = json.load(f)
     assert saved["controls"]["disabled_repos"] == ["engrammar"]
+
+    with open(repo_root / ".mcp.json", "r", encoding="utf-8") as f:
+        mcp_config = json.load(f)
+    assert mcp_config["mcpServers"]["engrammar"]["disabled"] is True
+
+
+def test_cmd_disable_repo_off_removes_project_mcp_override(test_db, monkeypatch, tmp_path, capsys):
+    from src.core import config as config_module
+
+    config_path = tmp_path / "config.json"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"engrammar": {"disabled": True}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(config_module, "_config_cache", None)
+
+    with patch("src.search.environment._detect_repo", return_value="engrammar"), \
+         patch("src.search.environment._detect_repo_root", return_value=str(repo_root)):
+        cmd_disable(["repo", "off"])
+
+    captured = capsys.readouterr()
+    assert "Repo 'engrammar' disable set to off." in captured.out
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    assert saved["controls"]["disabled_repos"] == []
+    assert not (repo_root / ".mcp.json").exists()

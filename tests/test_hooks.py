@@ -43,6 +43,17 @@ def _set_stdin(monkeypatch, data):
 
 
 class TestSessionStart:
+    def test_syncs_project_mcp_before_enabled_check(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {"session_id": "sess-1", "cwd": "/tmp/repo"})
+        with patch("src.infra.hook_utils.sync_project_mcp_for_cwd") as mock_sync, \
+             patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
+            from hooks.on_session_start import main
+            main()
+
+        mock_sync.assert_called_once_with(cwd="/tmp/repo")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
     def test_injects_pinned(self, test_db, monkeypatch, capsys):
         engram_id = add_engram(text="Always do X", category="rules", db_path=test_db)
         conn = get_connection(test_db)
@@ -182,6 +193,17 @@ class TestSessionStart:
 
 
 class TestPrompt:
+    def test_syncs_project_mcp_before_enabled_check(self, test_db, monkeypatch, capsys):
+        _set_stdin(monkeypatch, {"prompt": "test query", "session_id": "sess-1", "cwd": "/tmp/repo"})
+        with patch("src.infra.hook_utils.sync_project_mcp_for_cwd") as mock_sync, \
+             patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
+            from hooks.on_prompt import main
+            main()
+
+        mock_sync.assert_called_once_with(cwd="/tmp/repo")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
     def test_returns_engrams(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"prompt": "How to use react hooks?", "session_id": "sess-1"})
         with patch("src.infra.client.send_request", return_value={

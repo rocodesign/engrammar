@@ -18,7 +18,7 @@ Unlike CLAUDE.md files which require manual curation, Engrammar extracts learnin
 
 ### Repo Controls
 
-Engrammar can now be disabled globally, disabled per repo, or isolated per repo. Global disable turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together. Repo disable stops ingestion, injection, transcript extraction, and evaluation work for just the current repo. Isolation makes a repo self-contained: it still sees and records its own engrams, but its engrams do not leak into other repos and outside engrams do not surface inside it.
+Engrammar can now be disabled globally, disabled per repo, or isolated per repo. Global disable turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together. Repo disable stops ingestion, injection, transcript extraction, evaluation work, and project-local Engrammar MCP tool exposure for just the current repo. Isolation makes a repo self-contained: it still sees and records its own engrams, but its engrams do not leak into other repos and outside engrams do not surface inside it.
 
 ### Smart Context Detection
 

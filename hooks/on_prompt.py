@@ -108,16 +108,17 @@ def main():
         if os.environ.get("ENGRAMMAR_INTERNAL_RUN") == "1":
             return
 
-        from engrammar.infra.hook_utils import is_mcp_enabled
-        if not is_mcp_enabled():
-            return
-
         raw = sys.stdin.read().strip()
         if not raw:
             return
 
         data = json.loads(raw)
         hook_cwd = data.get("cwd")
+
+        from engrammar.infra.hook_utils import is_mcp_enabled, sync_project_mcp_for_cwd
+        sync_project_mcp_for_cwd(cwd=hook_cwd)
+        if not is_mcp_enabled(cwd=hook_cwd):
+            return
 
         from engrammar.search.environment import is_engrammar_active
         if not is_engrammar_active(cwd=hook_cwd):

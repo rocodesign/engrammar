@@ -129,6 +129,16 @@ def _require_current_repo():
     return repo
 
 
+def _require_current_repo_root():
+    from engrammar.search.environment import _detect_repo_root
+
+    repo_root = _detect_repo_root()
+    if not repo_root:
+        print("No git repository detected for the current directory.")
+        return None
+    return repo_root
+
+
 def cmd_isolate(args):
     """Show or toggle isolation for the current repo."""
     from engrammar.core.config import load_config, set_repo_isolated
@@ -158,7 +168,7 @@ def cmd_isolate(args):
 def cmd_disable(args):
     """Show or toggle global/current-repo disabled state."""
     from engrammar.core.config import load_config, set_global_disabled, set_repo_disabled
-    from engrammar.infra.hook_utils import set_mcp_disabled
+    from engrammar.infra.hook_utils import set_mcp_disabled, set_project_mcp_disabled
 
     config = load_config()
     controls = config.get("controls", {})
@@ -192,8 +202,12 @@ def cmd_disable(args):
     repo = _require_current_repo()
     if not repo:
         return
+    repo_root = _require_current_repo_root()
+    if not repo_root:
+        return
 
     set_repo_disabled(repo, should_disable)
+    set_project_mcp_disabled(repo_root, should_disable)
     print(f"Repo '{repo}' disable set to {args[1]}.")
 
 

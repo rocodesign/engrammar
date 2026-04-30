@@ -55,6 +55,21 @@ def _detect_repo(cwd=None):
     return None
 
 
+def _detect_repo_root(cwd=None):
+    """Get the git repo root for the current directory."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=2,
+            cwd=cwd,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception:
+        pass
+    return None
+
+
 def _detect_mcp_servers():
     """Get list of configured MCP server names from Claude config."""
     servers = set()
