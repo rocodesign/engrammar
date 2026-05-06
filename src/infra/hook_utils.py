@@ -21,18 +21,6 @@ def _load_json_file(path):
     return {}
 
 
-def _find_project_mcp_config(cwd=None):
-    current = os.path.abspath(cwd or os.getcwd())
-    while True:
-        candidate = os.path.join(current, ".mcp.json")
-        if os.path.exists(candidate):
-            return candidate
-        parent = os.path.dirname(current)
-        if parent == current:
-            return None
-        current = parent
-
-
 def _read_mcp_entry(path):
     if not path or not os.path.exists(path):
         return None
@@ -46,14 +34,9 @@ def _read_mcp_entry(path):
 def is_mcp_enabled(cwd=None):
     """Check if the engrammar MCP server is enabled in Claude config.
 
-    Returns False if the entry is missing or has disabled=true,
-    meaning hooks should no-op and the daemon should not start.
+    Returns False if the user-level entry is missing or has disabled=true.
     """
     try:
-        project_entry = _read_mcp_entry(_find_project_mcp_config(cwd=cwd))
-        if project_entry is not None:
-            return not bool(project_entry.get("disabled"))
-
         claude_config = os.path.expanduser("~/.claude.json")
         entry = _read_mcp_entry(claude_config)
         if entry is None:
@@ -85,55 +68,6 @@ def set_mcp_disabled(disabled):
     with open(claude_config_path, "w", encoding="utf-8") as f:
         json.dump(claude_config, f, indent=2)
         f.write("\n")
-
-
-def set_project_mcp_disabled(project_root, disabled):
-    """Update the repo-local Engrammar MCP override in .mcp.json."""
-    mcp_config_path = os.path.join(project_root, ".mcp.json")
-    mcp_config = _load_json_file(mcp_config_path) if os.path.exists(mcp_config_path) else {}
-
-    mcp_servers = mcp_config.setdefault("mcpServers", {})
-    engrammar = mcp_servers.get("engrammar")
-    if not isinstance(engrammar, dict):
-        engrammar = {}
-
-    if disabled:
-        engrammar["disabled"] = True
-        mcp_servers["engrammar"] = engrammar
-    else:
-        if isinstance(engrammar, dict):
-            engrammar.pop("disabled", None)
-            if engrammar:
-                mcp_servers["engrammar"] = engrammar
-            else:
-                mcp_servers.pop("engrammar", None)
-        else:
-            mcp_servers.pop("engrammar", None)
-
-    if not mcp_servers:
-        mcp_config.pop("mcpServers", None)
-
-    if mcp_config:
-        with open(mcp_config_path, "w", encoding="utf-8") as f:
-            json.dump(mcp_config, f, indent=2)
-            f.write("\n")
-    elif os.path.exists(mcp_config_path):
-        os.remove(mcp_config_path)
-
-
-def sync_project_mcp_for_cwd(cwd=None):
-    """Sync the repo-local Engrammar MCP override with current config."""
-    from engrammar.core.config import load_config
-    from engrammar.search.environment import _detect_repo_root, is_repo_disabled
-
-    repo_root = _detect_repo_root(cwd=cwd)
-    if not repo_root:
-        return
-
-    current_config = load_config()
-    disabled = is_repo_disabled(cwd=cwd, config=current_config)
-    set_project_mcp_disabled(repo_root, disabled)
-
 
 def log_error(hook_name, context, error):
     """Write error to .hook-errors.log."""

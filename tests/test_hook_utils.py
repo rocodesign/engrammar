@@ -10,7 +10,6 @@ from src.infra.hook_utils import (
     make_hook_output,
     parse_hook_input,
     read_session_id,
-    set_project_mcp_disabled,
     write_session_id,
 )
 
@@ -88,42 +87,21 @@ def test_read_session_id_empty_file(monkeypatch, tmp_path):
     assert read_session_id() is None
 
 
-def test_is_mcp_enabled_honors_project_override(monkeypatch, tmp_path):
+def test_is_mcp_enabled_reads_user_level_setting(monkeypatch, tmp_path):
     home = tmp_path / "home"
-    project = tmp_path / "project"
-    nested = project / "src"
     home.mkdir()
-    nested.mkdir(parents=True)
 
     (home / ".claude.json").write_text(
-        json.dumps({"mcpServers": {"engrammar": {"command": "python"}}}),
-        encoding="utf-8",
-    )
-    (project / ".mcp.json").write_text(
         json.dumps({"mcpServers": {"engrammar": {"disabled": True}}}),
         encoding="utf-8",
     )
 
     monkeypatch.setenv("HOME", str(home))
 
-    assert is_mcp_enabled(cwd=str(nested)) is False
+    assert is_mcp_enabled() is False
 
 
-def test_set_project_mcp_disabled_round_trip(tmp_path):
-    project = tmp_path / "project"
-    project.mkdir()
-
-    set_project_mcp_disabled(str(project), True)
-
-    with open(project / ".mcp.json", "r", encoding="utf-8") as f:
-        config = json.load(f)
-    assert config["mcpServers"]["engrammar"]["disabled"] is True
-
-    set_project_mcp_disabled(str(project), False)
-    assert not (project / ".mcp.json").exists()
-
-
-def test_send_request_skips_project_disabled_mcp(monkeypatch, tmp_path):
+def test_send_request_skips_repo_disabled_scope(monkeypatch, tmp_path):
     from src.infra.client import send_request
 
     home = tmp_path / "home"
@@ -136,13 +114,10 @@ def test_send_request_skips_project_disabled_mcp(monkeypatch, tmp_path):
         json.dumps({"mcpServers": {"engrammar": {"command": "python"}}}),
         encoding="utf-8",
     )
-    (project / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"engrammar": {"disabled": True}}}),
-        encoding="utf-8",
-    )
 
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("src.infra.client._connect", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not connect")))
     monkeypatch.setattr("src.infra.client._start_daemon", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not start")))
+    monkeypatch.setattr("src.search.environment.is_engrammar_active", lambda cwd=None: False)
 
     assert send_request({"type": "search", "cwd": str(nested)}) is None

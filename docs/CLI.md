@@ -86,8 +86,8 @@ engrammar disable repo off
 - Bare `engrammar disable` prints global state, current-repo state, and the next toggle commands.
 - `disable global on` turns off hook injection, extraction, daemon-backed retrieval, and MCP-backed operations together.
 - `disable global off` re-enables the global system.
-- `disable repo on` stops ingestion and injection for the current repo only.
-- `disable repo off` re-enables Engrammar for the current repo.
+- `disable repo on` stores the current repo name in Engrammar's global config and stops ingestion, hook injection, and Engrammar MCP actions for that repo.
+- `disable repo off` removes the current repo from that global disabled list and re-enables Engrammar for the repo.
 
 #### `detect-tags`
 

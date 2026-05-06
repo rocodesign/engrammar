@@ -43,14 +43,12 @@ def _set_stdin(monkeypatch, data):
 
 
 class TestSessionStart:
-    def test_syncs_project_mcp_before_enabled_check(self, test_db, monkeypatch, capsys):
+    def test_noops_when_mcp_is_disabled(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"session_id": "sess-1", "cwd": "/tmp/repo"})
-        with patch("src.infra.hook_utils.sync_project_mcp_for_cwd") as mock_sync, \
-             patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
+        with patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
             from hooks.on_session_start import main
             main()
 
-        mock_sync.assert_called_once_with(cwd="/tmp/repo")
         captured = capsys.readouterr()
         assert captured.out == ""
 
@@ -193,14 +191,12 @@ class TestSessionStart:
 
 
 class TestPrompt:
-    def test_syncs_project_mcp_before_enabled_check(self, test_db, monkeypatch, capsys):
+    def test_noops_when_mcp_is_disabled(self, test_db, monkeypatch, capsys):
         _set_stdin(monkeypatch, {"prompt": "test query", "session_id": "sess-1", "cwd": "/tmp/repo"})
-        with patch("src.infra.hook_utils.sync_project_mcp_for_cwd") as mock_sync, \
-             patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
+        with patch("src.infra.hook_utils.is_mcp_enabled", return_value=False):
             from hooks.on_prompt import main
             main()
 
-        mock_sync.assert_called_once_with(cwd="/tmp/repo")
         captured = capsys.readouterr()
         assert captured.out == ""
 

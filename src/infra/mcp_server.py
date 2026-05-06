@@ -228,6 +228,10 @@ def engrammar_deprecate(engram_id: int, reason: str = "") -> str:
         engram_id: The engram ID to deprecate
         reason: Why this engram is being deprecated
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import deprecate_engram, get_connection
     from engrammar.infra.client import send_request as _send_daemon
 
@@ -242,7 +246,7 @@ def engrammar_deprecate(engram_id: int, reason: str = "") -> str:
     deprecate_engram(engram_id)
 
     # Rebuild index via daemon
-    resp = _send_daemon({"type": "rebuild_index"})
+    resp = _send_daemon({"type": "rebuild_index", "cwd": env.get("cwd")})
     count = resp.get("count", "?") if resp else "?"
 
     return f"Deprecated engram #{engram_id} [{row['category']}]: \"{row['text'][:80]}...\"\nReason: {reason}\nIndex rebuilt with {count} active engrams."
@@ -271,6 +275,10 @@ def engrammar_feedback(
         add_prerequisites: Optional prerequisites dict or JSON string to add
             (e.g. {"mcp_servers":["figma"],"repos":["app-repo"]})
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_connection, update_tag_relevance
     from engrammar.search.environment import detect_environment
     from datetime import datetime
@@ -422,6 +430,10 @@ def engrammar_update(
         category: New category (if changing)
         prerequisites: New prerequisites dict or JSON string (if changing)
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     # Validate inputs
     if text is not None and not text.strip():
         return "Error: text cannot be empty."
@@ -501,7 +513,7 @@ def engrammar_update(
 
     # Rebuild index if text changed (via daemon to avoid loading model)
     if text is not None:
-        _send_daemon({"type": "rebuild_index"})
+        _send_daemon({"type": "rebuild_index", "cwd": env.get("cwd")})
 
     return f"Updated engram #{engram_id}."
 
@@ -518,6 +530,10 @@ def engrammar_categorize(engram_id: int, add: str | None = None, remove: str | N
         add: Category path to add (e.g. "development/frontend/styling")
         remove: Category path to remove
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_engram_categories, add_engram_category, remove_engram_category, get_connection
 
     conn = get_connection()
@@ -558,6 +574,10 @@ def engrammar_pin(engram_id: int, prerequisites: dict | str | None = None) -> st
         prerequisites: Optional prerequisites dict or JSON string for when to show this engram
             (e.g. {"paths":["~/work/acme"]} or {"repos":["app-repo"]})
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_connection
     from datetime import datetime
 
@@ -604,6 +624,10 @@ def engrammar_unpin(engram_id: int) -> str:
     Args:
         engram_id: The engram ID to unpin
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_connection
     from datetime import datetime
 
@@ -636,6 +660,10 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
         limit: Max number of engrams to return (0 = all)
         offset: Number of engrams to skip (for pagination)
     """
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_connection
 
     conn = get_connection()
@@ -695,6 +723,10 @@ def engrammar_list(category: str | None = None, include_deprecated: bool = False
 @mcp.tool()
 def engrammar_status() -> str:
     """Show Engrammar system status — engram count, categories, index health."""
+    env, error = _require_active_scope()
+    if error:
+        return error
+
     from engrammar.core.db import get_engram_count, get_category_stats
     from engrammar.core.config import DB_PATH, INDEX_PATH, load_config
 
@@ -719,7 +751,6 @@ def engrammar_status() -> str:
         lines.append("\nIndex: NOT BUILT")
 
     # Show environment
-    env = _get_current_env()
     config = load_config()
     lines.append(f"\nEnvironment:")
     lines.append(f"  OS: {env['os']}")

@@ -8,6 +8,7 @@ from unittest.mock import patch
 from src.infra.mcp_server import (
     engrammar_add,
     engrammar_search,
+    engrammar_status,
     engrammar_update,
     engrammar_deprecate,
     engrammar_pin,
@@ -142,6 +143,13 @@ def test_search_no_results(test_db):
         mock_send.return_value = {"results": []}
         result = engrammar_search(query="nonexistent")
     assert "No matching engrams found." in result
+
+
+def test_status_respects_disabled_scope(test_db):
+    with patch("src.infra.mcp_server._require_active_scope", return_value=(None, "Engrammar is disabled for repo 'disabled-repo'.")):
+        result = engrammar_status()
+
+    assert result == "Engrammar is disabled for repo 'disabled-repo'."
 
 
 def test_update_text(test_db):
