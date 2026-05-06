@@ -120,7 +120,96 @@ def is_engrammar_active(cwd=None, config=None):
     return not is_repo_disabled(cwd=cwd, config=current_config)
 
 
-def filter_engrams_for_repo_scope(engrams, repo=None, cwd=None, config=None):
+def _get_inferred_origin_repos(engrams, isolated_repos=None, db_path=None):
+    pending = {}
+    session_ids = set()
+    tag_candidates = set()
+    isolated_repo_names = set(isolated_repos or [])
+
+    for engram in engrams:
+        if engram.get("origin_repo"):
+            continue
+
+        tag_candidates.add(engram["id"])
+
+        source_sessions = engram.get("source_sessions")
+        if not source_sessions:
+            continue
+
+        if isinstance(source_sessions, str):
+            try:
+                source_sessions = json.loads(source_sessions)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if not isinstance(source_sessions, list):
+            continue
+
+        cleaned = [session_id for session_id in source_sessions if isinstance(session_id, str)]
+        if not cleaned:
+            continue
+
+        pending[engram["id"]] = cleaned
+        session_ids.update(cleaned)
+
+    if not session_ids and not tag_candidates:
+        return {}
+
+    from engrammar.core.db import get_connection
+
+    conn = get_connection(db_path)
+    session_repo_map = {}
+    if session_ids:
+        placeholders = ",".join("?" * len(session_ids))
+        rows = conn.execute(
+            f"SELECT session_id, repo FROM session_audit WHERE session_id IN ({placeholders})",
+            list(session_ids),
+        ).fetchall()
+        session_repo_map = {
+            row["session_id"]: row["repo"]
+            for row in rows
+            if row["repo"]
+        }
+
+    tag_repo_map = {}
+    if tag_candidates and isolated_repo_names:
+        placeholders = ",".join("?" * len(tag_candidates))
+        rows = conn.execute(
+            f"SELECT engram_id, tag FROM engram_tags WHERE engram_id IN ({placeholders})",
+            list(tag_candidates),
+        ).fetchall()
+        for row in rows:
+            tag = row["tag"]
+            inferred_repo = None
+            if tag.startswith("repo:"):
+                candidate = tag[5:]
+                if candidate in isolated_repo_names:
+                    inferred_repo = candidate
+            elif tag in isolated_repo_names:
+                inferred_repo = tag
+
+            if inferred_repo:
+                tag_repo_map.setdefault(row["engram_id"], set()).add(inferred_repo)
+
+    conn.close()
+
+    inferred = {}
+    for engram_id, engram_sessions in pending.items():
+        repos = {
+            session_repo_map[session_id]
+            for session_id in engram_sessions
+            if session_id in session_repo_map
+        }
+        if repos:
+            inferred[engram_id] = repos
+
+    for engram_id, repos in tag_repo_map.items():
+        inferred.setdefault(engram_id, set()).update(repos)
+
+    return inferred
+
+
+def filter_engrams_for_repo_scope(engrams, repo=None, cwd=None, config=None, db_path=None):
     """Filter engrams by current repo isolation boundaries."""
     current_config = config or load_config()
     isolated_repos = set(current_config.get("controls", {}).get("isolated_repos", []))
@@ -131,10 +220,26 @@ def filter_engrams_for_repo_scope(engrams, repo=None, cwd=None, config=None):
     if not current_repo:
         return list(engrams)
 
-    if current_repo and current_repo in isolated_repos:
-        return [engram for engram in engrams if engram.get("origin_repo") == current_repo]
+    inferred_repos = _get_inferred_origin_repos(
+        engrams,
+        isolated_repos=isolated_repos,
+        db_path=db_path,
+    )
 
-    return [engram for engram in engrams if engram.get("origin_repo") not in isolated_repos]
+    if current_repo and current_repo in isolated_repos:
+        return [
+            engram
+            for engram in engrams
+            if engram.get("origin_repo") == current_repo
+            or current_repo in inferred_repos.get(engram["id"], set())
+        ]
+
+    return [
+        engram
+        for engram in engrams
+        if engram.get("origin_repo") not in isolated_repos
+        and not inferred_repos.get(engram["id"], set()).intersection(isolated_repos)
+    ]
 
 
 def check_structural_prerequisites(prerequisites, env=None):

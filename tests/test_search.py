@@ -3,7 +3,7 @@
 import pytest
 import tempfile
 import os
-from src.core.db import init_db, add_engram
+from src.core.db import init_db, add_engram, add_content_tags, write_session_audit
 from src.search.engine import search, _get_rrf_normalization_anchors, _reciprocal_rank_fusion
 
 
@@ -283,3 +283,86 @@ def test_search_restricts_isolated_repo_to_its_own_engrams(monkeypatch):
         assert "shared alpha note" not in texts
         assert "isolated alpha note" in texts
         assert "same repo alpha note" in texts
+
+
+def test_search_hides_isolated_repo_engrams_inferred_from_source_sessions(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        add_engram(text="shared alpha note", category="test", db_path=db_path)
+        add_engram(
+            text="legacy isolated alpha note",
+            category="test",
+            source_sessions=["sess-isolated"],
+            db_path=db_path,
+        )
+        write_session_audit(
+            "sess-isolated",
+            [],
+            ["repo:isolated-repo"],
+            "isolated-repo",
+            db_path=db_path,
+        )
+
+        config = {
+            "search": {"top_k": 5},
+            "hooks": {"prerequisites_min_score": 0},
+            "scoring": {},
+            "controls": {"isolated_repos": ["isolated-repo"]},
+        }
+        monkeypatch.setattr("src.search.engine.load_config", lambda: config)
+
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda cwd=None: {
+                "os": "darwin",
+                "repo": "other-repo",
+                "cwd": "/tmp/other-repo",
+                "tags": [],
+                "mcp_servers": [],
+            },
+        )
+
+        results = search("alpha", top_k=10, db_path=db_path)
+        texts = [result["text"] for result in results]
+        assert "shared alpha note" in texts
+        assert "legacy isolated alpha note" not in texts
+
+
+def test_search_hides_isolated_repo_engrams_inferred_from_tags(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        add_engram(text="shared alpha note", category="test", db_path=db_path)
+        legacy_id = add_engram(
+            text="legacy tagged isolated alpha note",
+            category="test",
+            db_path=db_path,
+        )
+        add_content_tags(legacy_id, ["isolated-repo"], db_path=db_path)
+
+        config = {
+            "search": {"top_k": 5},
+            "hooks": {"prerequisites_min_score": 0},
+            "scoring": {},
+            "controls": {"isolated_repos": ["isolated-repo"]},
+        }
+        monkeypatch.setattr("src.search.engine.load_config", lambda: config)
+
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda cwd=None: {
+                "os": "darwin",
+                "repo": "other-repo",
+                "cwd": "/tmp/other-repo",
+                "tags": [],
+                "mcp_servers": [],
+            },
+        )
+
+        results = search("alpha", top_k=10, db_path=db_path)
+        texts = [result["text"] for result in results]
+        assert "shared alpha note" in texts
+        assert "legacy tagged isolated alpha note" not in texts

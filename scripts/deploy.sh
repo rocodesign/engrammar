@@ -36,9 +36,13 @@ echo "  prompts/"
 mkdir -p "$ENGRAMMAR_HOME/prompts"
 cp -r "$SOURCE_DIR"/prompts/* "$ENGRAMMAR_HOME/prompts/"
 
-# Copy config
-echo "  config.json"
-cp "$SOURCE_DIR/config.json" "$ENGRAMMAR_HOME/config.json"
+# Keep user config intact
+if [ ! -f "$ENGRAMMAR_HOME/config.json" ]; then
+    echo "  config.json (created)"
+    cp "$SOURCE_DIR/config.json" "$ENGRAMMAR_HOME/config.json"
+else
+    echo "  config.json (preserved user settings)"
+fi
 
 # Copy CLI + scripts
 echo "  cli.py, engrammar, backfill_stats.py"

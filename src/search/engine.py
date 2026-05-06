@@ -111,6 +111,7 @@ def search(
         repo=env.get("repo") if env else None,
         cwd=env.get("cwd") if env else cwd,
         config=config,
+        db_path=db_path,
     )
 
     if not engrams:
