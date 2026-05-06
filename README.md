@@ -107,6 +107,7 @@ curl -fsSL https://raw.githubusercontent.com/rocodesign/engrammar/main/scripts/i
 ```
 
 The installer walks you through what Engrammar does, checks prerequisites, and lets you configure settings interactively.
+It reads prompts from your terminal, so the interactive flow works even when the installer itself is piped into `bash`.
 
 Requires Python 3.10+ and Claude Code CLI. No API keys needed — embeddings run locally via `fastembed`. The AI evaluation and extraction features use Haiku and are optional (fail open).
 

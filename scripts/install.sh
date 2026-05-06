@@ -4,13 +4,19 @@
 set -e
 
 # ─── Colors & helpers ───────────────────────────────────────────────────────
-BOLD='\033[1m'
-DIM='\033[2m'
-CYAN='\033[36m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-RED='\033[31m'
-RESET='\033[0m'
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+CYAN=$'\033[36m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+PROMPT_FD=0
+if [ -r /dev/tty ]; then
+    exec 3</dev/tty
+    PROMPT_FD=3
+fi
 
 info()    { printf "${CYAN}%s${RESET}\n" "$1"; }
 success() { printf "${GREEN}%s${RESET}\n" "$1"; }
@@ -19,6 +25,14 @@ error()   { printf "${RED}%s${RESET}\n" "$1"; }
 bold()    { printf "${BOLD}%s${RESET}\n" "$1"; }
 dim()     { printf "${DIM}%s${RESET}\n" "$1"; }
 
+read_prompt() {
+    local input=""
+    if ! IFS= read -r -u "$PROMPT_FD" input; then
+        input=""
+    fi
+    printf '%s' "$input"
+}
+
 ask() {
     local prompt="$1" default="$2" var="$3"
     if [ -n "$default" ]; then
@@ -26,7 +40,8 @@ ask() {
     else
         printf "${BOLD}%s${RESET}: " "$prompt"
     fi
-    read -r input
+    local input
+    input="$(read_prompt)"
     eval "$var=\"${input:-$default}\""
 }
 
@@ -36,7 +51,8 @@ ask_yn() {
     [ "$default" = "y" ] && hint="Y/n"
     [ "$default" = "n" ] && hint="y/N"
     printf "${BOLD}%s${RESET} ${DIM}[%s]${RESET}: " "$prompt" "$hint"
-    read -r input
+    local input
+    input="$(read_prompt)"
     input="${input:-$default}"
     case "$input" in
         [yY]*) eval "$var=true" ;;

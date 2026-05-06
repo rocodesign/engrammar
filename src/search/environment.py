@@ -217,8 +217,6 @@ def filter_engrams_for_repo_scope(engrams, repo=None, cwd=None, config=None, db_
         return list(engrams)
 
     current_repo = repo if repo is not None else _detect_repo(cwd=cwd)
-    if not current_repo:
-        return list(engrams)
 
     inferred_repos = _get_inferred_origin_repos(
         engrams,
