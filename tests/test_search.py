@@ -438,7 +438,7 @@ def test_recency_multiplier_lowers_score_for_old_engrams(monkeypatch):
             "search": {"top_k": 10},
             "controls": {"isolated_repos": []},
             "hooks": {},
-            "scoring": {"recency_decay_rate": 0.0075},
+            "scoring": {"recency_decay_rate": 0.003},
         }
         monkeypatch.setattr("src.search.engine.load_config", lambda: config)
         monkeypatch.setattr("src.search.environment._detect_repo", lambda cwd=None: None)
@@ -514,7 +514,7 @@ def test_recency_falls_back_to_created_at_when_no_refreshed_at(monkeypatch):
             "search": {"top_k": 10},
             "controls": {"isolated_repos": []},
             "hooks": {},
-            "scoring": {"recency_decay_rate": 0.0075},
+            "scoring": {"recency_decay_rate": 0.003},
         }
         monkeypatch.setattr("src.search.engine.load_config", lambda: config)
         monkeypatch.setattr("src.search.environment._detect_repo", lambda cwd=None: None)
