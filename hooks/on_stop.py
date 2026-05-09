@@ -26,7 +26,8 @@ def main():
         data = parse_hook_input()
         hook_cwd = data.get("cwd")
 
-        from engrammar.infra.hook_utils import is_mcp_enabled
+        from engrammar.infra.hook_utils import is_mcp_enabled, sync_project_mcp_for_cwd
+        sync_project_mcp_for_cwd(cwd=hook_cwd)
         if not is_mcp_enabled(cwd=hook_cwd):
             return
 
@@ -51,7 +52,7 @@ def main():
             shown_ids = get_shown_engram_ids(session_id)
             if shown_ids:
                 from engrammar.search.environment import detect_environment
-                env = detect_environment()
+                env = detect_environment(cwd=hook_cwd)
 
                 # Build engram_context: per-engram prompt tags for evaluation attribution
                 engram_context = {}

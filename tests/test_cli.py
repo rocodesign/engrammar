@@ -254,8 +254,12 @@ def test_cmd_disable_repo_toggles_current_repo(test_db, monkeypatch, tmp_path, c
     from src.core import config as config_module
 
     config_path = tmp_path / "config.json"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
     monkeypatch.setattr(config_module, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(config_module, "_config_cache", None)
+    monkeypatch.setattr("src.infra.hook_utils._detect_repo_root", lambda cwd=None: str(repo_root))
+    monkeypatch.setattr("os.getcwd", lambda: str(repo_root))
 
     with patch("src.search.environment._detect_repo", return_value="engrammar"):
         cmd_disable(["repo", "on"])
@@ -266,6 +270,10 @@ def test_cmd_disable_repo_toggles_current_repo(test_db, monkeypatch, tmp_path, c
     with open(config_path, "r", encoding="utf-8") as f:
         saved = json.load(f)
     assert saved["controls"]["disabled_repos"] == ["engrammar"]
+
+    with open(repo_root / ".mcp.json", "r", encoding="utf-8") as f:
+        project_mcp = json.load(f)
+    assert project_mcp["mcpServers"]["engrammar"]["disabled"] is True
 
 
 def test_cmd_disable_repo_off_clears_internal_config(test_db, monkeypatch, tmp_path, capsys):

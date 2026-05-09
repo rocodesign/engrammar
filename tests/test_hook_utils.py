@@ -101,6 +101,46 @@ def test_is_mcp_enabled_reads_user_level_setting(monkeypatch, tmp_path):
     assert is_mcp_enabled() is False
 
 
+def test_is_mcp_enabled_respects_project_level_setting(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+
+    (home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"engrammar": {"command": "python"}}}),
+        encoding="utf-8",
+    )
+    (project / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"engrammar": {"disabled": True}}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("src.infra.hook_utils._detect_repo_root", lambda cwd=None: str(project))
+
+    assert is_mcp_enabled(cwd=str(project)) is False
+
+
+def test_sync_project_mcp_for_cwd_writes_repo_disabled_flag(monkeypatch, tmp_path):
+    from src.infra.hook_utils import sync_project_mcp_for_cwd
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setattr("src.infra.hook_utils._detect_repo_root", lambda cwd=None: str(project))
+
+    monkeypatch.setattr("src.search.environment.is_repo_disabled", lambda cwd=None, repo=None, config=None: True)
+    sync_project_mcp_for_cwd(cwd=str(project))
+
+    saved = json.loads((project / ".mcp.json").read_text(encoding="utf-8"))
+    assert saved["mcpServers"]["engrammar"]["disabled"] is True
+
+    monkeypatch.setattr("src.search.environment.is_repo_disabled", lambda cwd=None, repo=None, config=None: False)
+    sync_project_mcp_for_cwd(cwd=str(project))
+
+    assert not (project / ".mcp.json").exists()
+
+
 def test_send_request_skips_repo_disabled_scope(monkeypatch, tmp_path):
     from src.infra.client import send_request
 

@@ -63,10 +63,11 @@ def send_request(request, timeout=5.0):
     Returns the response dict, or None on failure.
     Returns None immediately if the engrammar MCP is disabled.
     """
-    from engrammar.infra.hook_utils import is_mcp_enabled
+    from engrammar.infra.hook_utils import is_mcp_enabled, sync_project_mcp_for_cwd
     from engrammar.search.environment import is_engrammar_active, is_global_disabled
 
     effective_cwd = request.get("cwd") or os.getcwd()
+    sync_project_mcp_for_cwd(cwd=effective_cwd)
     if not is_mcp_enabled(cwd=effective_cwd):
         return None
     if is_global_disabled():

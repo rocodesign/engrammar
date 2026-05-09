@@ -21,7 +21,8 @@ def main():
         data = parse_hook_input()
         hook_cwd = data.get("cwd")
 
-        from engrammar.infra.hook_utils import is_mcp_enabled
+        from engrammar.infra.hook_utils import is_mcp_enabled, sync_project_mcp_for_cwd
+        sync_project_mcp_for_cwd(cwd=hook_cwd)
         if not is_mcp_enabled(cwd=hook_cwd):
             return
 
@@ -60,7 +61,7 @@ def main():
         )
 
         config = load_config()
-        env = detect_environment()
+        env = detect_environment(cwd=hook_cwd)
         pinned = filter_engrams_for_repo_scope(
             get_pinned_engrams(),
             repo=env.get("repo"),

@@ -186,6 +186,36 @@ class TestSessionStart:
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_uses_hook_cwd_for_environment_detection(self, test_db, monkeypatch, capsys):
+        engram_id = add_engram(text="Always do X", category="rules", db_path=test_db)
+        conn = get_connection(test_db)
+        conn.execute("UPDATE engrams SET pinned = 1 WHERE id = ?", (engram_id,))
+        conn.commit()
+        conn.close()
+
+        _set_stdin(monkeypatch, {"session_id": "sess-1", "cwd": "/tmp/repo"})
+
+        def _detect_environment(cwd=None):
+            assert cwd == "/tmp/repo"
+            return {
+                "os": "darwin",
+                "repo": "test",
+                "cwd": cwd,
+                "tags": [],
+                "mcp_servers": [],
+            }
+
+        with patch("src.infra.client.send_request"), \
+             patch("src.search.environment.detect_environment", side_effect=_detect_environment), \
+             patch("src.core.config.load_config", return_value=_DEFAULT_CONFIG):
+            from hooks.on_session_start import main
+            main()
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "Always do X" in ctx
+
 
 # ---------- Prompt Hook ----------
 
@@ -357,6 +387,34 @@ class TestStop:
         _set_stdin(monkeypatch, {})
         from hooks.on_stop import main
         main()
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_uses_hook_cwd_for_audit_environment(self, test_db, monkeypatch, capsys):
+        engram_id = add_engram(text="shown engram", category="general", db_path=test_db)
+        record_shown_engram("sess-1", engram_id, "UserPromptSubmit", db_path=test_db)
+
+        _set_stdin(monkeypatch, {
+            "session_id": "sess-1",
+            "transcript_path": "/tmp/transcript.jsonl",
+            "cwd": "/tmp/repo",
+        })
+
+        def _detect_environment(cwd=None):
+            assert cwd == "/tmp/repo"
+            return {
+                "os": "darwin",
+                "repo": "test",
+                "cwd": cwd,
+                "tags": ["python"],
+                "mcp_servers": [],
+            }
+
+        with patch("src.search.environment.detect_environment", side_effect=_detect_environment), \
+             patch("src.infra.client.send_request", return_value={"status": "ok"}):
+            from hooks.on_stop import main
+            main()
 
         captured = capsys.readouterr()
         assert captured.out == ""

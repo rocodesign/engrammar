@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import traceback
 from datetime import datetime
@@ -31,6 +32,36 @@ def _read_mcp_entry(path):
     return None
 
 
+def _detect_repo_root(cwd=None):
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=cwd,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def _project_mcp_path(cwd=None):
+    repo_root = _detect_repo_root(cwd=cwd)
+    if not repo_root:
+        return None
+    return os.path.join(repo_root, ".mcp.json")
+
+
+def _write_json_file(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+
 def is_mcp_enabled(cwd=None):
     """Check if the engrammar MCP server is enabled in Claude config.
 
@@ -41,7 +72,14 @@ def is_mcp_enabled(cwd=None):
         entry = _read_mcp_entry(claude_config)
         if entry is None:
             return False
-        return not bool(entry.get("disabled"))
+        if bool(entry.get("disabled")):
+            return False
+
+        project_config = _project_mcp_path(cwd=cwd)
+        project_entry = _read_mcp_entry(project_config)
+        if project_entry is None:
+            return True
+        return not bool(project_entry.get("disabled"))
     except Exception:
         return False
 
@@ -65,9 +103,35 @@ def set_mcp_disabled(disabled):
         engrammar.pop("disabled", None)
 
     os.makedirs(os.path.dirname(claude_config_path), exist_ok=True)
-    with open(claude_config_path, "w", encoding="utf-8") as f:
-        json.dump(claude_config, f, indent=2)
-        f.write("\n")
+    _write_json_file(claude_config_path, claude_config)
+
+
+def sync_project_mcp_for_cwd(cwd=None):
+    """Mirror repo-disabled scope into the repo-local .mcp.json file."""
+    project_config_path = _project_mcp_path(cwd=cwd)
+    if not project_config_path:
+        return
+
+    from engrammar.search.environment import is_repo_disabled
+
+    project_config = _load_json_file(project_config_path)
+    mcp_servers = project_config.setdefault("mcpServers", {})
+    engrammar = mcp_servers.setdefault("engrammar", {})
+
+    if is_repo_disabled(cwd=cwd):
+        engrammar["disabled"] = True
+    else:
+        engrammar.pop("disabled", None)
+        if not engrammar:
+            mcp_servers.pop("engrammar", None)
+
+    if not mcp_servers:
+        project_config.pop("mcpServers", None)
+
+    if project_config:
+        _write_json_file(project_config_path, project_config)
+    elif os.path.exists(project_config_path):
+        os.remove(project_config_path)
 
 def log_error(hook_name, context, error):
     """Write error to .hook-errors.log."""

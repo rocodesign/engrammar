@@ -92,7 +92,7 @@ Engrammar loads configuration from `~/.engrammar/config.json`.
 ### `controls`
 
 - `global_disabled`: Master kill switch for Engrammar. When true, hook injection, extraction, daemon-backed retrieval, and MCP-backed operations all fail closed.
-- `disabled_repos`: List of repo names where Engrammar is disabled. These repos do not ingest new engrams, do not receive injected engrams, are skipped by transcript extraction and evaluation queues, and Engrammar MCP handlers reject calls from those repos. The disabled state is stored only in Engrammar's global config.
+- `disabled_repos`: List of repo names where Engrammar is disabled. These repos do not ingest new engrams, do not receive injected engrams, are skipped by transcript extraction and evaluation queues, and Engrammar MCP handlers reject calls from those repos. When a disabled repo is active, Engrammar also syncs that repo's `.mcp.json` so the MCP server is disabled within the repo.
 - `isolated_repos`: List of repo names that are isolated. Isolated repos only see engrams stamped with their own repo name, and those engrams are hidden from all other repos.
 
 ### `query_enrichment.prompt`

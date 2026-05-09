@@ -168,7 +168,7 @@ def cmd_isolate(args):
 def cmd_disable(args):
     """Show or toggle global/current-repo disabled state."""
     from engrammar.core.config import load_config, set_global_disabled, set_repo_disabled
-    from engrammar.infra.hook_utils import set_mcp_disabled
+    from engrammar.infra.hook_utils import set_mcp_disabled, sync_project_mcp_for_cwd
 
     config = load_config()
     controls = config.get("controls", {})
@@ -203,6 +203,7 @@ def cmd_disable(args):
     if not repo:
         return
     set_repo_disabled(repo, should_disable)
+    sync_project_mcp_for_cwd(cwd=os.getcwd())
     print(f"Repo '{repo}' disable set to {args[1]}.")
 
 
