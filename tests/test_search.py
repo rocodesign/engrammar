@@ -3,7 +3,8 @@
 import pytest
 import tempfile
 import os
-from src.core.db import init_db, add_engram, add_content_tags, write_session_audit
+from datetime import datetime, timedelta, timezone
+from src.core.db import init_db, add_engram, add_content_tags, write_session_audit, get_connection
 from src.search.engine import search, _get_rrf_normalization_anchors, _reciprocal_rank_fusion
 
 
@@ -412,3 +413,118 @@ def test_search_hides_isolated_repo_engrams_when_repo_detection_fails(monkeypatc
         texts = [result["text"] for result in results]
         assert "shared alpha note" in texts
         assert "legacy isolated alpha note" not in texts
+
+
+def test_recency_multiplier_lowers_score_for_old_engrams(monkeypatch):
+    """Older engrams should score lower than fresh ones with recency_decay_rate > 0."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        fresh_id = add_engram(text="typescript async await pattern", category="dev", db_path=db_path)
+        old_id = add_engram(text="typescript async await pattern", category="dev", db_path=db_path)
+
+        now = datetime.now(timezone.utc)
+        fresh_ts = now.isoformat()
+        old_ts = (now - timedelta(days=200)).isoformat()
+
+        conn = get_connection(db_path)
+        conn.execute("UPDATE engrams SET refreshed_at = ? WHERE id = ?", (fresh_ts, fresh_id))
+        conn.execute("UPDATE engrams SET refreshed_at = ? WHERE id = ?", (old_ts, old_id))
+        conn.commit()
+        conn.close()
+
+        config = {
+            "search": {"top_k": 10},
+            "controls": {"isolated_repos": []},
+            "hooks": {},
+            "scoring": {"recency_decay_rate": 0.0075},
+        }
+        monkeypatch.setattr("src.search.engine.load_config", lambda: config)
+        monkeypatch.setattr("src.search.environment._detect_repo", lambda cwd=None: None)
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda cwd=None: {"os": "darwin", "repo": None, "cwd": tmpdir, "tags": [], "mcp_servers": []},
+        )
+
+        results, meta = search("typescript async await", top_k=10, db_path=db_path, return_diagnostics=True)
+
+        scores_by_id = {r["id"]: r["score"] for r in results}
+        if fresh_id in scores_by_id and old_id in scores_by_id:
+            assert scores_by_id[fresh_id] > scores_by_id[old_id]
+
+        mults_by_id = {r["id"]: r["_diag"]["recency_multiplier"] for r in results if "_diag" in r}
+        if fresh_id in mults_by_id and old_id in mults_by_id:
+            assert mults_by_id[fresh_id] > mults_by_id[old_id]
+            assert mults_by_id[old_id] < 1.0
+
+
+def test_recency_multiplier_disabled_when_rate_is_zero(monkeypatch):
+    """With recency_decay_rate=0, the multiplier should always be 1.0."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        engram_id = add_engram(text="typescript async await pattern", category="dev", db_path=db_path)
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=500)).isoformat()
+
+        conn = get_connection(db_path)
+        conn.execute("UPDATE engrams SET refreshed_at = ? WHERE id = ?", (old_ts, engram_id))
+        conn.commit()
+        conn.close()
+
+        config = {
+            "search": {"top_k": 10},
+            "controls": {"isolated_repos": []},
+            "hooks": {},
+            "scoring": {"recency_decay_rate": 0.0},
+        }
+        monkeypatch.setattr("src.search.engine.load_config", lambda: config)
+        monkeypatch.setattr("src.search.environment._detect_repo", lambda cwd=None: None)
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda cwd=None: {"os": "darwin", "repo": None, "cwd": tmpdir, "tags": [], "mcp_servers": []},
+        )
+
+        results, meta = search("typescript async await", top_k=10, db_path=db_path, return_diagnostics=True)
+
+        for r in results:
+            if r["id"] == engram_id and "_diag" in r:
+                assert r["_diag"]["recency_multiplier"] == 1.0
+
+
+def test_recency_falls_back_to_created_at_when_no_refreshed_at(monkeypatch):
+    """Engrams without refreshed_at should use created_at for age calculation."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        engram_id = add_engram(text="typescript async await pattern", category="dev", db_path=db_path)
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+
+        conn = get_connection(db_path)
+        conn.execute(
+            "UPDATE engrams SET refreshed_at = NULL, created_at = ? WHERE id = ?",
+            (old_ts, engram_id)
+        )
+        conn.commit()
+        conn.close()
+
+        config = {
+            "search": {"top_k": 10},
+            "controls": {"isolated_repos": []},
+            "hooks": {},
+            "scoring": {"recency_decay_rate": 0.0075},
+        }
+        monkeypatch.setattr("src.search.engine.load_config", lambda: config)
+        monkeypatch.setattr("src.search.environment._detect_repo", lambda cwd=None: None)
+        monkeypatch.setattr(
+            "src.search.engine.detect_environment",
+            lambda cwd=None: {"os": "darwin", "repo": None, "cwd": tmpdir, "tags": [], "mcp_servers": []},
+        )
+
+        results, meta = search("typescript async await", top_k=10, db_path=db_path, return_diagnostics=True)
+
+        for r in results:
+            if r["id"] == engram_id and "_diag" in r:
+                assert r["_diag"]["recency_multiplier"] < 1.0

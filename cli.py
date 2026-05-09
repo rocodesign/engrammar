@@ -664,6 +664,10 @@ def cmd_update(args):
 
     conn.close()
 
+    if updates:
+        from engrammar.core.db import refresh_engram
+        refresh_engram(engram_id, "manual-edit")
+
     print(f"Updated engram {engram_id}")
 
     # Rebuild index if text changed

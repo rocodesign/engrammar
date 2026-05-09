@@ -68,6 +68,7 @@ DEFAULT_CONFIG = {
         "tag_mismatch_threshold": 0.20,
         "abstain_threshold": 0.55,
         "min_top1_score": 0.40,
+        "recency_decay_rate": 0.0075,
     },
     "models": {
         "extraction": "sonnet",

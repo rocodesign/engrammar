@@ -194,6 +194,7 @@ def search(
                 "tag_affinity": 0.0,
                 "best_tag_sim": 0.0,
                 "tag_bonus": 0.0,
+                "recency_multiplier": 1.0,
             }
 
     # 3.2. Repo prior from engram_tag_relevance (evaluated usefulness per repo)
@@ -365,6 +366,33 @@ def search(
         filtered_fused.append((lid, score))
 
     fused = sorted(filtered_fused, key=lambda x: x[1], reverse=True)
+
+    # 3.7. Recency penalty — score *= 1 / (1 + c * age_days)
+    # Age is from the most recent freshness signal: refreshed_at > created_at
+    recency_c = scoring_config.get("recency_decay_rate", 0.0)
+    if recency_c > 0:
+        from datetime import datetime, timezone
+        now_dt = datetime.now(timezone.utc)
+        recency_adjusted = []
+        for lid, score in fused:
+            engram = engram_map.get(lid)
+            recency_multiplier = 1.0
+            if engram:
+                freshness_str = engram.get("refreshed_at") or engram.get("created_at")
+                if freshness_str:
+                    try:
+                        dt = datetime.fromisoformat(freshness_str)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        age_days = (now_dt - dt).total_seconds() / 86400
+                        recency_multiplier = 1.0 / (1.0 + recency_c * age_days)
+                        score *= recency_multiplier
+                    except (ValueError, TypeError):
+                        pass
+            if diag is not None and lid in diag:
+                diag[lid]["recency_multiplier"] = round(recency_multiplier, 4)
+            recency_adjusted.append((lid, score))
+        fused = sorted(recency_adjusted, key=lambda x: x[1], reverse=True)
 
     # 4. Apply category filter (check primary + junction table categories)
     if category_filter:

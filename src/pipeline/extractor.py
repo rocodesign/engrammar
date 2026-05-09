@@ -684,6 +684,8 @@ def _process_extracted_engrams(extracted, session_id, env_tags, repo=None):
             if content_tags:
                 from engrammar.core.db import add_content_tags
                 add_content_tags(existing["id"], content_tags, source="extraction-llm")
+            from engrammar.core.db import refresh_engram
+            refresh_engram(existing["id"], "re-extraction")
             merged += 1
             print(f"  Merged into engram #{existing['id']}: {text[:60]}...")
         else:

@@ -546,7 +546,7 @@ def run_evaluation_for_session(session_id, db_path=None):
     # that score to content tags weighted by prompt-tag similarity (which
     # tags caused the match get more signal), and to env tags uniformly.
     try:
-        from engrammar.core.db import update_tag_relevance, get_content_tags
+        from engrammar.core.db import update_tag_relevance, get_content_tags, refresh_engram
         for ev in evaluations:
             engram_id = ev.get("engram_id")
             score = ev.get("score", 0)
@@ -555,6 +555,10 @@ def run_evaluation_for_session(session_id, db_path=None):
 
             # Normalize score to [-1, 1] range for tag relevance EMA
             normalized = score / 3.0
+
+            # Refresh freshness on positive evaluation
+            if score > 0:
+                refresh_engram(engram_id, "evaluation", db_path=db_path)
 
             # 1. Env tag scoring: uniform signal on repo tag
             if repo:

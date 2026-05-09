@@ -7,7 +7,7 @@ import json
 from src.core.db import (
     init_db, add_engram, get_all_active_engrams, deprecate_engram,
     get_engram_categories, add_engram_category, remove_engram_category,
-    update_match_stats, get_connection, AUTO_PIN_THRESHOLD
+    update_match_stats, get_connection, AUTO_PIN_THRESHOLD, refresh_engram,
 )
 
 
@@ -251,3 +251,116 @@ def test_per_repo_match_tracking():
         stats_dict = {row["repo"]: row["times_matched"] for row in stats}
         assert stats_dict["repo-a"] == 2
         assert stats_dict["repo-b"] == 1
+
+
+def test_refresh_engram_sets_refreshed_at():
+    """refresh_engram should update refreshed_at and write a log entry."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        engram_id = add_engram(text="Test engram", category="test", db_path=db_path)
+
+        conn = get_connection(db_path)
+        before = conn.execute(
+            "SELECT refreshed_at FROM engrams WHERE id = ?", (engram_id,)
+        ).fetchone()
+        conn.close()
+
+        refresh_engram(engram_id, "feedback", db_path=db_path)
+
+        conn = get_connection(db_path)
+        after = conn.execute(
+            "SELECT refreshed_at FROM engrams WHERE id = ?", (engram_id,)
+        ).fetchone()
+        log = conn.execute(
+            "SELECT reason FROM engram_refresh_log WHERE engram_id = ?", (engram_id,)
+        ).fetchall()
+        conn.close()
+
+        assert after["refreshed_at"] is not None
+        assert len(log) == 1
+        assert log[0]["reason"] == "feedback"
+
+
+def test_refresh_engram_appends_log_entries():
+    """Multiple refreshes should each add a row to engram_refresh_log."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        engram_id = add_engram(text="Test engram", category="test", db_path=db_path)
+        refresh_engram(engram_id, "evaluation", db_path=db_path)
+        refresh_engram(engram_id, "manual-edit", db_path=db_path)
+
+        conn = get_connection(db_path)
+        log = conn.execute(
+            "SELECT reason FROM engram_refresh_log WHERE engram_id = ? ORDER BY id",
+            (engram_id,)
+        ).fetchall()
+        conn.close()
+
+        assert [r["reason"] for r in log] == ["evaluation", "manual-edit"]
+
+
+def test_schema_has_refreshed_at_column():
+    """New databases should include refreshed_at on the engrams table."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test.db")
+        init_db(db_path)
+
+        conn = get_connection(db_path)
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(engrams)").fetchall()]
+        conn.close()
+
+        assert "refreshed_at" in columns
+
+
+def test_migration_backfills_refreshed_at_from_last_matched():
+    """Migration should set refreshed_at = last_matched for pre-migration rows."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "legacy.db")
+
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE engrams (
+                id INTEGER PRIMARY KEY,
+                text TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'general',
+                level1 TEXT, level2 TEXT, level3 TEXT,
+                origin_repo TEXT DEFAULT NULL,
+                source TEXT DEFAULT 'manual',
+                source_sessions TEXT DEFAULT '[]',
+                occurrence_count INTEGER DEFAULT 1,
+                times_matched INTEGER DEFAULT 0,
+                last_matched TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                deprecated INTEGER DEFAULT 0,
+                prerequisites TEXT DEFAULT NULL,
+                pinned INTEGER DEFAULT 0,
+                dedup_verified INTEGER DEFAULT 0,
+                dedup_attempts INTEGER DEFAULT 0,
+                dedup_last_error TEXT DEFAULT NULL,
+                status INTEGER DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "INSERT INTO engrams (text, category, last_matched, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("Old engram", "test", "2025-03-01T12:00:00", "2024-01-01T00:00:00", "2024-01-01T00:00:00"),
+        )
+        conn.commit()
+        engram_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+
+        from src.core.db import _SCHEMA_READY_PATHS
+        _SCHEMA_READY_PATHS.discard(db_path)
+
+        conn = get_connection(db_path)
+        row = conn.execute(
+            "SELECT refreshed_at FROM engrams WHERE id = ?", (engram_id,)
+        ).fetchone()
+        conn.close()
+
+        assert row["refreshed_at"] == "2025-03-01T12:00:00"

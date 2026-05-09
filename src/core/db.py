@@ -27,6 +27,7 @@ def _schema_is_current(conn):
         "dedup_attempts",
         "dedup_last_error",
         "status",
+        "refreshed_at",
     }
     if not required_engram_columns.issubset(set(engram_columns)):
         return False
@@ -72,7 +73,8 @@ def _apply_base_schema(conn):
             pinned INTEGER DEFAULT 0,
             dedup_verified INTEGER DEFAULT 0,
             dedup_attempts INTEGER DEFAULT 0,
-            dedup_last_error TEXT DEFAULT NULL
+            dedup_last_error TEXT DEFAULT NULL,
+            refreshed_at TEXT DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS categories (
@@ -188,6 +190,15 @@ def _apply_base_schema(conn):
         );
         CREATE INDEX IF NOT EXISTS idx_engram_tags_engram ON engram_tags(engram_id);
         CREATE INDEX IF NOT EXISTS idx_engram_tags_tag ON engram_tags(tag);
+
+        CREATE TABLE IF NOT EXISTS engram_refresh_log (
+            id INTEGER PRIMARY KEY,
+            engram_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            refreshed_at TEXT NOT NULL,
+            FOREIGN KEY (engram_id) REFERENCES engrams(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_refresh_log_engram ON engram_refresh_log(engram_id);
     """)
 
 
@@ -233,6 +244,25 @@ def _apply_migrations(conn):
     elif "curation_status" in columns and "status" not in columns:
         conn.execute("ALTER TABLE engrams RENAME COLUMN curation_status TO status")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_engrams_status ON engrams(deprecated, status, id)")
+
+    if "refreshed_at" not in columns:
+        conn.execute("ALTER TABLE engrams ADD COLUMN refreshed_at TEXT DEFAULT NULL")
+        conn.execute(
+            "UPDATE engrams SET refreshed_at = last_matched WHERE last_matched IS NOT NULL"
+        )
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS engram_refresh_log (
+            id INTEGER PRIMARY KEY,
+            engram_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            refreshed_at TEXT NOT NULL,
+            FOREIGN KEY (engram_id) REFERENCES engrams(id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_log_engram ON engram_refresh_log(engram_id)"
+    )
 
 
 def _ensure_schema(conn, path):
@@ -1173,6 +1203,7 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
             "UPDATE engrams SET pinned = 1, prerequisites = ?, updated_at = ? WHERE id = ?",
             (json.dumps(existing), now, engram_id),
         )
+        refresh_engram(engram_id, "pin", conn=conn)
         result = "pinned"
 
     elif engram["pinned"] and avg_score < UNPIN_THRESHOLD and total_evals >= MIN_EVIDENCE_FOR_PIN:
@@ -1194,6 +1225,29 @@ def check_and_apply_pin_decisions(engram_id, db_path=None):
     conn.commit()
     conn.close()
     return result
+
+
+def refresh_engram(engram_id, reason, conn=None, db_path=None):
+    """Set refreshed_at to now and log the reason.
+
+    Args:
+        engram_id: the engram to refresh
+        reason: human-readable trigger (e.g. "feedback", "evaluation", "dedup", "pin", "manual-edit", "re-extraction")
+        conn: optional existing connection (caller manages commit/close)
+        db_path: optional database path
+    """
+    now = datetime.utcnow().isoformat()
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection(db_path)
+    conn.execute("UPDATE engrams SET refreshed_at = ? WHERE id = ?", (now, engram_id))
+    conn.execute(
+        "INSERT INTO engram_refresh_log (engram_id, reason, refreshed_at) VALUES (?, ?, ?)",
+        (engram_id, reason, now),
+    )
+    if own_conn:
+        conn.commit()
+        conn.close()
 
 
 def import_from_state_file(path, db_path=None):
@@ -1360,16 +1414,28 @@ def merge_engram_group(survivor_id, absorbed_ids, canonical_text, run_id, confid
     # Parse category from survivor
     level1, level2, level3 = _parse_category(survivor["category"])
 
+    # Inherit max(refreshed_at) across the group
+    refreshed_values = [
+        engrams_by_id[eid].get("refreshed_at")
+        for eid in all_ids
+        if engrams_by_id[eid].get("refreshed_at")
+    ]
+    max_refreshed_at = max(refreshed_values) if refreshed_values else None
+
     # Update survivor
     conn.execute(
         """UPDATE engrams SET text = ?, occurrence_count = ?, source_sessions = ?,
            prerequisites = ?, dedup_verified = 0, dedup_attempts = 0,
            dedup_last_error = NULL, updated_at = ?,
-           level1 = ?, level2 = ?, level3 = ?
+           level1 = ?, level2 = ?, level3 = ?, refreshed_at = ?
            WHERE id = ?""",
         (canonical_text, total_occurrence, json.dumps(all_sessions),
          json.dumps(merged_prereqs) if merged_prereqs else None,
-         now, level1, level2, level3, survivor_id),
+         now, level1, level2, level3, max_refreshed_at, survivor_id),
+    )
+    conn.execute(
+        "INSERT INTO engram_refresh_log (engram_id, reason, refreshed_at) VALUES (?, ?, ?)",
+        (survivor_id, "dedup", max_refreshed_at or now),
     )
 
     # 3. engram_categories: union all categories onto survivor

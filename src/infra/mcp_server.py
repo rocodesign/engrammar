@@ -300,6 +300,10 @@ def engrammar_feedback(
             (now, engram_id),
         )
         response_parts.append(f"Recorded positive feedback for engram #{engram_id}.")
+        conn.commit()
+        conn.close()
+        from engrammar.core.db import refresh_engram
+        refresh_engram(engram_id, "feedback")
     else:
         # Negative feedback — record reason
         response_parts.append(f"Recorded negative feedback for engram #{engram_id}: {reason}")
