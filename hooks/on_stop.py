@@ -26,8 +26,7 @@ def main():
         data = parse_hook_input()
         hook_cwd = data.get("cwd")
 
-        from engrammar.infra.hook_utils import is_mcp_enabled, sync_project_mcp_for_cwd
-        sync_project_mcp_for_cwd(cwd=hook_cwd)
+        from engrammar.infra.hook_utils import is_mcp_enabled
         if not is_mcp_enabled(cwd=hook_cwd):
             return
 
